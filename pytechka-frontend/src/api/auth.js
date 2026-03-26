@@ -4,7 +4,15 @@ export async function signup(email, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
+
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error('Server returned an invalid response. Is the backend running?');
+  }
+
   if (!res.ok) throw new Error(data.message || 'Signup failed');
   return data;
 }
@@ -15,18 +23,15 @@ export async function login(email, password) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Login failed');
-  return data;
-}
 
-export async function deleteAccount(email) {
-  const res = await fetch('/api/account', {
-    method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Failed to delete account');
+  const text = await res.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error('Server returned an invalid response. Is the backend running?');
+  }
+
+  if (!res.ok) throw new Error(data.message || 'Login failed');
   return data;
 }

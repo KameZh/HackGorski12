@@ -217,7 +217,8 @@ export default function MapView() {
           <div style={styles.fallbackCard}>
             <h3 style={{ margin: '0 0 8px 0' }}>Map cannot start</h3>
             <p style={{ margin: 0, lineHeight: 1.45, color: '#cbd5e1' }}>
-              Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only mode is enabled.
+              Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only
+              mode is enabled.
             </p>
           </div>
         </div>

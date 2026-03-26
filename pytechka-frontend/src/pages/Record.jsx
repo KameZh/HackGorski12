@@ -495,7 +495,8 @@ export default function Record() {
               Record cannot start
             </h3>
             <p style={{ margin: 0, color: '#cbd5e1' }}>
-              Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only mode is enabled.
+              Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only
+              mode is enabled.
             </p>
           </div>
         </div>

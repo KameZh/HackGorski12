@@ -1,27 +1,28 @@
 require("dotenv").config();
 const express = require("express");
+const path = require("path");
 const cors = require("cors");
 const { connectDB } = require("./Backend/Database/connection");
 const signupRoutes = require("./Backend/routes/signup");
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 5174;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-// Routes
-app.get("/signup", (req, res) => {
-  res.sendFile(__dirname + '/public/signup.html');
-});
-
-app.get("/login", (req, res) => {
-  res.sendFile(__dirname + '/public/login.html');
-});
-
+// API Routes
 app.use("/api", signupRoutes);
+
+// Serve React production build
+const distPath = path.join(__dirname, "pytechka-frontend", "dist");
+app.use(express.static(distPath));
+
+// Catch-all: serve React app for client-side routing
+app.get("*", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
 
 async function startServer() {
   try {
@@ -29,7 +30,7 @@ async function startServer() {
     console.log(`Database connected: ${db.name}`);
 
     app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
+      console.log(`Backend API running on port ${PORT}`);
     });
   } catch (error) {
     console.error("Server startup failed:", error);

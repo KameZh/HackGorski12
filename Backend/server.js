@@ -1,40 +1,36 @@
-require("dotenv").config();
-const express = require("express");
-const cors = require("cors");
-const { connectDB } = require("./Database/connection");
-const signupRoutes = require("./routes/signup");
+import dotenv from 'dotenv'
+import express from 'express'
+import { ClerkExpressRequireAuth, ClerkExpressWithAuth } from '@clerk/clerk-sdk-node'
+import cors from 'cors'
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+dotenv.config()
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static('public'));
+const port = process.env.PORT || 3000
 
-// Routes
-app.get("/signup", (req, res) => {
-  res.sendFile(__dirname + '/public/signup.html');
-});
+const app = express()
+app.use(cors())
 
-app.get("/login", (req, res) => {
-  res.sendFile(__dirname + '/public/login.html');
-});
+// Use the strict middleware that throws when unauthenticated
+app.get('/protected-auth-required', ClerkExpressRequireAuth(), (req, res) => {
+  res.json(req.auth)
+})
 
-app.use("/api", signupRoutes);
+// Use the lax middleware that returns an empty auth object when unauthenticated
+app.get('/protected-auth-optional', ClerkExpressWithAuth(), (req, res) => {
+  res.json(req.auth)
+})
 
-async function startServer() {
-  try {
-    const db = await connectDB();
-    console.log(`Database connected: ${db.name}`);
+// Error handling middleware function
+app.use((err, req, res, next) => {
+  console.error(err.stack)
+  res.status(401).send('Unauthenticated!')
+})
 
-    app.listen(PORT, () => {
-      console.log(`Server is running on port ${PORT}`);
-    });
-  } catch (error) {
-    console.error("Server startup failed:", error);
-    process.exit(1);
-  }
-}
+// Route not utilizing any authentication
+app.get('/', function (req, res) {
+  res.send('Hello World!')
+})
 
-startServer();
+app.listen(port, () => {
+  console.log(`Example app listening at http://localhost:${port}`)
+})

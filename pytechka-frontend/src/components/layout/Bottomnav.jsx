@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom'
+import { SignedIn, SignedOut, SignInButton, UserButton } from '@clerk/clerk-react'
 
 const NAV_ITEMS = [
   {
@@ -124,18 +125,48 @@ export default function BottomNav() {
           className={`nav-item ${isActive(item.path) ? 'nav-item-active' : 'nav-item-inactive'}`}
           onClick={() => navigate(item.path)}
         >
-          <span
-            id={`nav-icon-${item.id}`}
-            className={`nav-icon ${isActive(item.path) ? 'nav-icon-active' : 'nav-icon-inactive'}`}
-          >
-            {item.icon}
-          </span>
-          <span
-            id={`nav-label-${item.id}`}
-            className={`nav-label ${isActive(item.path) ? 'nav-label-active' : 'nav-label-inactive'}`}
-          >
-            {item.label}
-          </span>
+          {item.id === 'account' ? (
+            <>
+              <SignedOut>
+                <span
+                  id={`nav-icon-${item.id}`}
+                  className={`nav-icon ${isActive(item.path) ? 'nav-icon-active' : 'nav-icon-inactive'}`}
+                >
+                  {item.icon}
+                </span>
+                <span
+                  id={`nav-label-${item.id}`}
+                  className={`nav-label ${isActive(item.path) ? 'nav-label-active' : 'nav-label-inactive'}`}
+                >
+                  Sign In
+                </span>
+              </SignedOut>
+              <SignedIn>
+                <UserButton afterSignOutUrl="/" />
+                <span
+                  id={`nav-label-${item.id}`}
+                  className={`nav-label ${isActive(item.path) ? 'nav-label-active' : 'nav-label-inactive'}`}
+                >
+                  {item.label}
+                </span>
+              </SignedIn>
+            </>
+          ) : (
+            <>
+              <span
+                id={`nav-icon-${item.id}`}
+                className={`nav-icon ${isActive(item.path) ? 'nav-icon-active' : 'nav-icon-inactive'}`}
+              >
+                {item.icon}
+              </span>
+              <span
+                id={`nav-label-${item.id}`}
+                className={`nav-label ${isActive(item.path) ? 'nav-label-active' : 'nav-label-inactive'}`}
+              >
+                {item.label}
+              </span>
+            </>
+          )}
         </button>
       ))}
     </nav>

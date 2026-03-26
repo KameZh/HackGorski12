@@ -1,15 +1,29 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useUser, useClerk, UserButton } from '@clerk/clerk-react'
+import { useAuth, useClerk, UserButton } from '@clerk/clerk-react'
+import api from '../api/client'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
 export default function Home() {
-  const { isSignedIn, user } = useUser()
+  const { isSignedIn } = useAuth()
   const { signOut } = useClerk()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [dbUser, setDbUser] = useState(null)
+  const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!isSignedIn) {
+      setLoading(false)
+      return
+    }
+    api.get('/user/profile')
+      .then(res => setDbUser(res.data))
+      .catch(err => console.error('Failed to fetch profile:', err))
+      .finally(() => setLoading(false))
+  }, [isSignedIn])
 
   const handleLogout = async () => {
     await signOut()
@@ -27,7 +41,8 @@ export default function Home() {
     }
   }
 
-  if (!isSignedIn) {
+  if (!isSignedIn || loading) {
+    if (loading) return null
     return (
       <div className="account-page">
         <div className="account-login-prompt">
@@ -41,8 +56,8 @@ export default function Home() {
     )
   }
 
-  const displayName = user.username || user.firstName
-  const email = user.primaryEmailAddress?.emailAddress || ''
+  const displayName = dbUser?.username || '—'
+  const email = dbUser?.email || ''
 
   return (
     <div className="account-page">

@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "forceConsistentCasingInFileNames": false,
+    "checkJs": false
+  },
+  "include": ["./**/*.js"],
+  "exclude": ["node_modules"]
+}

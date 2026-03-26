@@ -1,6 +1,7 @@
 import { SignInButton, SignedIn, SignedOut, UserButton, useAuth } from '@clerk/clerk-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Routes, Route } from 'react-router-dom'
+import { setClerkTokenGetter } from './api/client'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -17,18 +18,11 @@ const Placeholder = ({ name }) => (
 
 function App() {
   const { getToken } = useAuth()
-  const [data, setData] = useState({})
 
-  async function callProtectedAuthRequired() {
-    const token = await getToken()
-    const res = await fetch('http://localhost:5174/protected-auth-required', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-    const json = await res.json()
-    setData(json)
-  }
+  // Wire Clerk's getToken into the axios client so all API calls are authenticated
+  useEffect(() => {
+    setClerkTokenGetter(getToken)
+  }, [getToken])
 
   return (
     <Routes>

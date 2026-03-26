@@ -1,32 +1,15 @@
-const { MongoClient } = require("mongodb");
+import mongoose from 'mongoose'
 
-const MONGO_URI = process.env.MONGO_URI || "mongodb+srv://kris07:KikI66~99Bg@hacktues26.yeekk3t.mongodb.net/?appName=HackTUES26";
-const DB_NAME = process.env.DB_NAME || "HackGorski";
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://kris07:KikI66~99Bg@hacktues26.yeekk3t.mongodb.net/HackGorski?appName=HackTUES26'
 
-let db = null;
-
-async function connectDB() {
-  if (db) {
-    return db;
-  }
-
+export async function connectDB() {
   try {
-    const client = new MongoClient(MONGO_URI);
-    await client.connect();
-    console.log("Connected to MongoDB");
-    db = client.db(DB_NAME);
-    return db;
+    await mongoose.connect(MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+    })
+    console.log('Connected to MongoDB')
   } catch (error) {
-    console.error("Failed to connect to MongoDB:", error);
-    throw error;
+    console.error('Failed to connect to MongoDB:', error.message)
+    process.exit(1)
   }
 }
-
-function getDB() {
-  if (!db) {
-    throw new Error("Database not initialized. Call connectDB first.");
-  }
-  return db;
-}
-
-module.exports = { connectDB, getDB };

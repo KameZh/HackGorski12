@@ -1,10 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import Map, {
-  Layer,
-  Marker,
-  Source,
-} from 'react-map-gl/mapbox'
+import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
@@ -428,7 +424,11 @@ export default function Record() {
       <div className="record-status-wrap">
         <div
           className={`record-status-badge ${
-            isTracking ? (isPaused ? 'record-status-paused' : 'record-status-active') : ''
+            isTracking
+              ? isPaused
+                ? 'record-status-paused'
+                : 'record-status-active'
+              : ''
           }`}
         >
           {statusText}
@@ -436,7 +436,9 @@ export default function Record() {
       </div>
 
       <div className="record-info-wrap">
-        {loadingTrails && <div className="record-info-box">Loading trails...</div>}
+        {loadingTrails && (
+          <div className="record-info-box">Loading trails...</div>
+        )}
         {trailsError && <div className="record-info-box">{trailsError}</div>}
         {geoError && (
           <div className="record-info-box record-info-error">{geoError}</div>
@@ -464,7 +466,9 @@ export default function Record() {
               <div className="record-stat-label">time</div>
             </div>
             <div className="record-stat-box">
-              <div className="record-stat-value">{(distance / 1000).toFixed(2)}</div>
+              <div className="record-stat-value">
+                {(distance / 1000).toFixed(2)}
+              </div>
               <div className="record-stat-label">km</div>
             </div>
           </div>

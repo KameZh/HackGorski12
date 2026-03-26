@@ -21,7 +21,7 @@ function App() {
       <Route path="/maps" element={<Maps />} />
       <Route path="/record" element={<Record />} />
       <Route path="/events" element={<Placeholder name="Events" />} />
-      <Route path="/account" element={<Placeholder name="Account" />} />
+      <Route path="/account" element={<Home />} />
       <Route path="/home" element={<Home />} />
       <Route path="/signup" element={<Signup />} />
       <Route path="/login" element={<Login />} />

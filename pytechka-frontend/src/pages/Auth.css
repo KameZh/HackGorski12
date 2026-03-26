@@ -3,69 +3,76 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: #1a1a2e;
+  background: #FBFEF9;
+  padding: 24px 16px;
 }
 
 .auth-form {
-  background: #16213e;
-  padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background: #ffffff;
+  padding: 24px 22px;
+  border-radius: 16px;
+  box-shadow: 0 10px 32px rgba(25, 25, 35, 0.08);
+  border: 1px solid rgba(25, 25, 35, 0.06);
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
   text-align: center;
 }
 
 .auth-form h2 {
-  color: #e94560;
-  margin-bottom: 1.5rem;
+  color: #191923;
+  margin-bottom: 1.25rem;
+  font-size: 1.4rem;
+  letter-spacing: -0.01em;
 }
 
 .auth-form input {
   width: 100%;
-  padding: 0.75rem;
-  margin-bottom: 1rem;
-  border: 1px solid #0f3460;
-  border-radius: 8px;
-  background: #1a1a2e;
-  color: #fff;
+  padding: 0.8rem 0.9rem;
+  margin-bottom: 0.9rem;
+  border: 1.5px solid rgba(66, 129, 164, 0.15);
+  border-radius: 12px;
+  background: #FBFEF9;
+  color: #000100;
   font-size: 1rem;
   box-sizing: border-box;
 }
 
 .auth-form input::placeholder {
-  color: #888;
+  color: #9aa3ae;
 }
 
 .auth-form button {
   width: 100%;
-  padding: 0.75rem;
-  background: #e94560;
-  color: white;
+  padding: 0.85rem;
+  background: #4281A4;
+  color: #FBFEF9;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  margin-bottom: 0.5rem;
-  transition: background 0.2s;
+  margin-bottom: 0.65rem;
+  transition: background 0.18s, transform 0.12s;
 }
 
 .auth-form button:hover {
-  background: #c81e45;
+  background: #356985;
+  transform: translateY(-1px);
 }
 
 .auth-form a {
-  color: #e94560;
+  color: #4281A4;
+  font-weight: 600;
 }
 
 .auth-form .success {
-  color: #4caf50;
-  margin-bottom: 1rem;
+  color: #48A9A6;
+  margin-bottom: 0.9rem;
 }
 
 .auth-form .error {
-  color: #f44336;
-  margin-bottom: 1rem;
+  color: #c0392b;
+  margin-bottom: 0.9rem;
 }
 
 .confirm-overlay {
@@ -74,7 +81,7 @@
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(25, 25, 35, 0.6);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -82,19 +89,21 @@
 }
 
 .confirm-dialog {
-  background: #16213e;
-  padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  background: #ffffff;
+  padding: 1.75rem;
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(25, 25, 35, 0.14);
+  border: 1px solid rgba(25, 25, 35, 0.06);
   text-align: center;
-  max-width: 320px;
+  max-width: 340px;
   width: 90%;
 }
 
 .confirm-dialog p {
-  color: #fff;
-  margin-bottom: 1.5rem;
-  font-size: 1.1rem;
+  color: #191923;
+  margin-bottom: 1.3rem;
+  font-size: 1rem;
+  line-height: 1.4;
 }
 
 .confirm-buttons {
@@ -104,27 +113,28 @@
 
 .confirm-buttons button {
   flex: 1;
-  padding: 0.6rem;
+  padding: 0.7rem;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   font-size: 0.95rem;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .confirm-yes {
-  background: #e94560;
-  color: white;
+  background: #4281A4;
+  color: #FBFEF9;
 }
 
 .confirm-yes:hover {
-  background: #c81e45;
+  background: #356985;
 }
 
 .confirm-no {
-  background: #0f3460;
-  color: white;
+  background: rgba(66, 129, 164, 0.12);
+  color: #191923;
 }
 
 .confirm-no:hover {
-  background: #1a4a8a;
+  background: rgba(66, 129, 164, 0.2);
 }

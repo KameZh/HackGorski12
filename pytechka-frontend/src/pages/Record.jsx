@@ -3,7 +3,6 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import Map, {
   Layer,
   Marker,
-  NavigationControl,
   Source,
 } from 'react-map-gl/mapbox'
 import BottomNav from '../components/layout/Bottomnav'
@@ -11,6 +10,7 @@ import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
+import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
@@ -25,170 +25,6 @@ const DIFFICULTY_COLOR = {
   moderate: '#f97316',
   hard: '#ef4444',
   extreme: '#7f1d1d',
-}
-
-const styles = {
-  page: {
-    position: 'fixed',
-    inset: 0,
-    width: '100vw',
-    height: '100vh',
-    background: '#0b1220',
-    overflow: 'hidden',
-  },
-  mapLayer: {
-    position: 'absolute',
-    inset: 0,
-    zIndex: 1,
-  },
-  fallback: {
-    position: 'absolute',
-    inset: 0,
-    display: 'grid',
-    placeItems: 'center',
-    padding: 16,
-    background: 'linear-gradient(180deg, #0b1220 0%, #111827 100%)',
-    color: '#fff',
-    textAlign: 'center',
-    zIndex: 2,
-  },
-  fallbackCard: {
-    maxWidth: 520,
-    borderRadius: 14,
-    border: '1px solid rgba(148,163,184,0.35)',
-    background: 'rgba(2,6,23,0.72)',
-    padding: 16,
-  },
-  statusWrap: {
-    position: 'absolute',
-    top: 'calc(env(safe-area-inset-top, 0px) + 14px)',
-    left: 12,
-    right: 12,
-    zIndex: 16,
-    display: 'flex',
-    justifyContent: 'center',
-    pointerEvents: 'none',
-  },
-  statusBadge: {
-    borderRadius: 999,
-    padding: '7px 14px',
-    fontSize: 12,
-    fontWeight: 700,
-    color: '#fff',
-    background: 'rgba(15,23,42,0.82)',
-    border: '1px solid rgba(148,163,184,0.35)',
-    backdropFilter: 'blur(8px)',
-  },
-  infoWrap: {
-    position: 'absolute',
-    top: 'calc(env(safe-area-inset-top, 0px) + 56px)',
-    left: 12,
-    right: 76,
-    zIndex: 18,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    pointerEvents: 'none',
-  },
-  infoBox: {
-    borderRadius: 10,
-    border: '1px solid rgba(148,163,184,0.35)',
-    background: 'rgba(15,23,42,0.78)',
-    color: '#e2e8f0',
-    padding: '8px 10px',
-    fontSize: 12,
-  },
-  errorBox: {
-    border: '1px solid rgba(239,68,68,0.6)',
-    background: 'rgba(127,29,29,0.8)',
-    color: '#fee2e2',
-  },
-  livePanelWrap: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 'max(72px, env(safe-area-inset-bottom, 0px))',
-    zIndex: 24,
-  },
-  livePanel: {
-    borderRadius: 14,
-    border: '1px solid rgba(148,163,184,0.28)',
-    background: 'rgba(15,23,42,0.86)',
-    backdropFilter: 'blur(10px)',
-    color: '#fff',
-    padding: '10px 12px',
-  },
-  statsRow: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-    gap: 8,
-    marginBottom: 10,
-  },
-  statBox: {
-    textAlign: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 700,
-    lineHeight: 1.1,
-  },
-  statLabel: {
-    marginTop: 2,
-    color: '#94a3b8',
-    fontSize: 12,
-  },
-  actionsRow: {
-    display: 'grid',
-    gridTemplateColumns: '54px 1fr 54px',
-    gap: 8,
-    alignItems: 'center',
-  },
-  actionSmall: {
-    width: 54,
-    height: 40,
-    borderRadius: 12,
-    border: 'none',
-    color: '#fff',
-    cursor: 'pointer',
-  },
-  actionDisabled: {
-    opacity: 0.5,
-    cursor: 'not-allowed',
-  },
-  primaryButton: {
-    width: '100%',
-    height: 40,
-    borderRadius: 12,
-    border: 'none',
-    color: '#fff',
-    fontWeight: 700,
-    cursor: 'pointer',
-  },
-  bottomNavWrap: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 30,
-  },
-}
-
-function toRadians(degrees) {
-  return (degrees * Math.PI) / 180
-}
-
-function distanceMeters(a, b) {
-  const earthRadius = 6371000
-  const dLat = toRadians(b.latitude - a.latitude)
-  const dLng = toRadians(b.longitude - a.longitude)
-  const lat1 = toRadians(a.latitude)
-  const lat2 = toRadians(b.latitude)
-
-  const h =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) * Math.sin(dLng / 2)
-
-  return 2 * earthRadius * Math.asin(Math.sqrt(h))
 }
 
 function formatDuration(totalSeconds) {
@@ -303,6 +139,16 @@ export default function Record() {
     const map = mapRef.current?.getMap()
     if (map) applyTerrain(map, terrain3D)
   }, [applyTerrain, terrain3D])
+
+  const handleZoomIn = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    map?.zoomIn({ duration: 200 })
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    map?.zoomOut({ duration: 200 })
+  }, [])
 
   const onPosition = useCallback((position) => {
     const nextPoint = {
@@ -488,19 +334,17 @@ export default function Record() {
 
   if (!MAPBOX_TOKEN) {
     return (
-      <div style={styles.page}>
-        <div style={styles.fallback}>
-          <div style={styles.fallbackCard}>
-            <h3 style={{ marginTop: 0, marginBottom: 8 }}>
-              Record cannot start
-            </h3>
-            <p style={{ margin: 0, color: '#cbd5e1' }}>
+      <div className="record-page">
+        <div className="record-fallback">
+          <div className="record-fallback-card">
+            <h3>Record cannot start</h3>
+            <p>
               Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only
               mode is enabled.
             </p>
           </div>
         </div>
-        <div style={styles.bottomNavWrap}>
+        <div className="record-bottomnav-wrap">
           <BottomNav />
         </div>
       </div>
@@ -508,21 +352,19 @@ export default function Record() {
   }
 
   return (
-    <div id="record-page" style={styles.page}>
-      <div style={styles.mapLayer}>
+    <div id="record-page" className="record-page">
+      <div className="record-map-layer">
         <Map
           ref={mapRef}
           {...viewState}
           onMove={(event) => setViewState(event.viewState)}
           mapStyle={`mapbox://styles/mapbox/${mapStyle}`}
           mapboxAccessToken={MAPBOX_TOKEN}
-          style={{ width: '100%', height: '100%' }}
+          className="record-map"
           attributionControl={false}
           onLoad={handleMapLoad}
           onClick={handleMapClick}
         >
-          <NavigationControl position="top-left" />
-
           {renderableTrails.map(({ trail, geometry }) => {
             const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
 
@@ -577,74 +419,62 @@ export default function Record() {
               latitude={markerPosition.latitude}
               anchor="center"
             >
-              <div
-                style={{
-                  width: 14,
-                  height: 14,
-                  borderRadius: '50%',
-                  background: '#0ea5e9',
-                  border: '2px solid #fff',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.35)',
-                }}
-              />
+              <div className="record-marker" />
             </Marker>
           )}
         </Map>
       </div>
 
-      <div style={styles.statusWrap}>
+      <div className="record-status-wrap">
         <div
-          style={{
-            ...styles.statusBadge,
-            background: isTracking
-              ? isPaused
-                ? 'rgba(234, 179, 8, 0.2)'
-                : 'rgba(34, 197, 94, 0.2)'
-              : 'rgba(148, 163, 184, 0.2)',
-          }}
+          className={`record-status-badge ${
+            isTracking ? (isPaused ? 'record-status-paused' : 'record-status-active') : ''
+          }`}
         >
           {statusText}
         </div>
       </div>
 
-      <div style={styles.infoWrap}>
-        {loadingTrails && <div style={styles.infoBox}>Loading trails...</div>}
-        {trailsError && <div style={styles.infoBox}>{trailsError}</div>}
+      <div className="record-info-wrap">
+        {loadingTrails && <div className="record-info-box">Loading trails...</div>}
+        {trailsError && <div className="record-info-box">{trailsError}</div>}
         {geoError && (
-          <div style={{ ...styles.infoBox, ...styles.errorBox }}>
-            {geoError}
-          </div>
+          <div className="record-info-box record-info-error">{geoError}</div>
         )}
       </div>
 
-      <MapControls onCenterMe={handleCenterMe} />
+      <MapControls
+        onCenterMe={handleCenterMe}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+      />
       {selectedTrail && <RoutePreviewCard />}
 
-      <div style={styles.livePanelWrap}>
-        <div style={styles.livePanel}>
-          <div style={styles.statsRow}>
-            <div style={styles.statBox}>
-              <div style={styles.statValue}>{steps.toLocaleString()}</div>
-              <div style={styles.statLabel}>steps</div>
+      <div className="record-live-panel-wrap">
+        <div className="record-live-panel">
+          <div className="record-stats-row">
+            <div className="record-stat-box">
+              <div className="record-stat-value">{steps.toLocaleString()}</div>
+              <div className="record-stat-label">steps</div>
             </div>
-            <div style={styles.statBox}>
-              <div style={styles.statValue}>
+            <div className="record-stat-box">
+              <div className="record-stat-value">
                 {formatDuration(elapsedSeconds)}
               </div>
-              <div style={styles.statLabel}>time</div>
+              <div className="record-stat-label">time</div>
             </div>
-            <div style={styles.statBox}>
-              <div style={styles.statValue}>{(distance / 1000).toFixed(2)}</div>
-              <div style={styles.statLabel}>km</div>
+            <div className="record-stat-box">
+              <div className="record-stat-value">{(distance / 1000).toFixed(2)}</div>
+              <div className="record-stat-label">km</div>
             </div>
           </div>
 
-          <div style={styles.actionsRow}>
+          <div className="record-actions-row">
             {isTracking && !isPaused ? (
               <button
                 type="button"
                 onClick={pauseTracking}
-                style={{ ...styles.actionSmall, background: '#111827' }}
+                className="record-action-btn"
                 aria-label="Pause recording"
               >
                 <svg
@@ -663,11 +493,7 @@ export default function Record() {
               <button
                 type="button"
                 onClick={resumeTracking}
-                style={{
-                  ...styles.actionSmall,
-                  background: '#1d4ed8',
-                  ...(hasTrackSession ? null : styles.actionDisabled),
-                }}
+                className={`record-action-btn resume ${!hasTrackSession ? 'record-action-disabled' : ''}`}
                 disabled={!hasTrackSession}
                 aria-label="Resume recording"
               >
@@ -688,7 +514,7 @@ export default function Record() {
               <button
                 type="button"
                 onClick={stopTracking}
-                style={{ ...styles.primaryButton, background: '#ef4444' }}
+                className="record-primary-btn record-stop-btn"
               >
                 Stop
               </button>
@@ -696,7 +522,7 @@ export default function Record() {
               <button
                 type="button"
                 onClick={startTracking}
-                style={{ ...styles.primaryButton, background: '#22c55e' }}
+                className="record-primary-btn record-start-btn"
               >
                 Start
               </button>
@@ -705,7 +531,7 @@ export default function Record() {
             <button
               type="button"
               onClick={resetTracking}
-              style={{ ...styles.actionSmall, background: '#374151' }}
+              className="record-action-btn reset"
               aria-label="Reset recording"
             >
               <svg
@@ -724,7 +550,7 @@ export default function Record() {
         </div>
       </div>
 
-      <div style={styles.bottomNavWrap}>
+      <div className="record-bottomnav-wrap">
         <BottomNav />
       </div>
     </div>

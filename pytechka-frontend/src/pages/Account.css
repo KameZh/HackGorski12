@@ -2,14 +2,14 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background: #f8f9fa;
+  background: #FBFEF9;
   padding-bottom: 80px;
 }
 
 .account-scroll {
   flex: 1;
-  padding: 2rem 1.25rem 1rem;
-  max-width: 480px;
+  padding: 24px 18px 14px;
+  max-width: 520px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
@@ -20,15 +20,15 @@
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .account-avatar {
   width: 72px;
   height: 72px;
   border-radius: 16px;
-  background: #eee;
-  border: 2px solid #ddd;
+  background: linear-gradient(135deg, #48A9A6, #4281A4);
+  border: 2px solid rgba(25, 25, 35, 0.08);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -42,7 +42,7 @@
 .account-name {
   font-size: 1.35rem;
   font-weight: 700;
-  color: #1a1a1a;
+  color: #191923;
   margin: 0 0 0.15rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -51,7 +51,7 @@
 
 .account-email {
   font-size: 0.9rem;
-  color: #777;
+  color: #5b6470;
   margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -66,7 +66,7 @@
 .account-section-title {
   font-size: 0.95rem;
   font-weight: 600;
-  color: #333;
+  color: #191923;
   margin: 0 0 0.5rem;
 }
 
@@ -74,10 +74,11 @@
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.65rem 0.85rem;
-  background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  padding: 0.7rem 0.9rem;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(25, 25, 35, 0.08);
+  border: 1px solid rgba(25, 25, 35, 0.06);
   margin-bottom: 0.5rem;
 }
 
@@ -94,7 +95,7 @@
 .stat-value {
   font-size: 0.85rem;
   font-weight: 600;
-  color: #444;
+  color: #191923;
 }
 
 /* Action buttons */
@@ -102,7 +103,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  margin-top: 1.5rem;
+  margin-top: 1.25rem;
 }
 
 .account-btn-settings,
@@ -113,7 +114,7 @@
   justify-content: center;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.85rem;
+  padding: 0.9rem;
   border-radius: 12px;
   font-size: 1rem;
   font-weight: 500;
@@ -123,32 +124,32 @@
 }
 
 .account-btn-settings {
-  background: #fff;
-  color: #333;
-  border: 1.5px solid #ddd;
+  background: #ffffff;
+  color: #191923;
+  border: 1.5px solid rgba(66, 129, 164, 0.16);
 }
 
 .account-btn-settings:hover {
-  background: #f0f0f0;
+  background: rgba(72, 169, 166, 0.08);
 }
 
 .account-btn-signout {
-  background: #fde8ec;
-  color: #d63b5a;
+  background: #4281A4;
+  color: #FBFEF9;
 }
 
 .account-btn-signout:hover {
-  background: #fbd0d8;
+  background: #356985;
 }
 
 .account-btn-delete {
-  background: #fff;
-  color: #c0392b;
-  border: 1.5px solid #e8c4c0;
+  background: rgba(72, 169, 166, 0.1);
+  color: #191923;
+  border: 1.5px solid rgba(72, 169, 166, 0.3);
 }
 
 .account-btn-delete:hover {
-  background: #fdf0ef;
+  background: rgba(72, 169, 166, 0.18);
 }
 
 /* Login prompt (not authenticated) */
@@ -163,29 +164,32 @@
 }
 
 .account-login-prompt h2 {
-  color: #1a1a1a;
+  color: #191923;
   margin-bottom: 0.5rem;
 }
 
 .account-login-prompt p {
-  color: #777;
+  color: #5b6470;
   margin-bottom: 1.5rem;
 }
 
 .account-btn {
   width: 200px;
-  padding: 0.75rem;
-  background: #e94560;
-  color: white;
+  padding: 0.85rem;
+  background: #4281A4;
+  color: #FBFEF9;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   margin-bottom: 0.5rem;
+  transition: background 0.18s, transform 0.12s;
 }
 
 .account-btn:hover {
-  background: #c81e45;
+  background: #356985;
+  transform: translateY(-1px);
 }
 
 /* Confirmation dialogs (shared with Auth.css) */
@@ -203,24 +207,25 @@
 }
 
 .confirm-dialog {
-  background: #fff;
-  padding: 1.75rem;
-  border-radius: 16px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  background: #ffffff;
+  padding: 1.65rem;
+  border-radius: 14px;
+  box-shadow: 0 12px 34px rgba(25, 25, 35, 0.12);
   text-align: center;
-  max-width: 320px;
+  max-width: 340px;
   width: 90%;
+  border: 1px solid rgba(25, 25, 35, 0.06);
 }
 
 .confirm-dialog p {
-  color: #333;
+  color: #191923;
   margin-bottom: 1.25rem;
   font-size: 1rem;
   line-height: 1.4;
 }
 
 .confirm-dialog-danger p {
-  color: #c0392b;
+  color: #191923;
 }
 
 .confirm-buttons {
@@ -230,37 +235,37 @@
 
 .confirm-buttons button {
   flex: 1;
-  padding: 0.65rem;
+  padding: 0.7rem;
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   font-size: 0.95rem;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
 }
 
 .confirm-yes {
-  background: #fde8ec;
-  color: #d63b5a;
+  background: #4281A4;
+  color: #FBFEF9;
 }
 
 .confirm-yes:hover {
-  background: #fbd0d8;
+  background: #356985;
 }
 
 .confirm-danger {
-  background: #c0392b;
-  color: #fff;
+  background: rgba(72, 169, 166, 0.2);
+  color: #191923;
 }
 
 .confirm-danger:hover {
-  background: #a93226;
+  background: rgba(72, 169, 166, 0.32);
 }
 
 .confirm-no {
-  background: #f0f0f0;
-  color: #555;
+  background: rgba(66, 129, 164, 0.12);
+  color: #191923;
 }
 
 .confirm-no:hover {
-  background: #e0e0e0;
+  background: rgba(66, 129, 164, 0.2);
 }

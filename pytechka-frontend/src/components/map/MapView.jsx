@@ -1,6 +1,6 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import Map, { NavigationControl, Source, Layer } from 'react-map-gl/mapbox'
+import Map, { Source, Layer } from 'react-map-gl/mapbox'
 
 import { useMapStore } from '../../store/mapStore'
 import { fetchMapTrails } from '../../api/maps'
@@ -166,6 +166,16 @@ export default function MapView() {
     if (map && map.loaded()) applyTerrain(map, terrain3D)
   }, [terrain3D, applyTerrain])
 
+  const handleZoomIn = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    map?.zoomIn({ duration: 200 })
+  }, [])
+
+  const handleZoomOut = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    map?.zoomOut({ duration: 200 })
+  }, [])
+
   // Center map on user's GPS location
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
@@ -239,8 +249,6 @@ export default function MapView() {
         onClick={handleMapClick}
         attributionControl={false}
       >
-        <NavigationControl position="top-left" />
-
         {renderableTrails.map(({ trail, geometry }) => {
           const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
           return (
@@ -280,7 +288,11 @@ export default function MapView() {
         {geoError && <div style={styles.infoBox}>{geoError}</div>}
       </div>
 
-      <MapControls onCenterMe={handleCenterMe} />
+      <MapControls
+        onCenterMe={handleCenterMe}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+      />
       <RoutePreviewCard />
     </div>
   )

@@ -21,13 +21,18 @@ const styles = {
     placeItems: 'center',
     cursor: 'pointer',
   },
+  zoomStack: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
 }
 
 /**
  * MapControls — floating right-side action buttons.
  * Positioned absolutely over the map.
  */
-export default function MapControls({ onCenterMe }) {
+export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
   const { mapStyle, terrain3D, toggleMapStyle, toggleTerrain, mode, setMode } =
     useMapStore()
 
@@ -173,6 +178,65 @@ export default function MapControls({ onCenterMe }) {
           <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
         </svg>
       </button>
+
+      <div style={styles.zoomStack}>
+        {/* Zoom in */}
+        <button
+          id="map-zoom-in"
+          title="Zoom in"
+          onClick={() => onZoomIn?.()}
+          className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
+          style={{
+            ...styles.buttonBase,
+            background: 'rgba(255,255,255,0.92)',
+            color: '#111827',
+          }}
+          aria-label="Zoom in"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <line x1="12" y1="8" x2="12" y2="16" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+        </button>
+
+        {/* Zoom out */}
+        <button
+          id="map-zoom-out"
+          title="Zoom out"
+          onClick={() => onZoomOut?.()}
+          className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
+          style={{
+            ...styles.buttonBase,
+            background: 'rgba(255,255,255,0.92)',
+            color: '#111827',
+          }}
+          aria-label="Zoom out"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+        </button>
+      </div>
     </div>
   )
 }

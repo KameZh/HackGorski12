@@ -1,0 +1,228 @@
+.record-page {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: #191923;
+  overflow: hidden;
+}
+
+.record-map-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.record-map {
+  width: 100%;
+  height: 100%;
+}
+
+.record-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: linear-gradient(180deg, #191923 0%, #000100 100%);
+  color: #fbfef9;
+  text-align: center;
+  z-index: 2;
+}
+
+.record-fallback-card {
+  max-width: 520px;
+  border-radius: 14px;
+  border: 1px solid rgba(25, 25, 35, 0.16);
+  background: rgba(25, 25, 35, 0.8);
+  padding: 16px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+}
+
+.record-fallback-card h3 {
+  margin: 0 0 8px;
+  color: #fbfef9;
+}
+
+.record-fallback-card p {
+  margin: 0;
+  color: #fbfef9;
+}
+
+.record-status-wrap {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 12px;
+  right: 12px;
+  z-index: 16;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.record-status-badge {
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fbfef9;
+  background: rgba(148, 163, 184, 0.2);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.record-status-active {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.4);
+}
+
+.record-status-paused {
+  background: rgba(234, 179, 8, 0.2);
+  border-color: rgba(234, 179, 8, 0.42);
+}
+
+.record-info-wrap {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  left: 12px;
+  right: 76px;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.record-info-box {
+  border-radius: 10px;
+  border: 1px solid rgba(72, 169, 166, 0.35);
+  background: rgba(25, 25, 35, 0.78);
+  color: #fbfef9;
+  padding: 8px 10px;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+.record-info-error {
+  border-color: rgba(239, 68, 68, 0.6);
+  background: rgba(220, 80, 80, 0.22);
+  color: #fbfef9;
+}
+
+.record-live-panel-wrap {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: max(72px, env(safe-area-inset-bottom, 0px));
+  z-index: 24;
+}
+
+.record-live-panel {
+  border-radius: 14px;
+  border: 1px solid rgba(25, 25, 35, 0.16);
+  background: rgba(25, 25, 35, 0.9);
+  backdrop-filter: blur(10px);
+  color: #fbfef9;
+  padding: 10px 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.record-stats-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.record-stat-box {
+  text-align: center;
+}
+
+.record-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.record-stat-label {
+  margin-top: 2px;
+  color: rgba(251, 254, 249, 0.7);
+  font-size: 12px;
+}
+
+.record-actions-row {
+  display: grid;
+  grid-template-columns: 54px 1fr 54px;
+  gap: 8px;
+  align-items: center;
+}
+
+.record-action-btn {
+  width: 54px;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  color: #fbfef9;
+  cursor: pointer;
+  background: #191923;
+  display: grid;
+  place-items: center;
+  transition: transform 0.12s ease, background 0.18s ease;
+}
+
+.record-action-btn:hover {
+  transform: translateY(-1px);
+}
+
+.record-action-btn.resume {
+  background: #4281a4;
+}
+
+.record-action-btn.reset {
+  background: #000100;
+}
+
+.record-action-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.record-primary-btn {
+  width: 100%;
+  height: 40px;
+  border-radius: 12px;
+  border: none;
+  color: #fbfef9;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.18s ease;
+}
+
+.record-primary-btn:hover {
+  transform: translateY(-1px);
+}
+
+.record-start-btn {
+  background: #22c55e;
+}
+
+.record-stop-btn {
+  background: #ef4444;
+}
+
+.record-bottomnav-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
+.record-marker {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #48a9a6;
+  border: 2px solid #fbfef9;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}

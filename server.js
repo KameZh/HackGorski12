@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
+const { clerkMiddleware } = require("@clerk/express");
 const { connectDB } = require("./Backend/Database/connection");
 const signupRoutes = require("./Backend/routes/signup");
 
@@ -11,6 +12,7 @@ const PORT = process.env.PORT || 5174;
 // Middleware
 app.use(cors());
 app.use(express.json());
+app.use(clerkMiddleware());
 
 // API Routes
 app.use("/api", signupRoutes);

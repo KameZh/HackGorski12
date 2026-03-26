@@ -1,15 +1,16 @@
-@import "tailwindcss";
-@import "./pages/Explore.css";
-@import "./components/components.css";
-@import "./pages/Auth.css";
+@import 'tailwindcss';
+@import './pages/Explore.css';
+@import './components/components.css';
+@import './pages/Auth.css';
+@import 'tailwindcss/preflight';
 
 @theme {
   /* ── Brand Palette ── */
-  --color-primary:    #4281A4; 
-  --color-secondary:  #48A9A6; 
-  --color-background: #FBFEF9; 
-  --color-surface:    #191923; 
-  --color-ink:        #000100;
+  --color-primary: #4281a4;
+  --color-secondary: #48a9a6;
+  --color-background: #fbfef9;
+  --color-surface: #191923;
+  --color-ink: #000100;
 
   /* ── Typography ── */
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;

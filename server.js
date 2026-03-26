@@ -12,7 +12,8 @@ const PORT = process.env.PORT || 5174;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(clerkMiddleware());
+// Clerk: attaches auth info without blocking unauthenticated requests
+app.use(clerkMiddleware({ debug: false }));
 
 // API Routes
 app.use("/api", signupRoutes);

@@ -14,9 +14,9 @@ const styles = {
   buttonBase: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    border: '1px solid rgba(148, 163, 184, 0.35)',
-    boxShadow: '0 8px 18px rgba(0,0,0,0.2)',
+    borderRadius: 13,
+    border: '1px solid rgba(66, 129, 164, 0.4)',
+    boxShadow: '0 10px 22px rgba(0, 1, 0, 0.32)',
     display: 'grid',
     placeItems: 'center',
     cursor: 'pointer',
@@ -32,9 +32,20 @@ const styles = {
  * MapControls — floating right-side action buttons.
  * Positioned absolutely over the map.
  */
-export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
+export default function MapControls({
+  onCenterMe,
+  onZoomIn,
+  onZoomOut,
+  onResetView,
+}) {
   const { mapStyle, terrain3D, toggleMapStyle, toggleTerrain, mode, setMode } =
     useMapStore()
+
+  const inactiveButton = {
+    ...styles.buttonBase,
+    background: 'rgba(18, 26, 40, 0.9)',
+    color: '#9fc9de',
+  }
 
   return (
     <div id="map-controls" style={styles.controlsWrap}>
@@ -49,9 +60,7 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
         onClick={toggleMapStyle}
         className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
         style={{
-          ...styles.buttonBase,
-          background: 'rgba(255,255,255,0.92)',
-          color: '#334155',
+          ...inactiveButton,
         }}
       >
         {mapStyle === 'outdoors-v12' ? (
@@ -101,8 +110,10 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
         }`}
         style={{
           ...styles.buttonBase,
-          background: terrain3D ? '#10b981' : 'rgba(255,255,255,0.92)',
-          color: terrain3D ? '#fff' : '#334155',
+          background: terrain3D
+            ? 'linear-gradient(180deg, #48a9a6, #4281a4)'
+            : 'rgba(18, 26, 40, 0.9)',
+          color: terrain3D ? '#fbfef9' : '#9fc9de',
         }}
       >
         {/* Mountain icon */}
@@ -127,9 +138,7 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
         onClick={onCenterMe}
         className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
         style={{
-          ...styles.buttonBase,
-          background: 'rgba(255,255,255,0.92)',
-          color: '#334155',
+          ...inactiveButton,
         }}
       >
         <svg
@@ -160,8 +169,11 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
         }`}
         style={{
           ...styles.buttonBase,
-          background: mode === 'draw' ? '#3b82f6' : 'rgba(255,255,255,0.92)',
-          color: mode === 'draw' ? '#fff' : '#334155',
+          background:
+            mode === 'draw'
+              ? 'linear-gradient(180deg, #48a9a6, #4281a4)'
+              : 'rgba(18, 26, 40, 0.9)',
+          color: mode === 'draw' ? '#fbfef9' : '#9fc9de',
         }}
       >
         <svg
@@ -179,6 +191,28 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
         </svg>
       </button>
 
+      <button
+        id="map-reset-view"
+        title="Reset map view"
+        onClick={() => onResetView?.()}
+        style={inactiveButton}
+        aria-label="Reset map view"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 12a9 9 0 1 0 3-6.708" />
+          <path d="M3 4v5h5" />
+        </svg>
+      </button>
+
       <div style={styles.zoomStack}>
         {/* Zoom in */}
         <button
@@ -187,9 +221,7 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
           onClick={() => onZoomIn?.()}
           className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
           style={{
-            ...styles.buttonBase,
-            background: 'rgba(255,255,255,0.92)',
-            color: '#111827',
+            ...inactiveButton,
           }}
           aria-label="Zoom in"
         >
@@ -216,9 +248,7 @@ export default function MapControls({ onCenterMe, onZoomIn, onZoomOut }) {
           onClick={() => onZoomOut?.()}
           className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
           style={{
-            ...styles.buttonBase,
-            background: 'rgba(255,255,255,0.92)',
-            color: '#111827',
+            ...inactiveButton,
           }}
           aria-label="Zoom out"
         >

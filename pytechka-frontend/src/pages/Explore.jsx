@@ -1,19 +1,29 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import BottomNav from '../components/layout/Bottomnav'
 import TrailCard from '../components/explore/TrailCard'
 import AnimalCard from '../components/explore/AnimalCard'
 import EcoImpactBanner from '../components/explore/EcoImpactBanner'
-import {
-  DEMO_TRAILS,
-  DEMO_ANIMALS,
-  ECO_STATS,
-  FILTER_OPTIONS,
-} from '../components/data/Explorerdata'
+import { fetchTrails } from '../api/trails'
+import { fetchAnimals } from '../api/animals'
+import { fetchEcoStats } from '../api/eco'
 
 const TABS = [
   { id: 'trails', label: 'Pytechka' },
   { id: 'animals', label: 'Animals' },
 ]
+
+const ACTIVITY_OPTIONS = ['All', 'Hiking', 'Running', 'Cycling']
+const DIFFICULTY_OPTIONS = ['All', 'Easy', 'Moderate', 'Hard', 'Extreme']
+const REGION_OPTIONS = [
+  'All',
+  'Рила',
+  'Пирин',
+  'Витоша',
+  'Стара Планина',
+  'Родопи',
+  'Черноморие',
+]
+const SORT_OPTIONS = ['Popular', 'Newest', 'Nearest', 'Eco Score']
 
 export default function Explore() {
   const [activeTab, setActiveTab] = useState('trails')
@@ -23,59 +33,94 @@ export default function Explore() {
   const [activeDifficulty, setActiveDifficulty] = useState('All')
   const [activeRegion, setActiveRegion] = useState('All')
   const [activeSort, setActiveSort] = useState('Popular')
-  const [showFilters, setShowFilters] = useState(false)
 
-  // Filtered trails
-  const filteredTrails = useMemo(() => {
-    return DEMO_TRAILS.filter((trail) => {
-      const matchesSearch =
-        searchQuery === '' ||
-        trail.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        trail.region.toLowerCase().includes(searchQuery.toLowerCase())
+  const [trails, setTrails] = useState([])
+  const [animals, setAnimals] = useState([])
+  const [ecoStats, setEcoStats] = useState(null)
 
-      const matchesActivity =
-        activeActivity === 'All' ||
-        trail.activityType.toLowerCase() === activeActivity.toLowerCase()
+  const [loadingTrails, setLoadingTrails] = useState(false)
+  const [loadingAnimals, setLoadingAnimals] = useState(false)
+  const [errorTrails, setErrorTrails] = useState(null)
+  const [errorAnimals, setErrorAnimals] = useState(null)
 
-      const matchesDifficulty =
-        activeDifficulty === 'All' ||
-        trail.difficulty.toLowerCase() === activeDifficulty.toLowerCase()
+  const loadTrails = useCallback(async () => {
+    setLoadingTrails(true)
+    setErrorTrails(null)
+    try {
+      const params = {
+        ...(searchQuery && { search: searchQuery }),
+        ...(activeActivity !== 'All' && {
+          activity: activeActivity.toLowerCase(),
+        }),
+        ...(activeDifficulty !== 'All' && {
+          difficulty: activeDifficulty.toLowerCase(),
+        }),
+        ...(activeRegion !== 'All' && { region: activeRegion }),
+        sort: activeSort.toLowerCase().replace(' ', '_'),
+      }
+      const response = await fetchTrails(params)
+      setTrails(Array.isArray(response.data) ? response.data : [])
+    } catch {
+      setErrorTrails('Could not load trails. Please try again.')
+      setTrails([])
+    } finally {
+      setLoadingTrails(false)
+    }
+  }, [searchQuery, activeActivity, activeDifficulty, activeRegion, activeSort])
 
-      const matchesRegion =
-        activeRegion === 'All' || trail.region.includes(activeRegion)
-
-      return (
-        matchesSearch && matchesActivity && matchesDifficulty && matchesRegion
-      )
-    })
-  }, [searchQuery, activeActivity, activeDifficulty, activeRegion])
-
-  // Filtered animals
-  const filteredAnimals = useMemo(() => {
-    return DEMO_ANIMALS.filter((animal) => {
-      const matchesSearch =
-        searchQuery === '' ||
-        animal.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        animal.region.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        animal.species.toLowerCase().includes(searchQuery.toLowerCase())
-
-      const matchesRegion =
-        activeRegion === 'All' || animal.region.includes(activeRegion)
-
-      return matchesSearch && matchesRegion
-    })
+  const loadAnimals = useCallback(async () => {
+    setLoadingAnimals(true)
+    setErrorAnimals(null)
+    try {
+      const params = {
+        ...(searchQuery && { search: searchQuery }),
+        ...(activeRegion !== 'All' && { region: activeRegion }),
+      }
+      const response = await fetchAnimals(params)
+      setAnimals(Array.isArray(response.data) ? response.data : [])
+    } catch {
+      setErrorAnimals('Could not load wildlife data. Please try again.')
+      setAnimals([])
+    } finally {
+      setLoadingAnimals(false)
+    }
   }, [searchQuery, activeRegion])
+
+  useEffect(() => {
+    const loadEcoStats = async () => {
+      try {
+        const response = await fetchEcoStats()
+        setEcoStats(response.data)
+      } catch {
+        // Non-critical — banner simply does not render
+      }
+    }
+    loadEcoStats()
+  }, [])
+
+  useEffect(() => {
+    if (activeTab === 'trails') loadTrails()
+  }, [activeTab, loadTrails])
+
+  useEffect(() => {
+    if (activeTab === 'animals') loadAnimals()
+  }, [activeTab, loadAnimals])
+
+  const handleResetFilters = () => {
+    setSearchQuery('')
+    setActiveActivity('All')
+    setActiveDifficulty('All')
+    setActiveRegion('All')
+    setActiveSort('Popular')
+  }
 
   return (
     <div id="explore-page" className="explore-page">
-      {/* ── HEADER ── */}
       <header id="explore-header" className="explore-header">
-        {/* App title + tabs */}
         <div id="explore-title-row" className="explore-title-row">
           <h1 id="explore-app-title" className="explore-app-title">
             Pytechka
           </h1>
-
           <div id="explore-tabs" className="explore-tabs">
             {TABS.map((tab) => (
               <button
@@ -90,13 +135,11 @@ export default function Explore() {
           </div>
         </div>
 
-        {/* Search bar */}
         <div
           id="explore-search-wrapper"
-          className={`explore-search-wrapper ${isSearchFocused ? 'explore-search-wrapper-focused' : ''}`}
+          className={`explore-search-wrapper ${isSearchFocused ? 'explore-search-focused' : ''}`}
         >
           <svg
-            id="explore-search-icon"
             className="explore-search-icon"
             width="16"
             height="16"
@@ -143,12 +186,10 @@ export default function Explore() {
           )}
         </div>
 
-        {/* Filter chips row */}
-        <div id="explore-filters-row" className="explore-filters-row">
-          {/* Activity filter — only on trails tab */}
+        <div id="explore-filters" className="explore-filters">
           {activeTab === 'trails' && (
-            <div id="explore-filter-activity" className="explore-filter-group">
-              {FILTER_OPTIONS.activity.map((opt) => (
+            <div id="filter-row-activity" className="filter-row">
+              {ACTIVITY_OPTIONS.map((opt) => (
                 <button
                   key={opt}
                   id={`filter-activity-${opt.toLowerCase()}`}
@@ -161,13 +202,9 @@ export default function Explore() {
             </div>
           )}
 
-          {/* Difficulty filter — only on trails tab */}
           {activeTab === 'trails' && (
-            <div
-              id="explore-filter-difficulty"
-              className="explore-filter-group"
-            >
-              {FILTER_OPTIONS.difficulty.map((opt) => (
+            <div id="filter-row-difficulty" className="filter-row">
+              {DIFFICULTY_OPTIONS.map((opt) => (
                 <button
                   key={opt}
                   id={`filter-difficulty-${opt.toLowerCase()}`}
@@ -180,12 +217,11 @@ export default function Explore() {
             </div>
           )}
 
-          {/* Region filter — shared */}
-          <div id="explore-filter-region" className="explore-filter-group">
-            {FILTER_OPTIONS.region.map((opt) => (
+          <div id="filter-row-region" className="filter-row">
+            {REGION_OPTIONS.map((opt) => (
               <button
                 key={opt}
-                id={`filter-region-${opt.toLowerCase()}`}
+                id={`filter-region-${opt.toLowerCase().replace(' ', '-')}`}
                 className={`filter-chip ${activeRegion === opt ? 'filter-chip-active' : 'filter-chip-inactive'}`}
                 onClick={() => setActiveRegion(opt)}
               >
@@ -196,53 +232,55 @@ export default function Explore() {
         </div>
       </header>
 
-      {/* ── SCROLLABLE CONTENT ── */}
       <main id="explore-content" className="explore-content">
-        {/* Eco Impact Banner — always visible */}
-        <EcoImpactBanner stats={ECO_STATS} />
+        {ecoStats && <EcoImpactBanner stats={ecoStats} />}
 
-        {/* ── TRAILS TAB ── */}
         {activeTab === 'trails' && (
           <section id="trails-section" className="trails-section">
-            {/* Section header */}
             <div id="trails-section-header" className="section-header">
               <h2 id="trails-section-title" className="section-title">
-                {searchQuery !== ''
-                  ? `Results for "${searchQuery}"`
-                  : 'Popular Trails'}
+                {searchQuery !== '' ? `Results for "${searchQuery}"` : 'Trails'}
               </h2>
-              <span id="trails-count" className="section-count">
-                {filteredTrails.length} trail
-                {filteredTrails.length !== 1 ? 's' : ''}
-              </span>
+              <div id="trails-sort-row" className="sort-row">
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt}
+                    id={`sort-${opt.toLowerCase().replace(' ', '-')}`}
+                    className={`sort-chip ${activeSort === opt ? 'sort-chip-active' : 'sort-chip-inactive'}`}
+                    onClick={() => setActiveSort(opt)}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Sort row */}
-            <div id="trails-sort-row" className="trails-sort-row">
-              <span id="trails-sort-label" className="trails-sort-label">
-                Sort by:
-              </span>
-              {FILTER_OPTIONS.sort.map((opt) => (
-                <button
-                  key={opt}
-                  id={`sort-option-${opt.toLowerCase().replace(' ', '-')}`}
-                  className={`sort-chip ${activeSort === opt ? 'sort-chip-active' : 'sort-chip-inactive'}`}
-                  onClick={() => setActiveSort(opt)}
-                >
-                  {opt}
+            {loadingTrails && (
+              <div id="trails-loading" className="loading-state">
+                <div id="trails-spinner" className="loading-spinner" />
+                <span className="loading-label">Loading trails...</span>
+              </div>
+            )}
+
+            {errorTrails && !loadingTrails && (
+              <div id="trails-error" className="error-state">
+                <p className="error-message">{errorTrails}</p>
+                <button className="retry-btn" onClick={loadTrails}>
+                  Retry
                 </button>
-              ))}
-            </div>
+              </div>
+            )}
 
-            {/* Trail cards list */}
-            {filteredTrails.length > 0 ? (
+            {!loadingTrails && !errorTrails && trails.length > 0 && (
               <div id="trails-list" className="trails-list">
-                {filteredTrails.map((trail) => (
+                {trails.map((trail) => (
                   <TrailCard key={trail.id} trail={trail} />
                 ))}
               </div>
-            ) : (
-              <div id="trails-empty-state" className="empty-state">
+            )}
+
+            {!loadingTrails && !errorTrails && trails.length === 0 && (
+              <div id="trails-empty" className="empty-state">
                 <svg
                   width="48"
                   height="48"
@@ -255,21 +293,14 @@ export default function Explore() {
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <p id="trails-empty-title" className="empty-state-title">
-                  No trails found
-                </p>
-                <p id="trails-empty-subtitle" className="empty-state-subtitle">
-                  Try adjusting your filters or search query
+                <p className="empty-state-title">No trails found</p>
+                <p className="empty-state-subtitle">
+                  Try adjusting your filters or be the first to add a trail
+                  here.
                 </p>
                 <button
-                  id="trails-empty-reset"
                   className="empty-state-reset-btn"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setActiveActivity('All')
-                    setActiveDifficulty('All')
-                    setActiveRegion('All')
-                  }}
+                  onClick={handleResetFilters}
                 >
                   Reset filters
                 </button>
@@ -278,22 +309,16 @@ export default function Explore() {
           </section>
         )}
 
-        {/* ── ANIMALS TAB ── */}
         {activeTab === 'animals' && (
           <section id="animals-section" className="animals-section">
-            {/* Section header */}
             <div id="animals-section-header" className="section-header">
               <h2 id="animals-section-title" className="section-title">
                 {searchQuery !== ''
                   ? `Results for "${searchQuery}"`
                   : 'Wildlife Sightings'}
               </h2>
-              <span id="animals-count" className="section-count">
-                {filteredAnimals.length} species
-              </span>
             </div>
 
-            {/* Info note */}
             <div id="animals-info-note" className="animals-info-note">
               <svg
                 width="14"
@@ -308,20 +333,37 @@ export default function Explore() {
                 <line x1="12" y1="16" x2="12.01" y2="16" />
               </svg>
               <span>
-                Sighting locations are reported by our community of hikers and
-                photographers. Always keep your distance from wildlife.
+                Sighting locations are reported by our community. Always keep
+                your distance from wildlife.
               </span>
             </div>
 
-            {/* Animal cards list */}
-            {filteredAnimals.length > 0 ? (
+            {loadingAnimals && (
+              <div id="animals-loading" className="loading-state">
+                <div id="animals-spinner" className="loading-spinner" />
+                <span className="loading-label">Loading wildlife data...</span>
+              </div>
+            )}
+
+            {errorAnimals && !loadingAnimals && (
+              <div id="animals-error" className="error-state">
+                <p className="error-message">{errorAnimals}</p>
+                <button className="retry-btn" onClick={loadAnimals}>
+                  Retry
+                </button>
+              </div>
+            )}
+
+            {!loadingAnimals && !errorAnimals && animals.length > 0 && (
               <div id="animals-list" className="animals-list">
-                {filteredAnimals.map((animal) => (
+                {animals.map((animal) => (
                   <AnimalCard key={animal.id} animal={animal} />
                 ))}
               </div>
-            ) : (
-              <div id="animals-empty-state" className="empty-state">
+            )}
+
+            {!loadingAnimals && !errorAnimals && animals.length === 0 && (
+              <div id="animals-empty" className="empty-state">
                 <svg
                   width="48"
                   height="48"
@@ -334,19 +376,13 @@ export default function Explore() {
                   <circle cx="11" cy="11" r="8" />
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
-                <p id="animals-empty-title" className="empty-state-title">
-                  No animals found
-                </p>
-                <p id="animals-empty-subtitle" className="empty-state-subtitle">
-                  Try a different region or search term
+                <p className="empty-state-title">No wildlife found</p>
+                <p className="empty-state-subtitle">
+                  Try a different region or search term.
                 </p>
                 <button
-                  id="animals-empty-reset"
                   className="empty-state-reset-btn"
-                  onClick={() => {
-                    setSearchQuery('')
-                    setActiveRegion('All')
-                  }}
+                  onClick={handleResetFilters}
                 >
                   Reset filters
                 </button>
@@ -356,7 +392,6 @@ export default function Explore() {
         )}
       </main>
 
-      {/* ── BOTTOM NAV ── */}
       <BottomNav />
     </div>
   )

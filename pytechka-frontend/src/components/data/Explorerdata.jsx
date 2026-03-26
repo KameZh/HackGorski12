@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import BottomNav from '../layout/Bottomnav'
+import BottomNav from '../components/layout/BottomNav'
 import TrailCard from '../explore/TrailCard'
 import AnimalCard from '../explore/AnimalCard'
 import EcoImpactBanner from '../explore/EcoImpactBanner'
@@ -144,7 +144,7 @@ export default function Explore() {
         sort: activeSort.toLowerCase().replace(' ', '_'),
       }
       const response = await fetchTrails(params)
-      setTrails(response.data)
+      setTrails(Array.isArray(response.data) ? response.data : [])
     } catch {
       setErrorTrails('Could not load trails. Please try again.')
     } finally {
@@ -162,7 +162,7 @@ export default function Explore() {
         ...(activeRegion !== 'All' && { region: activeRegion }),
       }
       const response = await fetchAnimals(params)
-      setAnimals(response.data)
+      setAnimals(Array.isArray(response.data) ? response.data : [])
     } catch {
       setErrorAnimals('Could not load wildlife data. Please try again.')
     } finally {

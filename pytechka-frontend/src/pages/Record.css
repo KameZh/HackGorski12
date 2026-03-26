@@ -53,8 +53,8 @@
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(max(155px, env(safe-area-inset-bottom, 0px) + 12px) + 120px);
-  z-index: 26;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  z-index: 16;
   display: flex;
   justify-content: center;
   pointer-events: none;
@@ -86,7 +86,7 @@
   top: calc(env(safe-area-inset-top, 0px) + 56px);
   left: 12px;
   right: 76px;
-  bottom: calc(max(104px, env(safe-area-inset-bottom, 0px) + 12px) + 56px);
+  bottom: max(155px, env(safe-area-inset-bottom, 0px) + 12px);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -111,9 +111,9 @@
 
 .record-live-panel-wrap {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: max(155px, env(safe-area-inset-bottom, 0px) + 12px);
+  left: 1vb;
+  right: 1vb;
+  bottom: 14.5vb;
   z-index: 24;
 }
 

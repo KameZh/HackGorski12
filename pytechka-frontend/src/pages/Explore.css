@@ -1,9 +1,3 @@
-/* ─────────────────────────────────────────────────────────────────────────────
-   Explore.css  —  Pytechka
-   Matches wireframe: light background, large image cards, minimal header
-────────────────────────────────────────────────────────────────────────────── */
-
-/* ── Page shell ──────────────────────────────────────────────────────────── */
 .explore-page {
   display: flex;
   flex-direction: column;
@@ -15,7 +9,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ── Header ──────────────────────────────────────────────────────────────── */
 .explore-header {
   flex-shrink: 0;
   display: flex;
@@ -26,7 +19,6 @@
   border-bottom: 1px solid rgba(0, 0, 0, 0.07);
 }
 
-/* ── Title row: "Pytechka" + tab pills ───────────────────────────────────── */
 .explore-title-row {
   display: flex;
   align-items: center;
@@ -57,6 +49,7 @@
   white-space: nowrap;
   background: none;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .explore-tab-active {
@@ -69,7 +62,6 @@
   color: #4281A4;
 }
 
-/* ── Search bar ──────────────────────────────────────────────────────────── */
 .explore-search-wrapper {
   display: flex;
   align-items: center;
@@ -116,7 +108,6 @@
   padding: 4px;
 }
 
-/* ── Filter rows ─────────────────────────────────────────────────────────── */
 .explore-filters {
   display: flex;
   flex-direction: column;
@@ -145,6 +136,7 @@
   color: #4281A4;
   transition: background-color 0.15s, border-color 0.15s;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .filter-chip-active {
@@ -157,17 +149,14 @@
   background-color: rgba(66, 129, 164, 0.06);
 }
 
-/* ── Scrollable content ──────────────────────────────────────────────────── */
 .explore-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  /* clearance for BottomNav */
   padding-bottom: 72px;
 }
 
-/* ── Section wrappers ────────────────────────────────────────────────────── */
 .trails-section,
 .animals-section {
   display: flex;
@@ -189,7 +178,6 @@
   color: #000100;
 }
 
-/* ── Sort row ────────────────────────────────────────────────────────────── */
 .sort-row {
   display: flex;
   gap: 6px;
@@ -211,6 +199,7 @@
   color: #4281A4;
   transition: background-color 0.15s;
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .sort-chip-active {
@@ -223,7 +212,6 @@
   background-color: rgba(66, 129, 164, 0.06);
 }
 
-/* ── Card lists ──────────────────────────────────────────────────────────── */
 .trails-list,
 .animals-list {
   display: flex;
@@ -232,7 +220,6 @@
   padding-bottom: 16px;
 }
 
-/* ── Animals info note ───────────────────────────────────────────────────── */
 .animals-info-note {
   display: flex;
   align-items: flex-start;
@@ -247,7 +234,6 @@
 }
 .animals-info-note svg { flex-shrink: 0; color: #48A9A6; margin-top: 1px; }
 
-/* ── Loading ─────────────────────────────────────────────────────────────── */
 .loading-state {
   display: flex;
   flex-direction: column;
@@ -275,7 +261,6 @@
   color: #999;
 }
 
-/* ── Error ───────────────────────────────────────────────────────────────── */
 .error-state {
   display: flex;
   flex-direction: column;
@@ -307,7 +292,6 @@
 }
 .retry-btn:hover { background-color: rgba(66, 129, 164, 0.18); }
 
-/* ── Empty state ─────────────────────────────────────────────────────────── */
 .empty-state {
   display: flex;
   flex-direction: column;

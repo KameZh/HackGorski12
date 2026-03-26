@@ -53,8 +53,8 @@
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: calc(max(140px, env(safe-area-inset-bottom, 0px) + 12px) + 56px);
-  z-index: 16;
+  bottom: calc(max(155px, env(safe-area-inset-bottom, 0px) + 12px) + 120px);
+  z-index: 26;
   display: flex;
   justify-content: center;
   pointer-events: none;

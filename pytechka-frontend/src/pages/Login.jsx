@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { login } from '../api/auth'
+import useAuthStore from '../store/authStore'
 import './Auth.css'
 
 export default function Login() {
@@ -9,6 +10,7 @@ export default function Login() {
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const navigate = useNavigate()
+  const storeLogin = useAuthStore((s) => s.login)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -17,8 +19,8 @@ export default function Login() {
 
     try {
       const data = await login(email, password)
+      storeLogin({ email, userId: data.userId })
       setMessage(data.message)
-      localStorage.setItem('userEmail', email)
       setTimeout(() => navigate('/'), 1500)
     } catch (err) {
       setError(err.message)

@@ -1,22 +1,39 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import useAuthStore from '../store/authStore'
 import './Auth.css'
 
 export default function Home() {
-  const userEmail = localStorage.getItem('userEmail')
+  const { user, isAuthenticated, logout } = useAuthStore()
+  const [showConfirm, setShowConfirm] = useState(false)
+  const navigate = useNavigate()
 
   const handleLogout = () => {
-    localStorage.removeItem('userEmail')
-    window.location.reload()
+    logout()
+    setShowConfirm(false)
+    navigate('/login')
   }
 
   return (
     <div className="auth-container">
       <div className="auth-form">
-        <h2>Welcome to HackGorski</h2>
-        {userEmail ? (
+        <h2>Welcome to Pytechka</h2>
+        {isAuthenticated ? (
           <>
-            <p>Logged in as <strong>{userEmail}</strong></p>
-            <button onClick={handleLogout}>Log Out</button>
+            <p>Logged in as <strong>{user.email}</strong></p>
+            <button onClick={() => setShowConfirm(true)}>Log Out</button>
+
+            {showConfirm && (
+              <div className="confirm-overlay">
+                <div className="confirm-dialog">
+                  <p>Are you sure you want to log out?</p>
+                  <div className="confirm-buttons">
+                    <button className="confirm-yes" onClick={handleLogout}>Yes, log out</button>
+                    <button className="confirm-no" onClick={() => setShowConfirm(false)}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         ) : (
           <>

@@ -57,7 +57,7 @@ function parseTrailGeojson(geojson) {
 }
 
 function distanceMeters(p1, p2) {
-  // Haversine formula
+  // простa Haversine формула
   const R = 6371000
   const toRad = (deg) => (deg * Math.PI) / 180
   const dLat = toRad(p2.latitude - p1.latitude)
@@ -88,7 +88,7 @@ export default function Record() {
   const [trails, setTrails] = useState([])
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
-  const [currentLocation, setCurrentLocation] = useState(null)
+  const [currentLocation, setCurrentLocation] = useState(null) // <-- current location
 
   const routeGeoJSON = useMemo(() => {
     if (points.length < 2) return null
@@ -295,6 +295,26 @@ export default function Record() {
     [renderableTrails, setSelectedTrail, trails]
   )
 
+  // --- Current Location Effect ---
+  useEffect(() => {
+    if (!navigator.geolocation) return
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        })
+      },
+      (error) => {
+        console.error(error)
+      },
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
   useEffect(() => {
     let active = true
     setLoadingTrails(true)
@@ -340,26 +360,6 @@ export default function Record() {
 
     return () => clearInterval(interval)
   }, [isTracking, isPaused])
-
-  // --- Current Location Effect ---
-  useEffect(() => {
-    if (!navigator.geolocation) return
-
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        setCurrentLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        })
-      },
-      (error) => {
-        console.error(error)
-      },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
-    )
-
-    return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
 
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const statusText = isTracking ? (isPaused ? 'Paused' : 'Recording') : 'Ready'
@@ -471,13 +471,12 @@ export default function Record() {
 
       <div className="record-status-wrap">
         <div
-          className={`record-status-badge ${
-            isTracking
+          className={`record-status-badge ${isTracking
               ? isPaused
                 ? 'record-status-paused'
                 : 'record-status-active'
               : ''
-          }`}
+            }`}
         >
           {statusText}
         </div>
@@ -545,7 +544,8 @@ export default function Record() {
               <button
                 type="button"
                 onClick={resumeTracking}
-                className={`record-action-btn resume ${!hasTrackSession ? 'record-action-disabled' : ''}`}
+                className={`record-action-btn resume ${!hasTrackSession ? 'record-action-disabled' : ''
+                  }`}
                 disabled={!hasTrackSession}
                 aria-label="Resume recording"
               >

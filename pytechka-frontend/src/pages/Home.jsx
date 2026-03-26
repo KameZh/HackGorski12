@@ -1,26 +1,25 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import useAuthStore from '../store/authStore'
-import { deleteAccount } from '../api/auth'
+import { useUser, useClerk, UserButton } from '@clerk/clerk-react'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
 export default function Home() {
-  const { user, isAuthenticated, logout } = useAuthStore()
+  const { isSignedIn, user } = useUser()
+  const { signOut } = useClerk()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const navigate = useNavigate()
 
-  const handleLogout = () => {
-    logout()
+  const handleLogout = async () => {
+    await signOut()
     setShowLogoutConfirm(false)
     navigate('/login')
   }
 
   const handleDeleteAccount = async () => {
     try {
-      await deleteAccount(user.email)
-      logout()
+      await user.delete()
       setShowDeleteConfirm(false)
       navigate('/signup')
     } catch {
@@ -28,7 +27,7 @@ export default function Home() {
     }
   }
 
-  if (!isAuthenticated) {
+  if (!isSignedIn) {
     return (
       <div className="account-page">
         <div className="account-login-prompt">
@@ -42,20 +41,20 @@ export default function Home() {
     )
   }
 
+  const displayName = user.username || user.firstName
+  const email = user.primaryEmailAddress?.emailAddress || ''
+
   return (
     <div className="account-page">
       <div className="account-scroll">
         {/* Profile header */}
         <div className="account-profile">
           <div className="account-avatar">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-              <circle cx="12" cy="7" r="4" />
-            </svg>
+            <UserButton afterSignOutUrl="/login" />
           </div>
           <div className="account-info">
-            <h2 className="account-name">{user.email.split('@')[0]}</h2>
-            <p className="account-email">{user.email}</p>
+            <h2 className="account-name">{displayName}</h2>
+            <p className="account-email">{email}</p>
           </div>
         </div>
 

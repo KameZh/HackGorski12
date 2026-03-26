@@ -56,6 +56,22 @@ function parseTrailGeojson(geojson) {
   }
 }
 
+function distanceMeters(p1, p2) {
+  // Haversine formula
+  const R = 6371000
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const dLat = toRad(p2.latitude - p1.latitude)
+  const dLon = toRad(p2.longitude - p1.longitude)
+  const lat1 = toRad(p1.latitude)
+  const lat2 = toRad(p2.latitude)
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.sin(dLon / 2) * Math.sin(dLon / 2) * Math.cos(lat1) * Math.cos(lat2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return R * c
+}
+
 export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
@@ -72,6 +88,7 @@ export default function Record() {
   const [trails, setTrails] = useState([])
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
+  const [currentLocation, setCurrentLocation] = useState(null)
 
   const routeGeoJSON = useMemo(() => {
     if (points.length < 2) return null
@@ -324,6 +341,26 @@ export default function Record() {
     return () => clearInterval(interval)
   }, [isTracking, isPaused])
 
+  // --- Current Location Effect ---
+  useEffect(() => {
+    if (!navigator.geolocation) return
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        })
+      },
+      (error) => {
+        console.error(error)
+      },
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const statusText = isTracking ? (isPaused ? 'Paused' : 'Recording') : 'Ready'
   const hasTrackSession = isTracking || isPaused
@@ -407,6 +444,17 @@ export default function Record() {
                 }}
               />
             </Source>
+          )}
+
+          {/* Current Location Marker */}
+          {currentLocation && (
+            <Marker
+              latitude={currentLocation.latitude}
+              longitude={currentLocation.longitude}
+              anchor="center"
+            >
+              <div className="current-location-marker" />
+            </Marker>
           )}
 
           {markerPosition && (

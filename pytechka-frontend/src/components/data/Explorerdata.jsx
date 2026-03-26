@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import BottomNav from '../components/layout/BottomNav'
-import TrailCard from '../components/explore/TrailCard'
-import AnimalCard from '../components/explore/AnimalCard'
-import EcoImpactBanner from '../components/explore/EcoImpactBanner'
-import { fetchTrails } from '../api/trails'
-import { fetchAnimals } from '../api/animals'
-import { fetchEcoStats } from '../api/eco'
+import BottomNav from '../layout/Bottomnav'
+import TrailCard from '../explore/TrailCard'
+import AnimalCard from '../explore/AnimalCard'
+import EcoImpactBanner from '../explore/EcoImpactBanner'
+import { fetchTrails } from '../../api/trails'
+import { fetchAnimals } from '../../api/animals'
+import { fetchEcoStats } from '../../api/eco'
 
 const TABS = [
   { id: 'trails', label: 'Пътечка' },
@@ -24,6 +24,89 @@ const REGION_OPTIONS = [
   'Черноморие',
 ]
 const SORT_OPTIONS = ['Popular', 'Newest', 'Nearest', 'Eco Score']
+
+export const FILTER_OPTIONS = {
+  activities: ACTIVITY_OPTIONS,
+  difficulties: DIFFICULTY_OPTIONS,
+  regions: REGION_OPTIONS,
+  sorts: SORT_OPTIONS,
+}
+
+export const DEMO_TRAILS = [
+  {
+    id: 1,
+    name: 'Мусала',
+    region: 'Рила',
+    activity: 'hiking',
+    difficulty: 'hard',
+    distance: '22 km',
+    duration: '8h',
+    ecoScore: 92,
+    image: '/images/musala.jpg',
+    description: 'Най-високият връх на Балканите – 2925 м.',
+  },
+  {
+    id: 2,
+    name: 'Вихрен',
+    region: 'Пирин',
+    activity: 'hiking',
+    difficulty: 'moderate',
+    distance: '12 km',
+    duration: '6h',
+    ecoScore: 88,
+    image: '/images/vihren.jpg',
+    description: 'Мраморният гигант на Пирин – 2914 м.',
+  },
+  {
+    id: 3,
+    name: 'Черни връх',
+    region: 'Витоша',
+    activity: 'hiking',
+    difficulty: 'easy',
+    distance: '8 km',
+    duration: '3h',
+    ecoScore: 75,
+    image: '/images/cherni-vrah.jpg',
+    description: 'Най-близкият връх до София – 2290 м.',
+  },
+]
+
+export const DEMO_ANIMALS = [
+  {
+    id: 1,
+    name: 'Кафява мечка',
+    species: 'Ursus arctos',
+    region: 'Родопи',
+    status: 'protected',
+    image: '/images/bear.jpg',
+    description: 'Най-големият хищник в България.',
+  },
+  {
+    id: 2,
+    name: 'Дива коза',
+    species: 'Rupicapra rupicapra',
+    region: 'Пирин',
+    status: 'protected',
+    image: '/images/chamois.jpg',
+    description: 'Обитава скалистите алпийски зони.',
+  },
+  {
+    id: 3,
+    name: 'Белоглав лешояд',
+    species: 'Gyps fulvus',
+    region: 'Стара Планина',
+    status: 'endangered',
+    image: '/images/vulture.jpg',
+    description: 'Размах на крилете до 2.8 метра.',
+  },
+]
+
+export const ECO_STATS = {
+  trailsCleaned: 142,
+  treesPlanted: 3850,
+  volunteersActive: 567,
+  co2Saved: '12.4t',
+}
 
 export default function Explore() {
   const [activeTab, setActiveTab] = useState('trails')

@@ -1,0 +1,266 @@
+.account-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f8f9fa;
+  padding-bottom: 80px;
+}
+
+.account-scroll {
+  flex: 1;
+  padding: 2rem 1.25rem 1rem;
+  max-width: 480px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Profile header */
+.account-profile {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.account-avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  background: #eee;
+  border: 2px solid #ddd;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.account-info {
+  min-width: 0;
+}
+
+.account-name {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #1a1a1a;
+  margin: 0 0 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-email {
+  font-size: 0.9rem;
+  color: #777;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Sections */
+.account-section {
+  margin-bottom: 1.25rem;
+}
+
+.account-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 0.5rem;
+}
+
+.account-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  margin-bottom: 0.5rem;
+}
+
+.account-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.stat-icon {
+  font-size: 0.85rem;
+}
+
+.stat-value {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #444;
+}
+
+/* Action buttons */
+.account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 1.5rem;
+}
+
+.account-btn-settings,
+.account-btn-signout,
+.account-btn-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.85rem;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.account-btn-settings {
+  background: #fff;
+  color: #333;
+  border: 1.5px solid #ddd;
+}
+
+.account-btn-settings:hover {
+  background: #f0f0f0;
+}
+
+.account-btn-signout {
+  background: #fde8ec;
+  color: #d63b5a;
+}
+
+.account-btn-signout:hover {
+  background: #fbd0d8;
+}
+
+.account-btn-delete {
+  background: #fff;
+  color: #c0392b;
+  border: 1.5px solid #e8c4c0;
+}
+
+.account-btn-delete:hover {
+  background: #fdf0ef;
+}
+
+/* Login prompt (not authenticated) */
+.account-login-prompt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  text-align: center;
+}
+
+.account-login-prompt h2 {
+  color: #1a1a1a;
+  margin-bottom: 0.5rem;
+}
+
+.account-login-prompt p {
+  color: #777;
+  margin-bottom: 1.5rem;
+}
+
+.account-btn {
+  width: 200px;
+  padding: 0.75rem;
+  background: #e94560;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-bottom: 0.5rem;
+}
+
+.account-btn:hover {
+  background: #c81e45;
+}
+
+/* Confirmation dialogs (shared with Auth.css) */
+.confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.confirm-dialog {
+  background: #fff;
+  padding: 1.75rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  max-width: 320px;
+  width: 90%;
+}
+
+.confirm-dialog p {
+  color: #333;
+  margin-bottom: 1.25rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.confirm-dialog-danger p {
+  color: #c0392b;
+}
+
+.confirm-buttons {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.confirm-buttons button {
+  flex: 1;
+  padding: 0.65rem;
+  border: none;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.confirm-yes {
+  background: #fde8ec;
+  color: #d63b5a;
+}
+
+.confirm-yes:hover {
+  background: #fbd0d8;
+}
+
+.confirm-danger {
+  background: #c0392b;
+  color: #fff;
+}
+
+.confirm-danger:hover {
+  background: #a93226;
+}
+
+.confirm-no {
+  background: #f0f0f0;
+  color: #555;
+}
+
+.confirm-no:hover {
+  background: #e0e0e0;
+}

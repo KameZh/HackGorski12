@@ -19,3 +19,14 @@ export async function login(email, password) {
   if (!res.ok) throw new Error(data.message || 'Login failed');
   return data;
 }
+
+export async function deleteAccount(email) {
+  const res = await fetch('/api/account', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to delete account');
+  return data;
+}

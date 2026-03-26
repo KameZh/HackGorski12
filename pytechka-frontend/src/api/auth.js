@@ -35,5 +35,3 @@ export async function login(email, password) {
   if (!res.ok) throw new Error(data.message || 'Login failed');
   return data;
 }
-
-//test

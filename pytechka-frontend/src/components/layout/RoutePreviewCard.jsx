@@ -93,7 +93,11 @@ const styles = {
  * RoutePreviewCard — bottom sheet that slides up when a trail is selected.
  * Dismissed by tapping outside or the X button.
  */
-export default function RoutePreviewCard({ onStartTrail, onScheduleTrail }) {
+export default function RoutePreviewCard({
+  onStartTrail,
+  onScheduleTrail,
+  bottomOffset,
+}) {
   const { selectedTrail, setSelectedTrail } = useMapStore()
   const cardRef = useRef(null)
 
@@ -133,7 +137,14 @@ export default function RoutePreviewCard({ onStartTrail, onScheduleTrail }) {
       />
 
       {/* Card */}
-      <div ref={cardRef} id="route-preview-card" style={styles.cardWrap}>
+      <div
+        ref={cardRef}
+        id="route-preview-card"
+        style={{
+          ...styles.cardWrap,
+          ...(bottomOffset ? { bottom: bottomOffset } : {}),
+        }}
+      >
         <div style={styles.card}>
           {/* Trail image */}
           {trail.image && (

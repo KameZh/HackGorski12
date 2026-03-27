@@ -59,6 +59,9 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
   import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
 )
 
+const MAPS_BOTTOM_CARD_OFFSET =
+  'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) +72px))'
+
 const styles = {
   container: {
     position: 'relative',
@@ -87,7 +90,7 @@ const styles = {
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 164px)',
+    bottom: MAPS_BOTTOM_CARD_OFFSET,
     width: 'min(92vw, 420px)',
     zIndex: 17,
     border: '1px solid rgba(66, 129, 164, 0.42)',
@@ -195,7 +198,7 @@ const overlayCard = {
 const pingPopupStyle = {
   ...overlayCard,
   position: 'absolute',
-  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 290px)',
+  bottom: MAPS_BOTTOM_CARD_OFFSET,
   left: '50%',
   transform: 'translateX(-50%)',
   padding: '14px 16px',
@@ -2768,6 +2771,7 @@ export default function MapView({
       <RoutePreviewCard
         onStartTrail={handleOpenStartPlanner}
         onScheduleTrail={handleScheduleTrail}
+        bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
       />
     </div>
   )

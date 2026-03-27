@@ -5,7 +5,7 @@ const pingSchema = new mongoose.Schema(
     trailId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Trail',
-      required: true,
+      default: null,
       index: true,
     },
     userId: { type: String, required: true },
@@ -25,6 +25,9 @@ const pingSchema = new mongoose.Schema(
       },
     },
     expiresAt: { type: Date, default: null },
+    // "gone" votes — users who confirmed this ping is no longer there
+    goneVotes: [{ type: String }], // array of userIds
+    resolved: { type: Boolean, default: false },
   },
   { timestamps: true }
 )

@@ -8,6 +8,7 @@ import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
+import { createPing, fetchPings } from '../api/pings'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -35,6 +36,50 @@ const DIFFICULTY_COLOR = {
   moderate: '#f97316',
   hard: '#ef4444',
   extreme: '#7f1d1d',
+}
+
+const PING_TYPES = {
+  junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
+  mud: { label: 'Mud', emoji: '💧', color: '#92400e' },
+  environmental_danger: { label: 'Environmental Danger', emoji: '🌳', color: '#dc2626' },
+}
+
+const pingMarkerStyle = {
+  width: 32,
+  height: 32,
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 18,
+  cursor: 'pointer',
+  border: '2px solid #fff',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+}
+
+const pingBtnBase = {
+  padding: '9px 14px',
+  borderRadius: 10,
+  border: 'none',
+  cursor: 'pointer',
+  fontWeight: 700,
+  fontSize: 13,
+  textAlign: 'center',
+}
+
+const pingPopupStyle = {
+  position: 'absolute',
+  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 170px)',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: 'min(90vw, 340px)',
+  zIndex: 25,
+  border: '1px solid rgba(66, 129, 164, 0.5)',
+  borderRadius: 14,
+  background: 'rgba(17, 26, 40, 0.95)',
+  boxShadow: '0 12px 28px rgba(0,1,0,0.4)',
+  backdropFilter: 'blur(8px)',
+  padding: '14px 16px',
+  color: '#e2e8f0',
 }
 
 function formatDuration(totalSeconds) {
@@ -108,6 +153,14 @@ export default function Record() {
   const [aiResult, setAiResult] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showPublishForm, setShowPublishForm] = useState(false)
+
+  // Ping state
+  const [pings, setPings] = useState([])
+  const [pingMode, setPingMode] = useState(false)
+  const [pingType, setPingType] = useState('junk')
+  const [pingDesc, setPingDesc] = useState('')
+  const [pingSubmitting, setPingSubmitting] = useState(false)
+  const [selectedPing, setSelectedPing] = useState(null)
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
@@ -516,6 +569,57 @@ export default function Record() {
     return () => clearInterval(interval)
   }, [savedRoute, aiStatus])
 
+  // Load existing pings
+  useEffect(() => {
+    let active = true
+    fetchPings()
+      .then((res) => { if (active) setPings(Array.isArray(res.data) ? res.data : []) })
+      .catch(() => { if (active) setPings([]) })
+    return () => { active = false }
+  }, [])
+
+  // Submit a ping at current location
+  const handlePingSubmit = useCallback(async () => {
+    if (!currentLocation) return
+    setPingSubmitting(true)
+    try {
+      // Find the nearest trail to associate with (optional)
+      let nearestTrailId = null
+      if (trails.length > 0) {
+        let minDist = Infinity
+        for (const trail of trails) {
+          const center = trail.stats?.centerCoordinates
+          if (Array.isArray(center) && center.length === 2) {
+            const d = distanceMeters(
+              { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+              { latitude: center[1], longitude: center[0] }
+            )
+            if (d < minDist) {
+              minDist = d
+              nearestTrailId = trail._id || trail.id
+            }
+          }
+        }
+        // Only associate if within 2km
+        if (minDist > 2000) nearestTrailId = null
+      }
+
+      const res = await createPing({
+        trailId: nearestTrailId,
+        type: pingType,
+        description: pingDesc,
+        coordinates: [currentLocation.longitude, currentLocation.latitude],
+      })
+      setPings((prev) => [res.data, ...prev])
+      setPingMode(false)
+      setPingDesc('')
+    } catch (err) {
+      console.error('Ping submit error:', err)
+    } finally {
+      setPingSubmitting(false)
+    }
+  }, [currentLocation, pingType, pingDesc, trails])
+
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
@@ -611,8 +715,169 @@ export default function Record() {
               <div className="current-location-marker" />
             </Marker>
           )}
+
+          {/* Ping markers */}
+          {viewState.zoom >= 12 && pings.map((ping) => {
+            const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+            return (
+              <Marker
+                key={ping._id}
+                longitude={ping.coordinates[0]}
+                latitude={ping.coordinates[1]}
+                anchor="center"
+                onClick={(e) => {
+                  e.originalEvent.stopPropagation()
+                  setSelectedPing(selectedPing?._id === ping._id ? null : ping)
+                }}
+              >
+                <div
+                  style={{ ...pingMarkerStyle, background: cfg.color }}
+                  title={`${cfg.label}: ${ping.description || 'No description'}`}
+                >
+                  {cfg.emoji}
+                </div>
+              </Marker>
+            )
+          })}
         </Map>
       </div>
+
+      {/* Add Ping button */}
+      <button
+        onClick={() => {
+          setPingMode((v) => !v)
+          setSelectedPing(null)
+        }}
+        style={{
+          position: 'absolute',
+          top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
+          right: 12,
+          zIndex: 20,
+          ...pingBtnBase,
+          background: pingMode
+            ? 'linear-gradient(135deg, #f43f5e, #dc2626)'
+            : 'linear-gradient(135deg, #48a9a6, #4281a4)',
+          color: '#fff',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}
+      >
+        {pingMode ? '✕ Cancel' : '📌 Add Ping'}
+      </button>
+
+      {/* Ping creation form */}
+      {pingMode && (
+        <div style={pingPopupStyle}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
+            New Ping at your location
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {Object.entries(PING_TYPES).map(([key, cfg]) => (
+              <button
+                key={key}
+                onClick={() => setPingType(key)}
+                style={{
+                  flex: 1,
+                  padding: '8px 4px',
+                  borderRadius: 10,
+                  border: pingType === key
+                    ? `2px solid ${cfg.color}`
+                    : '2px solid rgba(148,163,184,0.2)',
+                  background: pingType === key
+                    ? `${cfg.color}22`
+                    : 'rgba(15,23,35,0.6)',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
+              >
+                <span style={{ fontSize: 20, display: 'block' }}>{cfg.emoji}</span>
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            placeholder="Brief description (optional)"
+            value={pingDesc}
+            onChange={(e) => setPingDesc(e.target.value)}
+            maxLength={200}
+            style={{
+              width: '100%',
+              padding: '9px 11px',
+              borderRadius: 10,
+              border: '1px solid rgba(66,129,164,0.34)',
+              background: 'rgba(15,23,35,0.88)',
+              color: '#fbfef9',
+              fontSize: 13,
+              outline: 'none',
+              marginBottom: 10,
+              boxSizing: 'border-box',
+            }}
+          />
+
+          {!currentLocation && (
+            <div style={{ fontSize: 12, color: '#f87171', marginBottom: 8 }}>
+              Waiting for GPS location...
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => { setPingMode(false); setPingDesc('') }}
+              style={{ ...pingBtnBase, flex: 1, background: 'rgba(148,163,184,0.15)', color: '#94a3b8' }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePingSubmit}
+              disabled={pingSubmitting || !currentLocation}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'linear-gradient(135deg, #48a9a6, #4281a4)',
+                color: '#fff',
+                opacity: (pingSubmitting || !currentLocation) ? 0.6 : 1,
+              }}
+            >
+              {pingSubmitting ? 'Saving...' : 'Place Ping'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Selected ping detail popup */}
+      {selectedPing && !pingMode && (
+        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 22 }}>
+              {PING_TYPES[selectedPing.type]?.emoji || '📌'}
+            </span>
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {PING_TYPES[selectedPing.type]?.label || selectedPing.type}
+            </span>
+          </div>
+          {selectedPing.description ? (
+            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
+              {selectedPing.description}
+            </div>
+          ) : null}
+          <div style={{ fontSize: 11, color: '#64748b' }}>
+            By {selectedPing.username || 'Anonymous'} &middot;{' '}
+            {new Date(selectedPing.createdAt).toLocaleDateString()}
+          </div>
+          <button
+            onClick={() => setSelectedPing(null)}
+            style={{ ...pingBtnBase, marginTop: 8, background: 'rgba(148,163,184,0.15)', color: '#94a3b8', width: '100%' }}
+          >
+            Close
+          </button>
+        </div>
+      )}
 
       <div className="record-status-wrap">
         <div className="record-topbar">

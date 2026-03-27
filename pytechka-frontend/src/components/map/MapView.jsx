@@ -11,7 +11,7 @@ import {
 
 import { useMapStore } from '../../store/mapStore'
 import { fetchMapTrails } from '../../api/maps'
-import { fetchPings, createPing } from '../../api/pings'
+import { fetchPings, createPing, votePingGone, fetchClusters, voteClusterGone } from '../../api/pings'
 import MapControls from './MapControls'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
 
@@ -132,6 +132,23 @@ const PING_TYPES = {
   environmental_danger: { label: 'Environmental Danger', emoji: '🌳', color: '#dc2626' },
 }
 
+const CLUSTER_CONFIG = {
+  clutter: { label: 'Trash Clutter', emoji: '⚠️', color: '#f97316', votesNeeded: 3 },
+  event: { label: 'Cleanup Event', emoji: '🚨', color: '#dc2626', votesNeeded: 5 },
+}
+
+const clusterMarkerStyle = {
+  width: 40,
+  height: 40,
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 22,
+  cursor: 'pointer',
+  border: '3px solid #fff',
+  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+}
+
 const pingMarkerStyle = {
   width: 32,
   height: 32,
@@ -233,6 +250,11 @@ export default function MapView({ searchQuery = '' }) {
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
 
+  // Cluster/event state
+  const [clusters, setClusters] = useState([])
+  const [selectedCluster, setSelectedCluster] = useState(null)
+  const [voteSubmitting, setVoteSubmitting] = useState(false)
+
   const defaultMapStyle = useMemo(
     () => `mapbox://styles/mapbox/${mapStyle}`,
     [mapStyle]
@@ -321,7 +343,7 @@ export default function MapView({ searchQuery = '' }) {
     }
   }, [trailsVersion, searchQuery, setSelectedTrail])
 
-  // Load pings
+  // Load pings and clusters
   useEffect(() => {
     let active = true
     fetchPings()
@@ -330,6 +352,13 @@ export default function MapView({ searchQuery = '' }) {
       })
       .catch(() => {
         if (active) setPings([])
+      })
+    fetchClusters()
+      .then((res) => {
+        if (active) setClusters(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (active) setClusters([])
       })
     return () => { active = false }
   }, [trailsVersion])
@@ -349,12 +378,53 @@ export default function MapView({ searchQuery = '' }) {
       setPendingPing(null)
       setPingDesc('')
       setPingMode(false)
+      // Refresh clusters after new ping
+      fetchClusters()
+        .then((r) => setClusters(Array.isArray(r.data) ? r.data : []))
+        .catch(() => {})
     } catch (err) {
       console.error('Ping submit error:', err)
     } finally {
       setPingSubmitting(false)
     }
   }, [pendingPing, pingType, pingDesc])
+
+  // Vote on a single ping
+  const handlePingVote = useCallback(async (pingId) => {
+    setVoteSubmitting(true)
+    try {
+      await votePingGone(pingId)
+      setPings((prev) => prev.filter((p) => p._id !== pingId))
+      setSelectedPing(null)
+    } catch (err) {
+      console.error('Ping vote error:', err)
+    } finally {
+      setVoteSubmitting(false)
+    }
+  }, [])
+
+  // Vote on a cluster/event
+  const handleClusterVote = useCallback(async (clusterId) => {
+    setVoteSubmitting(true)
+    try {
+      const res = await voteClusterGone(clusterId)
+      if (res.data.resolved) {
+        setClusters((prev) => prev.filter((c) => c._id !== clusterId))
+        setSelectedCluster(null)
+        // Refresh pings too since member pings get resolved
+        fetchPings()
+          .then((r) => setPings(Array.isArray(r.data) ? r.data : []))
+          .catch(() => {})
+      } else {
+        setClusters((prev) => prev.map((c) => (c._id === clusterId ? res.data : c)))
+        setSelectedCluster(res.data)
+      }
+    } catch (err) {
+      console.error('Cluster vote error:', err)
+    } finally {
+      setVoteSubmitting(false)
+    }
+  }, [])
 
   // Apply/remove 3D terrain
   const applyTerrain = useCallback((map, enabled) => {
@@ -449,38 +519,39 @@ export default function MapView({ searchQuery = '' }) {
       const { lng, lat } = e.lngLat
 
       if (pingMode) {
-        // In ping mode, only respond if user clicks near a trail
+        // Place ping anywhere — snap to nearest trail if close, otherwise free-place
+        let snapped = [lng, lat]
+        let trailId = null
+
         const layerIds = visibleRenderableTrails
           .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
           .filter((id) => map.getLayer(id))
-        if (!layerIds.length) return
 
-        const features = map.queryRenderedFeatures(e.point, { layers: layerIds })
-        if (!features.length) return
-
-        const trailId = features[0].layer.id.replace('trail-hit-', '')
-        const match = renderableTrails.find(
-          ({ trail }) => String(trail._id || trail.id) === String(trailId)
-        )
-        if (!match) return
-
-        // Snap to nearest point on the trail line
-        const clickPt = turfPoint([lng, lat])
-        let geom = match.geometry
-        if (geom.type === 'FeatureCollection') {
-          geom = geom.features?.[0]?.geometry || geom
-        } else if (geom.type === 'Feature') {
-          geom = geom.geometry
-        }
-
-        let snapped = [lng, lat]
-        try {
-          const nearest = nearestPointOnLine(geom, clickPt)
-          if (nearest?.geometry?.coordinates) {
-            snapped = nearest.geometry.coordinates
+        if (layerIds.length) {
+          const features = map.queryRenderedFeatures(e.point, { layers: layerIds })
+          if (features.length) {
+            trailId = features[0].layer.id.replace('trail-hit-', '')
+            const match = renderableTrails.find(
+              ({ trail }) => String(trail._id || trail.id) === String(trailId)
+            )
+            if (match) {
+              const clickPt = turfPoint([lng, lat])
+              let geom = match.geometry
+              if (geom.type === 'FeatureCollection') {
+                geom = geom.features?.[0]?.geometry || geom
+              } else if (geom.type === 'Feature') {
+                geom = geom.geometry
+              }
+              try {
+                const nearest = nearestPointOnLine(geom, clickPt)
+                if (nearest?.geometry?.coordinates) {
+                  snapped = nearest.geometry.coordinates
+                }
+              } catch {
+                // fall back to raw click
+              }
+            }
           }
-        } catch {
-          // fall back to raw click
         }
 
         setPendingPing({ coordinates: snapped, trailId })
@@ -696,6 +767,35 @@ export default function MapView({ searchQuery = '' }) {
               )
             })}
 
+            {/* Cluster / Event markers — always visible */}
+            {clusters.map((cluster) => {
+              const cfg = CLUSTER_CONFIG[cluster.level] || CLUSTER_CONFIG.clutter
+              return (
+                <Marker
+                  key={cluster._id}
+                  longitude={cluster.coordinates[0]}
+                  latitude={cluster.coordinates[1]}
+                  anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation()
+                    setSelectedCluster(selectedCluster?._id === cluster._id ? null : cluster)
+                    setSelectedPing(null)
+                  }}
+                >
+                  <div
+                    style={{
+                      ...clusterMarkerStyle,
+                      background: cfg.color,
+                      border: `2px solid ${cfg.color}`,
+                    }}
+                    title={`${cfg.label}: ${cluster.description || ''}`}
+                  >
+                    {cfg.emoji}
+                  </div>
+                </Marker>
+              )
+            })}
+
             {/* Pending ping marker (preview before submit) */}
             {pendingPing ? (
               <Marker
@@ -764,7 +864,7 @@ export default function MapView({ searchQuery = '' }) {
             boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
           }}
         >
-          Tap on a trail to place a ping
+          Tap anywhere on the map to place a ping
         </div>
       )}
 
@@ -876,18 +976,81 @@ export default function MapView({ searchQuery = '' }) {
             By {selectedPing.username || 'Anonymous'} &middot;{' '}
             {new Date(selectedPing.createdAt).toLocaleDateString()}
           </div>
-          <button
-            onClick={() => setSelectedPing(null)}
-            style={{
-              ...pingBtnBase,
-              marginTop: 8,
-              background: 'rgba(148,163,184,0.15)',
-              color: '#94a3b8',
-              width: '100%',
-            }}
-          >
-            Close
-          </button>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <button
+              onClick={() => handlePingVote(selectedPing._id)}
+              disabled={voteSubmitting}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(34,197,94,0.18)',
+                color: '#4ade80',
+              }}
+            >
+              {voteSubmitting ? '...' : '✅ Not there anymore'}
+            </button>
+            <button
+              onClick={() => setSelectedPing(null)}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(148,163,184,0.15)',
+                color: '#94a3b8',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Selected cluster/event detail popup */}
+      {selectedCluster && !pendingPing && (
+        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 22 }}>
+              {CLUSTER_CONFIG[selectedCluster.level]?.emoji || '⚠️'}
+            </span>
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {CLUSTER_CONFIG[selectedCluster.level]?.label || selectedCluster.level}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 4 }}>
+            {selectedCluster.pingCount} trash ping{selectedCluster.pingCount !== 1 ? 's' : ''} within this area
+          </div>
+          {selectedCluster.description ? (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+              {selectedCluster.description}
+            </div>
+          ) : null}
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+            Votes: {selectedCluster.goneVotes?.length || 0} / {CLUSTER_CONFIG[selectedCluster.level]?.votesNeeded || 3}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => handleClusterVote(selectedCluster._id)}
+              disabled={voteSubmitting}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(34,197,94,0.18)',
+                color: '#4ade80',
+              }}
+            >
+              {voteSubmitting ? '...' : '✅ Cleaned up'}
+            </button>
+            <button
+              onClick={() => setSelectedCluster(null)}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(148,163,184,0.15)',
+                color: '#94a3b8',
+              }}
+            >
+              Close
+            </button>
+          </div>
         </div>
       )}
 

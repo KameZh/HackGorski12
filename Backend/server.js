@@ -6,6 +6,7 @@ import checkUser from './middleware.js'
 import { connectDB } from './connection.js'
 import Trail from './models/trail.js'
 import Ping from './models/ping.js'
+import TrashCluster from './models/trashCluster.js'
 import User from './models/user.js'
 import { calculateStats, processRouteAI } from './services/aiAnalysis.js'
 
@@ -331,22 +332,95 @@ app.get('/api/trails/:id/reviews', async (req, res) => {
 // PINGS (trail hazard markers)
 // =====================
 
+// Haversine distance between two [lng, lat] pairs in meters
+function haversineMeters([lon1, lat1], [lon2, lat2]) {
+  const R = 6371000
+  const toRad = (d) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
+// After a junk ping is created, check for clusters within 300 m
+async function detectTrashClusters(newPing) {
+  if (newPing.type !== 'junk') return
+
+  // Find all active junk pings (not resolved, not expired)
+  const junkPings = await Ping.find({
+    type: 'junk',
+    resolved: { $ne: true },
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  })
+
+  // Find pings within 300 m of the new one
+  const nearby = junkPings.filter(
+    (p) => haversineMeters(newPing.coordinates, p.coordinates) <= 300
+  )
+
+  if (nearby.length < 3) return // not enough for a cluster
+
+  const nearbyIds = nearby.map((p) => p._id)
+
+  // Check if there's already a cluster containing most of these pings
+  const existing = await TrashCluster.findOne({
+    resolved: { $ne: true },
+    pingIds: { $in: nearbyIds },
+  })
+
+  if (existing) {
+    // Merge new pings into the existing cluster
+    const mergedIds = [...new Set([...existing.pingIds.map(String), ...nearbyIds.map(String)])]
+    const allPings = junkPings.filter((p) => mergedIds.includes(String(p._id)))
+    const avgLng = allPings.reduce((s, p) => s + p.coordinates[0], 0) / allPings.length
+    const avgLat = allPings.reduce((s, p) => s + p.coordinates[1], 0) / allPings.length
+
+    existing.pingIds = allPings.map((p) => p._id)
+    existing.pingCount = allPings.length
+    existing.coordinates = [avgLng, avgLat]
+    existing.level = allPings.length >= 5 ? 'event' : 'clutter'
+    if (existing.level === 'event') {
+      existing.description = `Trash cleanup needed! ${allPings.length} reports of litter in this area.`
+    }
+    await existing.save()
+  } else {
+    // Create a new cluster
+    const avgLng = nearby.reduce((s, p) => s + p.coordinates[0], 0) / nearby.length
+    const avgLat = nearby.reduce((s, p) => s + p.coordinates[1], 0) / nearby.length
+    const level = nearby.length >= 5 ? 'event' : 'clutter'
+
+    await TrashCluster.create({
+      level,
+      coordinates: [avgLng, avgLat],
+      pingIds: nearbyIds,
+      pingCount: nearby.length,
+      description:
+        level === 'event'
+          ? `Trash cleanup needed! ${nearby.length} reports of litter in this area.`
+          : `Warning: ${nearby.length} trash reports nearby. This area may need cleanup soon.`,
+    })
+  }
+}
+
 // POST /api/pings — create a ping (auth required)
 app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
   try {
     const { trailId, type, description, coordinates } = req.body
-    if (!trailId) return res.status(400).json({ error: 'trailId is required' })
     if (!type) return res.status(400).json({ error: 'type is required' })
     if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) {
       return res.status(400).json({ error: 'coordinates must be [longitude, latitude]' })
     }
 
-    const trail = await Trail.findById(trailId)
-    if (!trail) return res.status(404).json({ error: 'Trail not found' })
+    if (trailId) {
+      const trail = await Trail.findById(trailId)
+      if (!trail) return res.status(404).json({ error: 'Trail not found' })
+    }
 
     const { userId } = getAuth(req)
     const ping = await Ping.create({
-      trailId,
+      trailId: trailId || null,
       userId,
       username: req.dbUser?.username || 'Anonymous',
       type,
@@ -354,6 +428,11 @@ app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
       coordinates,
       expiresAt: Ping.computeExpiresAt(type),
     })
+
+    // Fire-and-forget cluster detection for junk pings
+    detectTrashClusters(ping).catch((err) =>
+      console.error('Cluster detection error:', err)
+    )
 
     res.status(201).json(ping)
   } catch (err) {
@@ -366,6 +445,7 @@ app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
 app.get('/api/pings', async (req, res) => {
   try {
     const filter = {
+      resolved: { $ne: true },
       $or: [
         { expiresAt: null },
         { expiresAt: { $gt: new Date() } },
@@ -377,6 +457,32 @@ app.get('/api/pings', async (req, res) => {
   } catch (err) {
     console.error('Pings list error:', err)
     res.status(500).json({ error: 'Failed to fetch pings' })
+  }
+})
+
+// POST /api/pings/:id/vote — vote "gone" on a single ping (auth required)
+// 1 vote needed to resolve a single ping
+app.post('/api/pings/:id/vote', requireAuth(), async (req, res) => {
+  try {
+    const ping = await Ping.findById(req.params.id)
+    if (!ping) return res.status(404).json({ error: 'Ping not found' })
+    if (ping.resolved) return res.status(400).json({ error: 'Already resolved' })
+
+    const { userId } = getAuth(req)
+    if (ping.goneVotes.includes(userId)) {
+      return res.status(400).json({ error: 'You already voted' })
+    }
+
+    ping.goneVotes.push(userId)
+    // Single ping needs 1 vote to be removed
+    if (ping.goneVotes.length >= 1) {
+      ping.resolved = true
+    }
+    await ping.save()
+    res.json(ping)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to vote on ping' })
   }
 })
 
@@ -393,6 +499,52 @@ app.delete('/api/pings/:id', requireAuth(), async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to delete ping' })
+  }
+})
+
+// =====================
+// TRASH CLUSTERS & EVENTS
+// =====================
+
+// GET /api/clusters — list all active clusters/events (public)
+app.get('/api/clusters', async (req, res) => {
+  try {
+    const clusters = await TrashCluster.find({ resolved: { $ne: true } }).sort({ createdAt: -1 })
+    res.json(clusters)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch clusters' })
+  }
+})
+
+// POST /api/clusters/:id/vote — vote "gone" on a cluster/event (auth required)
+// Clutter needs 3 votes, Event needs 5 votes
+app.post('/api/clusters/:id/vote', requireAuth(), async (req, res) => {
+  try {
+    const cluster = await TrashCluster.findById(req.params.id)
+    if (!cluster) return res.status(404).json({ error: 'Cluster not found' })
+    if (cluster.resolved) return res.status(400).json({ error: 'Already resolved' })
+
+    const { userId } = getAuth(req)
+    if (cluster.goneVotes.includes(userId)) {
+      return res.status(400).json({ error: 'You already voted' })
+    }
+
+    cluster.goneVotes.push(userId)
+    const needed = cluster.level === 'event' ? 5 : 3
+    if (cluster.goneVotes.length >= needed) {
+      cluster.resolved = true
+      // Also resolve all member pings
+      await Ping.updateMany(
+        { _id: { $in: cluster.pingIds } },
+        { $set: { resolved: true } }
+      )
+    }
+    await cluster.save()
+    res.json(cluster)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to vote on cluster' })
   }
 })
 

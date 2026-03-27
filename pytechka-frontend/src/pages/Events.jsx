@@ -9,6 +9,7 @@ import {
   syncCleanupEventsFromTrails,
   toggleCleanupEventSignup,
 } from '../api/events'
+import { fetchClusters, voteClusterGone } from '../api/pings'
 import './Events.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -171,6 +172,10 @@ export default function Events() {
   const [loading, setLoading] = useState(true)
   const [pendingSignupEventId, setPendingSignupEventId] = useState(null)
 
+  // Backend clusters (clutters & cleanup events)
+  const [clusters, setClusters] = useState([])
+  const [clusterVoting, setClusterVoting] = useState(null)
+
   const selectedEvent = useMemo(
     () => events.find((event) => event.id === selectedEventId) || null,
     [events, selectedEventId]
@@ -231,6 +236,29 @@ export default function Events() {
     loadAndSync()
   }, [loadAndSync])
 
+  // Fetch backend clusters (clutters & events from trash pings)
+  useEffect(() => {
+    fetchClusters()
+      .then((res) => setClusters(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setClusters([]))
+  }, [])
+
+  const handleClusterVote = useCallback(async (clusterId) => {
+    setClusterVoting(clusterId)
+    try {
+      const res = await voteClusterGone(clusterId)
+      if (res.data.resolved) {
+        setClusters((prev) => prev.filter((c) => c._id !== clusterId))
+      } else {
+        setClusters((prev) => prev.map((c) => (c._id === clusterId ? res.data : c)))
+      }
+    } catch (err) {
+      console.error('Cluster vote error:', err)
+    } finally {
+      setClusterVoting(null)
+    }
+  }, [])
+
   useEffect(() => {
     setDetailMapReady(false)
   }, [selectedEventId])
@@ -280,6 +308,95 @@ export default function Events() {
         </header>
 
         <main className="events-main">
+          {/* Backend trash clusters — clutters & cleanup events */}
+          {clusters.length > 0 && (
+            <section className="events-grid" style={{ marginBottom: 24 }}>
+              {clusters.filter((c) => c.level === 'event').length > 0 && (
+                <h2 style={{ gridColumn: '1 / -1', color: '#ef4444', fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>
+                  🚨 Active Cleanup Events
+                </h2>
+              )}
+              {clusters.filter((c) => c.level === 'event').map((cluster) => (
+                <article key={cluster._id} className="events-card card-enter" style={{ borderLeft: '3px solid #ef4444' }}>
+                  <div className="events-card-head">
+                    <div>
+                      <h2 className="events-card-title">🚨 Cleanup Event</h2>
+                      <p className="events-card-region" style={{ color: '#94a3b8' }}>
+                        {cluster.pingCount} trash reports in this area
+                      </p>
+                    </div>
+                    <span className="events-date-badge" style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444' }}>EVENT</span>
+                  </div>
+                  <p className="events-purpose">{cluster.description || 'Multiple trash reports detected. This area needs cleanup!'}</p>
+                  <div className="events-chip-row">
+                    <span className="events-chip">Pings: {cluster.pingCount}</span>
+                    <span className="events-chip">Votes: {cluster.goneVotes?.length || 0}/5</span>
+                  </div>
+                  <div className="events-card-actions">
+                    <SignedOut>
+                      <SignInButton mode="modal">
+                        <button type="button" className="events-primary-btn">Vote Cleaned</button>
+                      </SignInButton>
+                    </SignedOut>
+                    <SignedIn>
+                      <button
+                        type="button"
+                        className="events-primary-btn"
+                        onClick={() => handleClusterVote(cluster._id)}
+                        disabled={clusterVoting === cluster._id}
+                        style={{ background: '#22c55e' }}
+                      >
+                        {clusterVoting === cluster._id ? 'Voting...' : '✅ Cleaned up'}
+                      </button>
+                    </SignedIn>
+                  </div>
+                </article>
+              ))}
+
+              {clusters.filter((c) => c.level === 'clutter').length > 0 && (
+                <h2 style={{ gridColumn: '1 / -1', color: '#f59e0b', fontSize: 16, fontWeight: 700, margin: '12px 0 4px' }}>
+                  ⚠️ Clutter Warnings
+                </h2>
+              )}
+              {clusters.filter((c) => c.level === 'clutter').map((cluster) => (
+                <article key={cluster._id} className="events-card card-enter" style={{ borderLeft: '3px solid #f59e0b' }}>
+                  <div className="events-card-head">
+                    <div>
+                      <h2 className="events-card-title">⚠️ Clutter Warning</h2>
+                      <p className="events-card-region" style={{ color: '#94a3b8' }}>
+                        {cluster.pingCount} trash reports in this area
+                      </p>
+                    </div>
+                    <span className="events-date-badge" style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}>WARNING</span>
+                  </div>
+                  <p className="events-purpose">{cluster.description || 'Trash accumulating in this area — watch out!'}</p>
+                  <div className="events-chip-row">
+                    <span className="events-chip">Pings: {cluster.pingCount}</span>
+                    <span className="events-chip">Votes: {cluster.goneVotes?.length || 0}/3</span>
+                  </div>
+                  <div className="events-card-actions">
+                    <SignedOut>
+                      <SignInButton mode="modal">
+                        <button type="button" className="events-primary-btn">Vote Cleaned</button>
+                      </SignInButton>
+                    </SignedOut>
+                    <SignedIn>
+                      <button
+                        type="button"
+                        className="events-primary-btn"
+                        onClick={() => handleClusterVote(cluster._id)}
+                        disabled={clusterVoting === cluster._id}
+                        style={{ background: '#22c55e' }}
+                      >
+                        {clusterVoting === cluster._id ? 'Voting...' : '✅ Cleaned up'}
+                      </button>
+                    </SignedIn>
+                  </div>
+                </article>
+              ))}
+            </section>
+          )}
+
           {loading ? (
             <div className="events-empty">Loading cleanup events...</div>
           ) : events.length === 0 ? (

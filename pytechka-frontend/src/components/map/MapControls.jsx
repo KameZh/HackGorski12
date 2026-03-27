@@ -28,16 +28,15 @@ const styles = {
   },
 }
 
-/**
- * MapControls — floating right-side action buttons.
- * Positioned absolutely over the map.
- */
 export default function MapControls({
   onCenterMe,
   onZoomIn,
   onZoomOut,
   onResetView,
   showResetViewButton = true,
+  onToggleAreaInsights,
+  areaInsightsEnabled = false,
+  showAreaInsightsButton = false,
 }) {
   const { mapStyle, terrain3D, toggleMapStyle, toggleTerrain } = useMapStore()
 
@@ -49,7 +48,6 @@ export default function MapControls({
 
   return (
     <div id="map-controls" style={styles.controlsWrap}>
-      {/* Toggle map style */}
       <button
         id="map-style-toggle"
         title={
@@ -64,7 +62,6 @@ export default function MapControls({
         }}
       >
         {mapStyle === 'outdoors-v12' ? (
-          /* Satellite icon */
           <svg
             width="20"
             height="20"
@@ -80,7 +77,6 @@ export default function MapControls({
             <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
           </svg>
         ) : (
-          /* Map icon */
           <svg
             width="20"
             height="20"
@@ -98,7 +94,6 @@ export default function MapControls({
         )}
       </button>
 
-      {/* 3D Terrain toggle */}
       <button
         id="map-terrain-toggle"
         title={terrain3D ? 'Disable 3D terrain' : 'Enable 3D terrain'}
@@ -116,7 +111,6 @@ export default function MapControls({
           color: terrain3D ? '#fbfef9' : '#9fc9de',
         }}
       >
-        {/* Mountain icon */}
         <svg
           width="20"
           height="20"
@@ -131,7 +125,6 @@ export default function MapControls({
         </svg>
       </button>
 
-      {/* Center on my location */}
       <button
         id="map-center-me"
         title="Center on my location"
@@ -156,6 +149,40 @@ export default function MapControls({
           <circle cx="12" cy="12" r="7" />
         </svg>
       </button>
+
+      {showAreaInsightsButton ? (
+        <button
+          id="map-area-insights-toggle"
+          title={
+            areaInsightsEnabled
+              ? 'Hide area insights panel'
+              : 'Show area insights panel'
+          }
+          onClick={() => onToggleAreaInsights?.()}
+          style={{
+            ...styles.buttonBase,
+            background: areaInsightsEnabled
+              ? 'linear-gradient(180deg, #48a9a6, #4281a4)'
+              : 'rgba(18, 26, 40, 0.9)',
+            color: areaInsightsEnabled ? '#fbfef9' : '#9fc9de',
+          }}
+          aria-label="Toggle area insights panel"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
+        </button>
+      ) : null}
 
       {showResetViewButton ? (
         <button
@@ -182,7 +209,6 @@ export default function MapControls({
       ) : null}
 
       <div style={styles.zoomStack}>
-        {/* Zoom in */}
         <button
           id="map-zoom-in"
           title="Zoom in"
@@ -209,7 +235,6 @@ export default function MapControls({
           </svg>
         </button>
 
-        {/* Zoom out */}
         <button
           id="map-zoom-out"
           title="Zoom out"

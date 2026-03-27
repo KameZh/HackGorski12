@@ -89,21 +89,17 @@ const styles = {
   },
 }
 
-/**
- * RoutePreviewCard — bottom sheet that slides up when a trail is selected.
- * Dismissed by tapping outside or the X button.
- */
 export default function RoutePreviewCard({
   onStartTrail,
   onScheduleTrail,
   bottomOffset,
+  showScheduleButton = true,
 }) {
   const { selectedTrail, setSelectedTrail } = useMapStore()
   const cardRef = useRef(null)
 
   const dismiss = () => setSelectedTrail(null)
 
-  // Close on backdrop tap
   useEffect(() => {
     if (!selectedTrail) return
     const handler = (e) => {
@@ -129,14 +125,12 @@ export default function RoutePreviewCard({
 
   return (
     <>
-      {/* Backdrop */}
       <div
         id="route-preview-backdrop"
         style={styles.backdrop}
         aria-hidden="true"
       />
 
-      {/* Card */}
       <div
         ref={cardRef}
         id="route-preview-card"
@@ -146,7 +140,6 @@ export default function RoutePreviewCard({
         }}
       >
         <div style={styles.card}>
-          {/* Trail image */}
           {trail.image && (
             <div
               style={{
@@ -161,7 +154,6 @@ export default function RoutePreviewCard({
                 alt={trail.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
-              {/* Dismiss button */}
               <button
                 id="route-preview-close"
                 onClick={dismiss}
@@ -180,7 +172,6 @@ export default function RoutePreviewCard({
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-              {/* Difficulty badge */}
               <span
                 id="route-preview-difficulty"
                 style={{
@@ -200,7 +191,6 @@ export default function RoutePreviewCard({
             </div>
           )}
 
-          {/* Content */}
           <div style={styles.content}>
             <h2
               id="route-preview-name"
@@ -241,7 +231,6 @@ export default function RoutePreviewCard({
               </p>
             )}
 
-            {/* Stats row */}
             <div id="route-preview-stats" style={styles.statsRow}>
               {trail.distance && (
                 <div id="route-preview-distance" style={styles.statCol}>
@@ -269,7 +258,6 @@ export default function RoutePreviewCard({
               )}
             </div>
 
-            {/* Actions */}
             <div style={styles.actions}>
               <button
                 id="route-preview-start"
@@ -278,13 +266,15 @@ export default function RoutePreviewCard({
               >
                 Start
               </button>
-              <button
-                id="route-preview-schedule"
-                style={styles.scheduleBtn}
-                onClick={handleSchedule}
-              >
-                Schedule
-              </button>
+              {showScheduleButton ? (
+                <button
+                  id="route-preview-schedule"
+                  style={styles.scheduleBtn}
+                  onClick={handleSchedule}
+                >
+                  Schedule
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

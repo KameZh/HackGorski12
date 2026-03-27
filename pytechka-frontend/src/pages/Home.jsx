@@ -159,6 +159,24 @@ export default function Home() {
   const avatarUrl = dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
   const avatarInitial = (dbUser?.username || user?.firstName || user?.username || '?')[0]?.toUpperCase?.() || '?'
 
+  // Aggregate stats from user's trails
+  const totalDistance = myTrails.reduce((sum, t) => sum + (t.stats?.distance || 0), 0)
+  const totalDuration = myTrails.reduce((sum, t) => sum + (t.stats?.duration || 0), 0)
+  const totalSteps = Math.round(totalDistance / 0.762) // avg stride ~0.762m
+
+  const formatDistance = (m) => {
+    if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
+    return `${Math.round(m)} m`
+  }
+
+  const formatTime = (sec) => {
+    if (!sec) return '0 min'
+    const h = Math.floor(sec / 3600)
+    const m = Math.floor((sec % 3600) / 60)
+    if (h > 0) return `${h}h ${m}m`
+    return `${m} min`
+  }
+
   const badgeCards = [
     {
       key: 'trailers',
@@ -222,15 +240,15 @@ export default function Home() {
           <div className="account-stats-row">
             <div className="account-stat">
               <span className="stat-icon stat-steps">Steps</span>
-              <span className="stat-value">—</span>
+              <span className="stat-value">{totalSteps.toLocaleString()}</span>
             </div>
             <div className="account-stat">
               <span className="stat-icon stat-time">Time</span>
-              <span className="stat-value">—</span>
+              <span className="stat-value">{formatTime(totalDuration)}</span>
             </div>
             <div className="account-stat">
               <span className="stat-icon stat-dist">Distance</span>
-              <span className="stat-value">—</span>
+              <span className="stat-value">{formatDistance(totalDistance)}</span>
             </div>
           </div>
         </div>

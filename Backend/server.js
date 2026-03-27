@@ -349,6 +349,7 @@ app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
       type,
       description: description || '',
       coordinates,
+      expiresAt: Ping.computeExpiresAt(type),
     })
 
     res.status(201).json(ping)
@@ -361,7 +362,12 @@ app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
 // GET /api/pings — list all pings (public)
 app.get('/api/pings', async (req, res) => {
   try {
-    const filter = {}
+    const filter = {
+      $or: [
+        { expiresAt: null },
+        { expiresAt: { $gt: new Date() } },
+      ],
+    }
     if (req.query.trailId) filter.trailId = req.query.trailId
     const pings = await Ping.find(filter).sort({ createdAt: -1 })
     res.json(pings)

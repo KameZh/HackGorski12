@@ -25,7 +25,7 @@ const styles = {
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: 'max(84px, calc(env(safe-area-inset-bottom, 0px) + 72px))',
+    bottom: 'max(96px, calc(env(safe-area-inset-bottom, 0px) + 72px))',
     zIndex: 30,
   },
   card: {

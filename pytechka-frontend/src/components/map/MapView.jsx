@@ -498,6 +498,8 @@ export default function MapView({
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
+  const [areaInsightsEnabled, setAreaInsightsEnabled] = useState(false)
+  const [areaInsightsMinimized, setAreaInsightsMinimized] = useState(false)
 
   const [areaWeatherLoading, setAreaWeatherLoading] = useState(false)
   const [areaWeatherError, setAreaWeatherError] = useState('')
@@ -545,7 +547,8 @@ export default function MapView({
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [voteSubmitting, setVoteSubmitting] = useState(false)
 
-  const showRadiusPanel = !selectedTrail && !startPanelTrail
+  const showRadiusPanel =
+    areaInsightsEnabled && !selectedTrail && !startPanelTrail
 
   const defaultMapStyle = useMemo(
     () => `mapbox://styles/mapbox/${mapStyle}`,
@@ -786,6 +789,19 @@ export default function MapView({
       active = false
     }
   }, [selectedAreaCenter])
+
+  useEffect(() => {
+    if (areaInsightsEnabled) {
+      setAreaInsightsMinimized(false)
+      return
+    }
+
+    setSelectedAreaCenter(null)
+    setAreaWeather(null)
+    setAreaWeatherError('')
+    setAreaWeatherLoading(false)
+    setAreaInsightsMinimized(false)
+  }, [areaInsightsEnabled])
 
   useEffect(() => {
     if (!navigator.geolocation) return undefined
@@ -1057,7 +1073,9 @@ export default function MapView({
           latitude: coords.latitude,
           zoom: 14,
         }))
-        setSelectedAreaCenter([coords.longitude, coords.latitude])
+        if (areaInsightsEnabled) {
+          setSelectedAreaCenter([coords.longitude, coords.latitude])
+        }
       },
       () => {
         setGeoError(
@@ -1065,6 +1083,10 @@ export default function MapView({
         )
       }
     )
+  }, [areaInsightsEnabled])
+
+  const handleToggleAreaInsights = useCallback(() => {
+    setAreaInsightsEnabled((value) => !value)
   }, [])
 
   const handleMapClick = useCallback(
@@ -1121,7 +1143,9 @@ export default function MapView({
         return
       }
 
-      setSelectedAreaCenter([lng, lat])
+      if (areaInsightsEnabled) {
+        setSelectedAreaCenter([lng, lat])
+      }
 
       const layerIds = renderableTrails
         .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
@@ -1144,7 +1168,14 @@ export default function MapView({
       )
       if (trail) setSelectedTrail(trail)
     },
-    [pingMode, activeTrailSession, renderableTrails, trails, setSelectedTrail]
+    [
+      pingMode,
+      activeTrailSession,
+      renderableTrails,
+      trails,
+      setSelectedTrail,
+      areaInsightsEnabled,
+    ]
   )
 
   const handleResetView = useCallback(() => {
@@ -1184,18 +1215,6 @@ export default function MapView({
     },
     [userLocation]
   )
-
-  const handleScheduleTrail = useCallback((trail) => {
-    const start = deriveTrailStartCoordinates(trail)
-    if (!start) return
-    setSelectedAreaCenter(start)
-    setViewState((old) => ({
-      ...old,
-      longitude: start[0],
-      latitude: start[1],
-      zoom: Math.max(old.zoom, 11),
-    }))
-  }, [])
 
   const handleFocusSelectedAreaTrail = useCallback(
     ({ trail, startCoordinates }) => {
@@ -2603,96 +2622,154 @@ export default function MapView({
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onResetView={handleResetView}
+        onToggleAreaInsights={handleToggleAreaInsights}
+        areaInsightsEnabled={areaInsightsEnabled}
+        showAreaInsightsButton
       />
 
       {showRadiusPanel ? (
         <div style={styles.radiusWrap}>
-          <div style={styles.radiusRow}>
-            <span style={styles.radiusLabel}>Area radius</span>
-            <input
-              type="range"
-              min={2}
-              max={40}
-              step={1}
-              value={selectedAreaRadiusKm}
-              onChange={(event) =>
-                setSelectedAreaRadiusKm(Number(event.target.value))
-              }
-              style={styles.radiusInput}
-            />
-            <span style={styles.radiusValue}>{selectedAreaRadiusKm} km</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 12, color: '#8de0dc', fontWeight: 800 }}>
+              Area insights
+            </span>
+            <button
+              type="button"
+              onClick={() => setAreaInsightsMinimized((value) => !value)}
+              style={{
+                ...pingBtnBase,
+                padding: '4px 9px',
+                fontSize: 11,
+                background: 'rgba(148,163,184,0.14)',
+                color: '#c9dcea',
+              }}
+            >
+              {areaInsightsMinimized ? 'Expand' : 'Minimize'}
+            </button>
           </div>
 
-          <div style={{ ...styles.infoBox, fontSize: 11, padding: '6px 9px' }}>
-            {!selectedAreaCenter ? (
-              <div>
-                Tap on the map to inspect exact trail starts inside this radius.
+          {areaInsightsMinimized ? (
+            <div
+              style={{ ...styles.infoBox, fontSize: 11, padding: '6px 9px' }}
+            >
+              Area panel minimized.
+            </div>
+          ) : (
+            <>
+              <div style={styles.radiusRow}>
+                <span style={styles.radiusLabel}>Area radius</span>
+                <input
+                  type="range"
+                  min={2}
+                  max={40}
+                  step={1}
+                  value={selectedAreaRadiusKm}
+                  onChange={(event) =>
+                    setSelectedAreaRadiusKm(Number(event.target.value))
+                  }
+                  style={styles.radiusInput}
+                />
+                <span style={styles.radiusValue}>
+                  {selectedAreaRadiusKm} km
+                </span>
               </div>
-            ) : selectedAreaTrails.length === 0 ? (
-              <div>No trail starts found inside {selectedAreaRadiusKm} km.</div>
-            ) : (
-              <div style={{ display: 'grid', gap: 6 }}>
-                <div style={{ fontWeight: 700, color: '#8de0dc' }}>
-                  Trail starts in radius ({selectedAreaTrails.length})
-                </div>
-                {selectedAreaTrails.slice(0, 4).map((entry) => {
-                  const trailId = entry.trail?._id || entry.trail?.id
-                  return (
+
+              <div
+                style={{ ...styles.infoBox, fontSize: 11, padding: '6px 9px' }}
+              >
+                {!selectedAreaCenter ? (
+                  <div>
+                    Tap on the map to inspect exact trail starts inside this
+                    radius.
+                  </div>
+                ) : selectedAreaTrails.length === 0 ? (
+                  <div>
+                    No trail starts found inside {selectedAreaRadiusKm} km.
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 6 }}>
+                    <div style={{ fontWeight: 700, color: '#8de0dc' }}>
+                      Trail starts in radius ({selectedAreaTrails.length})
+                    </div>
                     <div
-                      key={`area-trail-${trailId}`}
                       style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
+                        display: 'grid',
                         gap: 6,
-                        border: '1px solid rgba(148,163,184,0.24)',
-                        borderRadius: 8,
-                        padding: '6px 8px',
-                        background: 'rgba(15,23,35,0.58)',
+                        maxHeight: 156,
+                        overflowY: 'auto',
+                        paddingRight: 2,
                       }}
                     >
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 700,
-                            color: '#e2e8f0',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {entry.trail?.name || 'Unnamed trail'}
-                        </div>
-                        <div style={{ color: '#95adbf' }}>
-                          start {Math.round(entry.distanceMeters)} m away
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleFocusSelectedAreaTrail(entry)}
-                        style={{
-                          ...pingBtnBase,
-                          padding: '5px 10px',
-                          fontSize: 11,
-                          background: 'rgba(72,169,166,0.22)',
-                          color: '#8de0dc',
-                        }}
-                      >
-                        Focus
-                      </button>
+                      {selectedAreaTrails.map((entry) => {
+                        const trailId = entry.trail?._id || entry.trail?.id
+                        return (
+                          <div
+                            key={`area-trail-${trailId}`}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: 6,
+                              border: '1px solid rgba(148,163,184,0.24)',
+                              borderRadius: 8,
+                              padding: '6px 8px',
+                              background: 'rgba(15,23,35,0.58)',
+                            }}
+                          >
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  color: '#e2e8f0',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {entry.trail?.name || 'Unnamed trail'}
+                              </div>
+                              <div style={{ color: '#95adbf' }}>
+                                start {Math.round(entry.distanceMeters)} m away
+                              </div>
+                            </div>
+                            <button
+                              onClick={() =>
+                                handleFocusSelectedAreaTrail(entry)
+                              }
+                              style={{
+                                ...pingBtnBase,
+                                padding: '5px 10px',
+                                fontSize: 11,
+                                background: 'rgba(72,169,166,0.22)',
+                                color: '#8de0dc',
+                              }}
+                            >
+                              Focus
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
-                  )
-                })}
-                {selectedAreaTrails.length > 4 ? (
-                  <div style={{ color: '#93abc1' }}>
-                    +{selectedAreaTrails.length - 4} more trails in this radius
+                    {selectedAreaTrails.length > 3 ? (
+                      <div style={{ color: '#93abc1' }}>
+                        Scroll down to see more routes.
+                      </div>
+                    ) : null}
                   </div>
-                ) : null}
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
 
-          {selectedAreaCenter ? (
+          {selectedAreaCenter && !areaInsightsMinimized ? (
             <div
               style={{ ...styles.infoBox, fontSize: 11, padding: '8px 9px' }}
             >
@@ -2769,8 +2846,8 @@ export default function MapView({
 
       <RoutePreviewCard
         onStartTrail={handleOpenStartPlanner}
-        onScheduleTrail={handleScheduleTrail}
         bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
+        showScheduleButton={false}
       />
     </div>
   )

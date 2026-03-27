@@ -8,6 +8,7 @@ import {
 } from '@turf/turf'
 import BottomNav from '../components/layout/Bottomnav'
 import TrailCard from '../components/explore/TrailCard'
+import TrailDetailPopup from '../components/explore/TrailDetailPopup'
 import EcoImpactBanner from '../components/explore/EcoImpactBanner'
 import {
   FILTER_DEFAULTS,
@@ -125,6 +126,7 @@ export default function Explore() {
 
   const [loadingTrails, setLoadingTrails] = useState(false)
   const [errorTrails, setErrorTrails] = useState(null)
+  const [selectedTrailId, setSelectedTrailId] = useState(null)
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/outdoors-v12'
@@ -462,13 +464,13 @@ export default function Explore() {
               >
                 {visibleRenderableTrails.map(({ trail, geometry }) => (
                   <Source
-                    key={`explore-trail-source-${trail.id}`}
-                    id={`explore-trail-source-${trail.id}`}
+                    key={`explore-trail-source-${trail._id || trail.id}`}
+                    id={`explore-trail-source-${trail._id || trail.id}`}
                     type="geojson"
                     data={geometry}
                   >
                     <Layer
-                      id={`explore-trail-line-${trail.id}`}
+                      id={`explore-trail-line-${trail._id || trail.id}`}
                       type="line"
                       layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                       paint={{
@@ -598,7 +600,7 @@ export default function Explore() {
                 </button>
               </div>
             ) : featuredTrail ? (
-              <div className="explore-card-shell card-enter">
+              <div className="explore-card-shell card-enter" onClick={() => setSelectedTrailId(featuredTrail._id || featuredTrail.id)} style={{ cursor: 'pointer' }}>
                 <TrailCard trail={featuredTrail} />
               </div>
             ) : (
@@ -617,8 +619,10 @@ export default function Explore() {
                 <div className="explore-cards-stack">
                   {ecoFocusTrails.map((trail) => (
                     <div
-                      key={trail.id}
+                      key={trail._id || trail.id}
                       className="explore-card-shell card-enter"
+                      onClick={() => setSelectedTrailId(trail._id || trail.id)}
+                      style={{ cursor: 'pointer' }}
                     >
                       <TrailCard trail={trail} />
                     </div>
@@ -641,8 +645,10 @@ export default function Explore() {
                 <div className="explore-cards-stack">
                   {latestTrails.map((trail) => (
                     <div
-                      key={trail.id}
+                      key={trail._id || trail.id}
                       className="explore-card-shell card-enter"
+                      onClick={() => setSelectedTrailId(trail._id || trail.id)}
+                      style={{ cursor: 'pointer' }}
                     >
                       <TrailCard trail={trail} />
                     </div>
@@ -657,6 +663,13 @@ export default function Explore() {
           ) : null}
         </main>
       </div>
+
+      {selectedTrailId && (
+        <TrailDetailPopup
+          trailId={selectedTrailId}
+          onClose={() => setSelectedTrailId(null)}
+        />
+      )}
 
       <BottomNav />
     </div>

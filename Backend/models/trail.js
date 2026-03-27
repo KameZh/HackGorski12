@@ -33,6 +33,33 @@ const trailSchema = new mongoose.Schema(
     },
     reviews: [reviewSchema],
     averageAccuracy: { type: Number, default: 0 },
+    ai: {
+      status: {
+        type: String,
+        enum: ['pending', 'processing', 'done', 'error'],
+        default: 'pending',
+      },
+      segments: [
+        {
+          name: String,
+          difficulty: { type: String, enum: ['easy', 'moderate', 'hard', 'extreme'] },
+          description: String,
+          estimatedTime: String,
+          startIndex: Number,
+          endIndex: Number,
+        },
+      ],
+      warnings: [
+        {
+          type_: String,
+          description: String,
+          severity: { type: String, enum: ['low', 'medium', 'high'] },
+        },
+      ],
+      summary: String,
+      overallDifficulty: String,
+      error: String,
+    },
   },
   { timestamps: true }
 )

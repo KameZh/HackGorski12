@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
 import api from '../api/client'
+import { fetchMyTrails, updateTrail, deleteTrail } from '../api/trails'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
@@ -13,6 +14,10 @@ export default function Home() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [dbUser, setDbUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [myTrails, setMyTrails] = useState([])
+  const [editingTrail, setEditingTrail] = useState(null)
+  const [editForm, setEditForm] = useState({})
+  const [editSaving, setEditSaving] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -26,6 +31,51 @@ export default function Home() {
       .catch((err) => console.error('Failed to fetch profile:', err))
       .finally(() => setLoading(false))
   }, [isSignedIn])
+
+  useEffect(() => {
+    if (!isSignedIn) return
+    fetchMyTrails()
+      .then((res) => setMyTrails(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setMyTrails([]))
+  }, [isSignedIn])
+
+  const handleEditOpen = (trail) => {
+    setEditingTrail(trail._id)
+    setEditForm({
+      name: trail.name || '',
+      region: trail.region || '',
+      difficulty: trail.difficulty || 'moderate',
+      description: trail.description || '',
+      equipment: trail.equipment || '',
+      resources: trail.resources || '',
+    })
+  }
+
+  const handleEditSave = async () => {
+    if (!editingTrail) return
+    setEditSaving(true)
+    try {
+      const res = await updateTrail(editingTrail, editForm)
+      setMyTrails((prev) =>
+        prev.map((t) => (t._id === editingTrail ? { ...t, ...res.data } : t))
+      )
+      setEditingTrail(null)
+    } catch (err) {
+      console.error('Failed to update trail:', err)
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const handleDeleteTrail = async (id) => {
+    try {
+      await deleteTrail(id)
+      setMyTrails((prev) => prev.filter((t) => t._id !== id))
+      if (editingTrail === id) setEditingTrail(null)
+    } catch (err) {
+      console.error('Failed to delete trail:', err)
+    }
+  }
 
   const handleLogout = async () => {
     await signOut()
@@ -180,6 +230,89 @@ export default function Home() {
             Delete account
           </button>
         </div>
+
+        {/* My Trails */}
+        {myTrails.length > 0 && (
+          <div className="account-section" style={{ marginTop: '1rem' }}>
+            <h3 className="account-section-title">My Trails</h3>
+            <div className="my-trails-list">
+              {myTrails.map((trail) => (
+                <div key={trail._id} className="my-trail-item">
+                  {editingTrail === trail._id ? (
+                    <div className="my-trail-edit-form">
+                      <input
+                        className="rbf-input"
+                        value={editForm.name}
+                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                        placeholder="Trail name"
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.region}
+                        onChange={(e) => setEditForm({ ...editForm, region: e.target.value })}
+                        placeholder="Region"
+                      />
+                      <select
+                        className="rbf-input"
+                        value={editForm.difficulty}
+                        onChange={(e) => setEditForm({ ...editForm, difficulty: e.target.value })}
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="hard">Hard</option>
+                        <option value="extreme">Extreme</option>
+                      </select>
+                      <textarea
+                        className="rbf-input"
+                        value={editForm.description}
+                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                        placeholder="Description"
+                        rows={2}
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.equipment}
+                        onChange={(e) => setEditForm({ ...editForm, equipment: e.target.value })}
+                        placeholder="Equipment"
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.resources}
+                        onChange={(e) => setEditForm({ ...editForm, resources: e.target.value })}
+                        placeholder="Resources"
+                      />
+                      <div className="my-trail-edit-actions">
+                        <button className="my-trail-save-btn" onClick={handleEditSave} disabled={editSaving}>
+                          {editSaving ? 'Saving...' : 'Save'}
+                        </button>
+                        <button className="my-trail-cancel-btn" onClick={() => setEditingTrail(null)}>
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="my-trail-info">
+                        <span className="my-trail-name">{trail.name}</span>
+                        <span className="my-trail-meta">
+                          {trail.difficulty} · {trail.region || 'No region'}
+                        </span>
+                      </div>
+                      <div className="my-trail-actions">
+                        <button className="my-trail-edit-btn" onClick={() => handleEditOpen(trail)}>
+                          Edit
+                        </button>
+                        <button className="my-trail-delete-btn" onClick={() => handleDeleteTrail(trail._id)}>
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Logout confirmation */}

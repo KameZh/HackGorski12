@@ -5,6 +5,11 @@ export const fetchTrails = (params = {}) => {
   return api.get('/trails', { params })
 }
 
+// GET /api/trails/mine — current user's trails
+export const fetchMyTrails = () => {
+  return api.get('/trails/mine')
+}
+
 // GET /api/trails/:id
 export const fetchTrailById = (id) => {
   return api.get(`/trails/${id}`)

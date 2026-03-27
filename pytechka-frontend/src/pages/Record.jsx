@@ -7,7 +7,7 @@ import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
-import { uploadRoute, fetchRouteById } from '../api/routes'
+import { fetchTrailById } from '../api/trails'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -359,9 +359,10 @@ export default function Record() {
     setShowPublishForm(true)
   }, [clearWatch, points])
 
-  const handlePublishSuccess = useCallback(() => {
+  const handlePublishSuccess = useCallback((trail) => {
     setShowPublishForm(false)
-    setSavedRoute({ published: true })
+    setSavedRoute(trail)
+    setAiStatus(trail?.ai?.status || 'pending')
     refreshTrails()
   }, [refreshTrails])
 
@@ -497,7 +498,7 @@ export default function Record() {
 
     const interval = setInterval(async () => {
       try {
-        const res = await fetchRouteById(savedRoute._id)
+        const res = await fetchTrailById(savedRoute._id)
         const status = res.data.ai?.status
         setAiStatus(status)
         if (status === 'done') {

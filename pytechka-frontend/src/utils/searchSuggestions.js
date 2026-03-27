@@ -2,7 +2,9 @@ const WORD_SPLIT_PATTERN = /[\s,./\\|_:-]+/
 const MIN_TERM_LENGTH = 2
 
 function normalizeText(value) {
-  return String(value ?? '').trim().toLowerCase()
+  return String(value ?? '')
+    .trim()
+    .toLowerCase()
 }
 
 function registerTerm(store, value) {
@@ -76,7 +78,9 @@ export function getSearchSuggestions({
   limit = 9,
 } = {}) {
   const normalizedQuery = normalizeText(query)
-  const safeLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, limit)) : 9
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.min(20, limit))
+    : 9
 
   const store = collectTrailTerms(Array.isArray(trails) ? trails : [])
   registerUnknownValue(store, fallbackTerms)

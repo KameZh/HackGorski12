@@ -1,4 +1,4 @@
-export const SORT_OPTIONS = ['Popular', 'Newest', 'Nearest', 'Eco Score']
+export const SORT_OPTIONS = ['Popular', 'Newest', 'Nearest']
 
 export const FILTER_DEFAULTS = {
   activity: 'All',

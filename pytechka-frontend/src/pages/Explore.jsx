@@ -9,13 +9,11 @@ import {
 import BottomNav from '../components/layout/Bottomnav'
 import TrailCard from '../components/explore/TrailCard'
 import TrailDetailPopup from '../components/explore/TrailDetailPopup'
-import EcoImpactBanner from '../components/explore/EcoImpactBanner'
 import {
   FILTER_DEFAULTS,
   buildExploreFilterOptions,
 } from '../components/data/Explorerdata'
 import { fetchTrails } from '../api/trails'
-import { fetchEcoStats } from '../api/eco'
 import { getSearchSuggestions } from '../utils/searchSuggestions'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -44,7 +42,6 @@ const EXPLORE_FALLBACK_TERMS = [
   'Forest',
   'Waterfall',
   'Mountain',
-  'Eco',
 ]
 
 function SectionBlock({ title, subtitle, children }) {
@@ -122,8 +119,6 @@ export default function Explore() {
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
 
   const [trails, setTrails] = useState([])
-  const [ecoStats, setEcoStats] = useState(null)
-
   const [loadingTrails, setLoadingTrails] = useState(false)
   const [errorTrails, setErrorTrails] = useState(null)
   const [selectedTrailId, setSelectedTrailId] = useState(null)
@@ -171,19 +166,6 @@ export default function Explore() {
       setLoadingTrails(false)
     }
   }, [searchQuery, activeActivity, activeDifficulty, activeSort])
-
-  useEffect(() => {
-    const loadEcoStats = async () => {
-      try {
-        const response = await fetchEcoStats()
-        setEcoStats(response.data)
-      } catch {
-        // Banner is optional.
-      }
-    }
-
-    loadEcoStats()
-  }, [])
 
   useEffect(() => {
     loadTrails()
@@ -242,15 +224,7 @@ export default function Explore() {
       .filter(Boolean)
   }, [visibleTrails])
 
-  const featuredTrail = visibleTrails[0] ?? null
-  const ecoFocusTrails = useMemo(
-    () =>
-      visibleTrails
-        .filter((trail) => Number(trail.ecoWarnings) > 0)
-        .slice(0, 3),
-    [visibleTrails]
-  )
-  const latestTrails = visibleTrails.slice(1, 5)
+  const featuredTrails = visibleTrails
   const searchSuggestions = useMemo(
     () =>
       getSearchSuggestions({
@@ -275,12 +249,6 @@ export default function Explore() {
         </header>
 
         <main className="explore-main">
-          {ecoStats ? (
-            <div className="explore-banner-wrap reveal-up">
-              <EcoImpactBanner stats={ecoStats} />
-            </div>
-          ) : null}
-
           <section className="explore-map-panel reveal-up">
             <div className="explore-map-head">
               {selectedAreaCenter ? (
@@ -399,10 +367,10 @@ export default function Explore() {
                   type="button"
                   className="explore-action-card"
                   onClick={() => {
-                    setActiveSort('Eco Score')
+                    setActiveSort('Popular')
                   }}
                 >
-                  <p className="explore-action-title">Eco Priority</p>
+                  <p className="explore-action-title">Top Rated</p>
                 </button>
 
                 <button
@@ -578,12 +546,14 @@ export default function Explore() {
 
           <SectionBlock
             title={
-              searchQuery ? `Results for \"${searchQuery}\"` : 'Featured Route'
+              searchQuery
+                ? `Featured tracks for \"${searchQuery}\"`
+                : 'Featured Tracks'
             }
             subtitle={
               selectedAreaCenter
-                ? `Primary suggestion in selected area (${visibleTrails.length} routes found)`
-                : 'Primary suggestion based on active filters'
+                ? `${featuredTrails.length} tracks match your filters in the selected area`
+                : `${featuredTrails.length} tracks match your active filters`
             }
           >
             {loadingTrails ? (
@@ -599,9 +569,18 @@ export default function Explore() {
                   Retry
                 </button>
               </div>
-            ) : featuredTrail ? (
-              <div className="explore-card-shell card-enter" onClick={() => setSelectedTrailId(featuredTrail._id || featuredTrail.id)} style={{ cursor: 'pointer' }}>
-                <TrailCard trail={featuredTrail} />
+            ) : featuredTrails.length > 0 ? (
+              <div className="explore-cards-stack">
+                {featuredTrails.map((trail) => (
+                  <div
+                    key={trail._id || trail.id}
+                    className="explore-card-shell card-enter"
+                    onClick={() => setSelectedTrailId(trail._id || trail.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <TrailCard trail={trail} />
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="explore-state-box">
@@ -609,58 +588,6 @@ export default function Explore() {
               </div>
             )}
           </SectionBlock>
-
-          {!loadingTrails && !errorTrails ? (
-            <SectionBlock
-              title="Eco Priority Routes"
-              subtitle="Routes with active community eco reports"
-            >
-              {ecoFocusTrails.length > 0 ? (
-                <div className="explore-cards-stack">
-                  {ecoFocusTrails.map((trail) => (
-                    <div
-                      key={trail._id || trail.id}
-                      className="explore-card-shell card-enter"
-                      onClick={() => setSelectedTrailId(trail._id || trail.id)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <TrailCard trail={trail} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="explore-state-box">
-                  No eco-priority routes in the current scope.
-                </div>
-              )}
-            </SectionBlock>
-          ) : null}
-
-          {!loadingTrails && !errorTrails ? (
-            <SectionBlock
-              title="New From Community"
-              subtitle="Fresh uploads from hikers and runners"
-            >
-              {latestTrails.length > 0 ? (
-                <div className="explore-cards-stack">
-                  {latestTrails.map((trail) => (
-                    <div
-                      key={trail._id || trail.id}
-                      className="explore-card-shell card-enter"
-                      onClick={() => setSelectedTrailId(trail._id || trail.id)}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <TrailCard trail={trail} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="explore-state-box">
-                  No additional routes available yet.
-                </div>
-              )}
-            </SectionBlock>
-          ) : null}
         </main>
       </div>
 

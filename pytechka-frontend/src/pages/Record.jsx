@@ -6,6 +6,7 @@ import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
+import { uploadRoute, fetchRouteById } from '../api/routes'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -102,6 +103,10 @@ export default function Record() {
   const [elevationGain, setElevationGain] = useState(0)
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
   const [mapReady, setMapReady] = useState(false)
+  const [savedRoute, setSavedRoute] = useState(null)
+  const [aiStatus, setAiStatus] = useState(null) // 'pending' | 'processing' | 'done' | 'error'
+  const [aiResult, setAiResult] = useState(null)
+  const [saving, setSaving] = useState(false)
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
@@ -325,11 +330,40 @@ export default function Record() {
     setCurrentSpeedKmh(0)
   }, [clearWatch])
 
-  const saveTracking = useCallback(() => {
+  const saveTracking = useCallback(async () => {
     clearWatch()
     setIsTracking(false)
-    // Add logic here to push current points/stats to your backend/API
-    console.log('Saving track with', points.length, 'points')
+    if (points.length < 2) return
+
+    setSaving(true)
+    try {
+      const geojson = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: points.map((p) => [
+                p.longitude,
+                p.latitude,
+                ...(p.elevation != null ? [p.elevation] : []),
+              ]),
+            },
+            properties: {},
+          },
+        ],
+      }
+
+      const res = await uploadRoute(geojson)
+      setSavedRoute(res.data)
+      setAiStatus(res.data.ai?.status || 'pending')
+    } catch (err) {
+      console.error('Failed to save route:', err)
+      setGeoError('Failed to save route. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }, [clearWatch, points])
 
   const resetTracking = useCallback(() => {
@@ -343,6 +377,9 @@ export default function Record() {
     setIsTracking(false)
     setShowAdvancedControls(false)
     setViewState(INITIAL_VIEW)
+    setSavedRoute(null)
+    setAiStatus(null)
+    setAiResult(null)
   }, [clearWatch])
 
   const handleCenterMe = useCallback(() => {
@@ -469,6 +506,31 @@ export default function Record() {
 
     return () => clearInterval(interval)
   }, [isTracking])
+
+  // Poll for AI analysis results after saving a route
+  useEffect(() => {
+    if (!savedRoute?._id) return
+    if (aiStatus === 'done' || aiStatus === 'error') return
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetchRouteById(savedRoute._id)
+        const status = res.data.ai?.status
+        setAiStatus(status)
+        if (status === 'done') {
+          setAiResult(res.data.ai)
+          clearInterval(interval)
+        } else if (status === 'error') {
+          setAiResult({ error: res.data.ai?.error || 'Analysis failed' })
+          clearInterval(interval)
+        }
+      } catch {
+        // keep polling
+      }
+    }, 2000)
+
+    return () => clearInterval(interval)
+  }, [savedRoute, aiStatus])
 
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const hasRecordingData =
@@ -639,6 +701,69 @@ export default function Record() {
 
       {selectedTrail && <RoutePreviewCard />}
 
+      {/* AI Analysis Results */}
+      {savedRoute && (
+        <div className="record-ai-panel">
+          {(aiStatus === 'pending' || aiStatus === 'processing') && (
+            <div className="record-ai-loading">
+              <div className="record-ai-spinner" />
+              <span>AI is analyzing your route...</span>
+            </div>
+          )}
+
+          {aiStatus === 'error' && (
+            <div className="record-ai-error">
+              <span>⚠️ AI analysis failed</span>
+              {aiResult?.error && <p>{aiResult.error}</p>}
+            </div>
+          )}
+
+          {aiStatus === 'done' && aiResult && (
+            <div className="record-ai-results">
+              <h3 className="record-ai-title">🧠 AI Trail Analysis</h3>
+
+              {aiResult.overallDifficulty && (
+                <div className={`record-ai-difficulty record-ai-diff-${aiResult.overallDifficulty}`}>
+                  Overall: {aiResult.overallDifficulty.toUpperCase()}
+                </div>
+              )}
+
+              {aiResult.summary && (
+                <p className="record-ai-summary">{aiResult.summary}</p>
+              )}
+
+              {aiResult.segments?.length > 0 && (
+                <div className="record-ai-segments">
+                  <h4>Segments</h4>
+                  {aiResult.segments.map((seg, i) => (
+                    <div key={i} className={`record-ai-segment record-ai-seg-${seg.difficulty}`}>
+                      <div className="record-ai-seg-header">
+                        <strong>{seg.name}</strong>
+                        <span className="record-ai-seg-badge">{seg.difficulty}</span>
+                        {seg.estimatedTime && <span className="record-ai-seg-time">⏱ {seg.estimatedTime}</span>}
+                      </div>
+                      <p>{seg.description}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {aiResult.warnings?.length > 0 && (
+                <div className="record-ai-warnings">
+                  <h4>⚠️ Warnings</h4>
+                  {aiResult.warnings.map((w, i) => (
+                    <div key={i} className={`record-ai-warning record-ai-warn-${w.severity}`}>
+                      <span className="record-ai-warn-severity">{w.severity?.toUpperCase()}</span>
+                      <span>{w.description}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="record-live-panel-wrap">
         <div className="record-live-panel">
           {!hasRecordingData && !isTracking ? (
@@ -677,9 +802,10 @@ export default function Record() {
 
               <button
                 onClick={saveTracking}
+                disabled={saving || points.length < 2}
                 className="record-action-btn record-save-btn"
               >
-                Save
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </div>
           )}

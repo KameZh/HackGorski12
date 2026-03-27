@@ -65,9 +65,9 @@ const styles = {
   },
   infoWrap: {
     position: 'absolute',
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 108px)',
+    top: 'calc(env(safe-area-inset-top, 0px) + 118px)',
     left: 12,
-    right: 70,
+    right: 12,
     zIndex: 12,
     display: 'flex',
     flexDirection: 'column',
@@ -87,7 +87,7 @@ const styles = {
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)',
     width: 'min(92vw, 420px)',
     zIndex: 17,
     border: '1px solid rgba(66, 129, 164, 0.42)',
@@ -171,6 +171,9 @@ export default function MapView() {
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
   const [geoError, setGeoError] = useState('')
+  const [mapError, setMapError] = useState('')
+  const [styleFailed, setStyleFailed] = useState(false)
+  const [mapReady, setMapReady] = useState(false)
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState([
     INITIAL_VIEW.longitude,
@@ -178,8 +181,16 @@ export default function MapView() {
   ])
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
 
-  const resolvedMapStyle =
-    MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
+  const defaultMapStyle = useMemo(
+    () => `mapbox://styles/mapbox/${mapStyle}`,
+    [mapStyle]
+  )
+
+  // Prefer custom style, but automatically fall back to a safe default on 404s.
+  const resolvedMapStyle = useMemo(() => {
+    if (styleFailed) return defaultMapStyle
+    return MAPBOX_STYLE_URL || defaultMapStyle
+  }, [styleFailed, defaultMapStyle])
   const hasVectorTileset =
     Boolean(MAPBOX_TILESET_URL) &&
     MAPBOX_TILESET_TYPE === 'vector' &&
@@ -271,8 +282,33 @@ export default function MapView() {
 
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
-    if (map) applyTerrain(map, terrain3D)
+    if (map) {
+      applyTerrain(map, terrain3D)
+      setMapReady(true)
+    }
   }, [terrain3D, applyTerrain])
+
+  const handleMapError = useCallback(
+    (event) => {
+      const status = event?.error?.status || event?.error?.statusCode
+      const message = event?.error?.message || ''
+      const is404 = status === 404 || message.includes('404')
+
+      if (MAPBOX_STYLE_URL && !styleFailed && is404) {
+        setStyleFailed(true)
+        setMapError(
+          'Custom map style is not reachable (404). Switched to the default Mapbox style.'
+        )
+        return
+      }
+
+      setMapError(
+        'Map failed to load. Check your network, Mapbox token, or style URL permissions.'
+      )
+      setMapReady(false)
+    },
+    [styleFailed]
+  )
 
   useEffect(() => {
     const map = mapRef.current?.getMap()
@@ -379,129 +415,127 @@ export default function MapView() {
         mapStyle={resolvedMapStyle}
         style={{ width: '100%', height: '100%' }}
         onLoad={handleMapLoad}
+        onError={handleMapError}
         onClick={handleMapClick}
         attributionControl={false}
       >
-        {visibleRenderableTrails.map(({ trail, geometry }) => {
-          const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
-          return (
-            <Source
-              key={trail.id}
-              id={`trail-source-${trail.id}`}
-              type="geojson"
-              data={geometry}
-            >
-              <Layer
-                id={`trail-hit-${trail.id}`}
-                type="line"
-                paint={{
-                  'line-color': color,
-                  'line-width': 16,
-                  'line-opacity': 0,
-                }}
-              />
-              <Layer
-                id={`trail-line-${trail.id}`}
-                type="line"
-                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                paint={{
-                  'line-color': color,
-                  'line-width': 4,
-                  'line-opacity': 0.85,
-                }}
-              />
-            </Source>
-          )
-        })}
+        {mapReady ? (
+          <>
+            {visibleRenderableTrails.map(({ trail, geometry }) => {
+              const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
+              return (
+                <Source
+                  key={trail.id}
+                  id={`trail-source-${trail.id}`}
+                  type="geojson"
+                  data={geometry}
+                >
+                  <Layer
+                    id={`trail-hit-${trail.id}`}
+                    type="line"
+                    paint={{
+                      'line-color': color,
+                      'line-width': 16,
+                      'line-opacity': 0,
+                    }}
+                  />
+                  <Layer
+                    id={`trail-line-${trail.id}`}
+                    type="line"
+                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                    paint={{
+                      'line-color': color,
+                      'line-width': 4,
+                      'line-opacity': 0.85,
+                    }}
+                  />
+                </Source>
+              )
+            })}
 
-        {hasVectorTileset ? (
-          <Source
-            id="custom-tileset-source"
-            type="vector"
-            url={MAPBOX_TILESET_URL}
-          >
-            <Layer
-              id="custom-tileset-layer"
-              type="line"
-              source="custom-tileset-source"
-              source-layer={MAPBOX_TILESET_SOURCE_LAYER}
-              paint={{
-                'line-color': MAPBOX_TILESET_LINE_COLOR,
-                'line-width': MAPBOX_TILESET_LINE_WIDTH,
-              }}
-            />
-          </Source>
-        ) : null}
+            {hasVectorTileset ? (
+              <Source
+                id="custom-tileset-source"
+                type="vector"
+                url={MAPBOX_TILESET_URL}
+              >
+                <Layer
+                  id="custom-tileset-layer"
+                  type="line"
+                  source="custom-tileset-source"
+                  source-layer={MAPBOX_TILESET_SOURCE_LAYER}
+                  paint={{
+                    'line-color': MAPBOX_TILESET_LINE_COLOR,
+                    'line-width': MAPBOX_TILESET_LINE_WIDTH,
+                  }}
+                />
+              </Source>
+            ) : null}
 
-        {hasRasterTileset ? (
-          <Source
-            id="custom-tileset-source"
-            type="raster"
-            url={MAPBOX_TILESET_URL}
-          >
-            <Layer
-              id="custom-tileset-raster-layer"
-              type="raster"
-              paint={{
-                'raster-opacity': 0.9,
-              }}
-            />
-          </Source>
-        ) : null}
+            {hasRasterTileset ? (
+              <Source
+                id="custom-tileset-source"
+                type="raster"
+                url={MAPBOX_TILESET_URL}
+              >
+                <Layer
+                  id="custom-tileset-raster-layer"
+                  type="raster"
+                  paint={{
+                    'raster-opacity': 0.9,
+                  }}
+                />
+              </Source>
+            ) : null}
 
-        {selectedAreaFeature ? (
-          <Source
-            id="map-selected-area"
-            type="geojson"
-            data={selectedAreaFeature}
-          >
-            <Layer
-              id="map-selected-area-fill"
-              type="fill"
-              paint={{
-                'fill-color': '#48a9a6',
-                'fill-opacity': 0.18,
-              }}
-            />
-            <Layer
-              id="map-selected-area-line"
-              type="line"
-              paint={{
-                'line-color': '#4281a4',
-                'line-width': 2,
-              }}
-            />
-          </Source>
-        ) : null}
+            {selectedAreaFeature ? (
+              <Source
+                id="map-selected-area"
+                type="geojson"
+                data={selectedAreaFeature}
+              >
+                <Layer
+                  id="map-selected-area-fill"
+                  type="fill"
+                  paint={{
+                    'fill-color': '#48a9a6',
+                    'fill-opacity': 0.18,
+                  }}
+                />
+                <Layer
+                  id="map-selected-area-line"
+                  type="line"
+                  paint={{
+                    'line-color': '#4281a4',
+                    'line-width': 2,
+                  }}
+                />
+              </Source>
+            ) : null}
 
-        {selectedAreaCenter ? (
-          <Marker
-            longitude={selectedAreaCenter[0]}
-            latitude={selectedAreaCenter[1]}
-            anchor="center"
-          >
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                borderRadius: '50%',
-                background: '#48a9a6',
-                border: '2px solid #fbfef9',
-                boxShadow: '0 0 0 4px rgba(72,169,166,0.22)',
-              }}
-            />
-          </Marker>
+            {selectedAreaCenter ? (
+              <Marker
+                longitude={selectedAreaCenter[0]}
+                latitude={selectedAreaCenter[1]}
+                anchor="center"
+              >
+                <div
+                  style={{
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    background: '#48a9a6',
+                    border: '2px solid #fbfef9',
+                    boxShadow: '0 0 0 4px rgba(72,169,166,0.22)',
+                  }}
+                />
+              </Marker>
+            ) : null}
+          </>
         ) : null}
       </Map>
 
-      <div style={styles.infoWrap}>
-        {loadingTrails && <div style={styles.infoBox}>Loading trails...</div>}
-        {trailsError && <div style={styles.infoBox}>{trailsError}</div>}
-        {geoError && <div style={styles.infoBox}>{geoError}</div>}
-        {tilesetConfigWarning && (
-          <div style={styles.infoBox}>{tilesetConfigWarning}</div>
-        )}
-      </div>
+      {/* Info overlay intentionally removed per request */}
 
       <MapControls
         onCenterMe={handleCenterMe}

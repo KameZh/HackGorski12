@@ -1,6 +1,7 @@
 export default function TrailCard({ trail }) {
   const {
     id,
+    _id,
     name,
     shortDescription,
     image,
@@ -18,7 +19,22 @@ export default function TrailCard({ trail }) {
     photoCount,
     rating,
     ratingCount,
+    description,
+    stats,
+    username,
+    averageAccuracy,
   } = trail
+
+  const trailId = id || _id
+  const trailTags = tags || []
+  const trailEcoScore = ecoScore ?? 0
+  const trailRating = rating ?? averageAccuracy ?? 0
+  const trailRatingCount = ratingCount ?? 0
+  const trailDistance = distance ?? (stats?.distance ? (stats.distance / 1000).toFixed(1) : '0')
+  const trailElevation = elevation ?? stats?.elevationGain ?? 0
+  const trailDuration = duration ?? (stats?.duration ? `${Math.round(stats.duration / 60)} min` : '—')
+  const trailDescription = shortDescription || description || ''
+  const trailAuthorName = authorName || username || 'Unknown'
 
   const difficultyMap = {
     easy: { label: 'Easy', className: 'difficulty-badge-easy' },
@@ -82,30 +98,33 @@ export default function TrailCard({ trail }) {
   const difficulty_info = difficultyMap[difficulty] || difficultyMap['moderate']
 
   return (
-    <article id={`trail-card-${id}`} className="trail-card">
+    <article id={`trail-card-${trailId}`} className="trail-card">
       {/* Image */}
+      {image && (
       <div
-        id={`trail-card-image-wrapper-${id}`}
+        id={`trail-card-image-wrapper-${trailId}`}
         className="trail-card-image-wrapper"
       >
         <img
-          id={`trail-card-image-${id}`}
+          id={`trail-card-image-${trailId}`}
           src={image}
           alt={name}
           className="trail-card-image"
         />
 
         {/* Activity type badge */}
-        <div id={`trail-activity-badge-${id}`} className="trail-activity-badge">
+        {activityType && (
+        <div id={`trail-activity-badge-${trailId}`} className="trail-activity-badge">
           <span className="trail-activity-icon">
             {activityIconMap[activityType]}
           </span>
           <span className="trail-activity-label">{activityType}</span>
         </div>
+        )}
 
         {/* Eco warning indicator */}
         {ecoWarnings > 0 && (
-          <div id={`trail-eco-warning-${id}`} className="trail-eco-warning">
+          <div id={`trail-eco-warning-${trailId}`} className="trail-eco-warning">
             <span className="trail-eco-warning-icon">
               <svg
                 width="12"
@@ -126,16 +145,17 @@ export default function TrailCard({ trail }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Content */}
-      <div id={`trail-card-content-${id}`} className="trail-card-content">
+      <div id={`trail-card-content-${trailId}`} className="trail-card-content">
         {/* Top row — name + difficulty */}
-        <div id={`trail-card-header-${id}`} className="trail-card-header">
-          <h3 id={`trail-card-name-${id}`} className="trail-card-name">
+        <div id={`trail-card-header-${trailId}`} className="trail-card-header">
+          <h3 id={`trail-card-name-${trailId}`} className="trail-card-name">
             {name}
           </h3>
           <span
-            id={`trail-difficulty-badge-${id}`}
+            id={`trail-difficulty-badge-${trailId}`}
             className={`difficulty-badge ${difficulty_info.className}`}
           >
             {difficulty_info.label}
@@ -143,7 +163,7 @@ export default function TrailCard({ trail }) {
         </div>
 
         {/* Region */}
-        <div id={`trail-region-${id}`} className="trail-region">
+        <div id={`trail-region-${trailId}`} className="trail-region">
           <svg
             width="12"
             height="12"
@@ -160,14 +180,14 @@ export default function TrailCard({ trail }) {
 
         {/* Description */}
         <p
-          id={`trail-card-description-${id}`}
+          id={`trail-card-description-${trailId}`}
           className="trail-card-description"
         >
-          {shortDescription}
+          {trailDescription}
         </p>
 
         {/* Stats row */}
-        <div id={`trail-stats-${id}`} className="trail-stats">
+        <div id={`trail-stats-${trailId}`} className="trail-stats">
           <div className="trail-stat">
             <svg
               width="13"
@@ -179,7 +199,7 @@ export default function TrailCard({ trail }) {
             >
               <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
             </svg>
-            <span className="trail-stat-value">{distance}</span>
+            <span className="trail-stat-value">{trailDistance}</span>
           </div>
           <div className="trail-stat-divider" />
           <div className="trail-stat">
@@ -194,7 +214,7 @@ export default function TrailCard({ trail }) {
               <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
               <polyline points="17 6 23 6 23 12" />
             </svg>
-            <span className="trail-stat-value">{elevation}</span>
+            <span className="trail-stat-value">{trailElevation}</span>
           </div>
           <div className="trail-stat-divider" />
           <div className="trail-stat">
@@ -209,14 +229,14 @@ export default function TrailCard({ trail }) {
               <circle cx="12" cy="12" r="10" />
               <polyline points="12 6 12 12 16 14" />
             </svg>
-            <span className="trail-stat-value">{duration}</span>
+            <span className="trail-stat-value">{trailDuration}</span>
           </div>
         </div>
 
         {/* Eco score + tags */}
-        <div id={`trail-card-footer-${id}`} className="trail-card-footer">
+        <div id={`trail-card-footer-${trailId}`} className="trail-card-footer">
           {/* Eco score */}
-          <div id={`trail-eco-score-${id}`} className="trail-eco-score">
+          <div id={`trail-eco-score-${trailId}`} className="trail-eco-score">
             <svg
               width="13"
               height="13"
@@ -230,20 +250,22 @@ export default function TrailCard({ trail }) {
               <path d="M2 2l4.5 4.5" />
             </svg>
             <span className="trail-eco-score-label">Eco</span>
-            <span className="trail-eco-score-value">{ecoScore}/10</span>
+            <span className="trail-eco-score-value">{trailEcoScore}/10</span>
           </div>
 
           {/* Tags */}
-          <div id={`trail-tags-${id}`} className="trail-tags">
-            {tags.slice(0, 2).map((tag) => (
+          {trailTags.length > 0 && (
+          <div id={`trail-tags-${trailId}`} className="trail-tags">
+            {trailTags.slice(0, 2).map((tag) => (
               <span key={tag} className="trail-tag">
                 {tag}
               </span>
             ))}
           </div>
+          )}
 
           {/* Rating */}
-          <div id={`trail-rating-${id}`} className="trail-rating">
+          <div id={`trail-rating-${trailId}`} className="trail-rating">
             <svg
               width="12"
               height="12"
@@ -253,21 +275,24 @@ export default function TrailCard({ trail }) {
             >
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
             </svg>
-            <span className="trail-rating-value">{rating}</span>
-            <span className="trail-rating-count">({ratingCount})</span>
+            <span className="trail-rating-value">{trailRating}</span>
+            <span className="trail-rating-count">({trailRatingCount})</span>
           </div>
         </div>
 
         {/* Author + photos */}
-        <div id={`trail-author-row-${id}`} className="trail-author-row">
+        <div id={`trail-author-row-${trailId}`} className="trail-author-row">
           <div className="trail-author">
+            {authorAvatar && (
             <img
               src={authorAvatar}
-              alt={authorName}
+              alt={trailAuthorName}
               className="trail-author-avatar"
             />
-            <span className="trail-author-name">{authorName}</span>
+            )}
+            <span className="trail-author-name">{trailAuthorName}</span>
           </div>
+          {photoCount > 0 && (
           <div className="trail-photo-count">
             <svg
               width="13"
@@ -283,6 +308,7 @@ export default function TrailCard({ trail }) {
             </svg>
             <span>{photoCount} photos</span>
           </div>
+          )}
         </div>
       </div>
     </article>

@@ -329,18 +329,21 @@ export default function Home() {
                 <div key={trail._id} className="my-trail-item">
                   {editingTrail === trail._id ? (
                     <div className="my-trail-edit-form">
+                      <label className="rbf-label">Name</label>
                       <input
                         className="rbf-input"
                         value={editForm.name}
                         onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                         placeholder="Trail name"
                       />
+                      <label className="rbf-label">Region</label>
                       <input
                         className="rbf-input"
                         value={editForm.region}
                         onChange={(e) => setEditForm({ ...editForm, region: e.target.value })}
                         placeholder="Region"
                       />
+                      <label className="rbf-label">Difficulty</label>
                       <select
                         className="rbf-input"
                         value={editForm.difficulty}
@@ -351,6 +354,7 @@ export default function Home() {
                         <option value="hard">Hard</option>
                         <option value="extreme">Extreme</option>
                       </select>
+                      <label className="rbf-label">Description</label>
                       <textarea
                         className="rbf-input"
                         value={editForm.description}
@@ -358,30 +362,35 @@ export default function Home() {
                         placeholder="Description"
                         rows={2}
                       />
+                      <label className="rbf-label">Equipment</label>
                       <input
                         className="rbf-input"
                         value={editForm.equipment}
                         onChange={(e) => setEditForm({ ...editForm, equipment: e.target.value })}
                         placeholder="Equipment"
                       />
+                      <label className="rbf-label">Resources</label>
                       <input
                         className="rbf-input"
                         value={editForm.resources}
                         onChange={(e) => setEditForm({ ...editForm, resources: e.target.value })}
                         placeholder="Resources"
                       />
+                      <label className="rbf-label">Starting point</label>
                       <input
                         className="rbf-input"
                         value={editForm.startPoint}
                         onChange={(e) => setEditForm({ ...editForm, startPoint: e.target.value })}
                         placeholder="Starting point"
                       />
+                      <label className="rbf-label">End point</label>
                       <input
                         className="rbf-input"
                         value={editForm.endPoint}
                         onChange={(e) => setEditForm({ ...editForm, endPoint: e.target.value })}
                         placeholder="End point"
                       />
+                      <label className="rbf-label">Highest point</label>
                       <input
                         className="rbf-input"
                         value={editForm.highestPoint}

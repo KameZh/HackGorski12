@@ -1,12 +1,11 @@
-import { GoogleGenerativeAI } from '@google/generative-ai'
 import Trail from '../models/trail.js'
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+// Local LLM (e.g., Ollama) config
+const USE_LOCAL_LLM = process.env.USE_LOCAL_LLM === 'true'
+const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || 'gpt-oss:20b-cloud'
+const LOCAL_LLM_URL = process.env.LOCAL_LLM_URL || 'http://localhost:11434/v1/chat/completions'
+const THINK_LEVEL_LLM = process.env.THINK_LEVEL_LLM || false
 
-/**
- * Calculate basic stats from GeoJSON LineString coordinates.
- * Coordinates can be [lng, lat] or [lng, lat, elevation].
- */
 export function calculateStats(geojson) {
   const coords = extractCoordinates(geojson)
   if (!coords || coords.length < 2) {
@@ -148,13 +147,83 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
   "overallDifficulty": "easy|moderate|hard|extreme"
 }`
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
+    const useLocal = USE_LOCAL_LLM || !GITHUB_TOKEN
+    const targetUrl = useLocal ? LOCAL_LLM_URL : GITHUB_CHAT_URL
+    const targetModel = useLocal ? LOCAL_LLM_MODEL : GITHUB_MODEL
 
-    // Parse AI response — strip any accidental markdown fences
-    const cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim()
-    const analysis = JSON.parse(cleanJson)
+    const headers = {
+      'Content-Type': 'application/json',
+      ...(useLocal, THINK_LEVEL
+        ? {}
+        : {
+            Authorization: `Bearer ${GITHUB_TOKEN}`,
+            'X-GitHub-Api-Version': '2023-07-01',
+          }),
+    }
+
+    const body = useLocal
+      ? {
+          model: targetModel,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert hiking trail analyst. Respond with JSON only, no markdown, no code fences.',
+            },
+            { role: 'user', content: prompt },
+          ],
+          stream: false,
+          temperature: 0.8,
+        }
+      : {
+          model: targetModel,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'You are an expert hiking trail analyst. Respond with JSON only, no markdown, no code fences.',
+            },
+            { role: 'user', content: prompt },
+          ],
+          response_format: { type: 'json_object' },
+          max_completion_tokens: 1200,
+          temperature: 1,
+        }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    })
+
+    if (!response.ok) {
+      const errText = await response.text()
+      const source = useLocal ? 'Local LLM' : 'GitHub model'
+      throw new Error(`${source} request failed: ${response.status} ${errText}`)
+    }
+
+    const data = await response.json()
+    const text = data?.choices?.[0]?.message?.content
+
+    if (!text || (typeof text === 'string' && !text.trim())) {
+      throw new Error('AI returned empty response')
+    }
+
+    // Parse AI response — strip any accidental markdown fences and salvage inner JSON when needed
+    const rawContent = typeof text === 'string' ? text : JSON.stringify(text)
+    const cleanJson = rawContent.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim()
+
+    let analysis
+    try {
+      analysis = JSON.parse(cleanJson)
+    } catch (parseErr) {
+      const match = cleanJson.match(/\{[\s\S]*\}/)
+      if (match) {
+        analysis = JSON.parse(match[0])
+      } else {
+        throw new Error(`Failed to parse AI JSON: ${parseErr.message}`)
+      }
+    }
 
     await Trail.updateOne(
       { _id: routeId },

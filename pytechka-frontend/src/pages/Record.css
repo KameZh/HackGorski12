@@ -395,7 +395,7 @@
 /* ─── AI Analysis Panel ─── */
 .record-ai-panel {
   position: absolute;
-  bottom: 140px;
+  bottom: 210px;
   left: 16px;
   right: 16px;
   z-index: 20;

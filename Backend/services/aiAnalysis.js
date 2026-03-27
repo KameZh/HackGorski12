@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import Route from '../models/route.js'
+import Trail from '../models/trail.js'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
@@ -97,9 +97,9 @@ function buildElevationProfile(coords) {
  */
 export async function processRouteAI(routeId) {
   try {
-    await Route.updateOne({ _id: routeId }, { 'ai.status': 'processing' })
+    await Trail.updateOne({ _id: routeId }, { 'ai.status': 'processing' })
 
-    const route = await Route.findById(routeId)
+    const route = await Trail.findById(routeId)
     if (!route) throw new Error('Route not found')
 
     const simplifiedCoords = simplifyForAI(route.geojson)
@@ -156,7 +156,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
     const cleanJson = text.replace(/```json\s*/gi, '').replace(/```\s*/gi, '').trim()
     const analysis = JSON.parse(cleanJson)
 
-    await Route.updateOne(
+    await Trail.updateOne(
       { _id: routeId },
       {
         'ai.status': 'done',
@@ -170,7 +170,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
     console.log(`AI analysis complete for route ${routeId}`)
   } catch (err) {
     console.error(`AI analysis failed for route ${routeId}:`, err.message)
-    await Route.updateOne(
+    await Trail.updateOne(
       { _id: routeId },
       {
         'ai.status': 'error',

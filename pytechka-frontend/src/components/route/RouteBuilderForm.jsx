@@ -30,7 +30,7 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
     setError('')
 
     try {
-      await publishTrail({
+      const res = await publishTrail({
         geojson,
         name: name.trim(),
         region: region.trim(),
@@ -39,7 +39,7 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
         equipment: equipment.trim(),
         resources: resources.trim(),
       })
-      onSuccess?.()
+      onSuccess?.(res.data)
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to publish trail. Please try again.')
     } finally {

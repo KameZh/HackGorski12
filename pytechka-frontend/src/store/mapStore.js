@@ -13,6 +13,9 @@ export const useMapStore = create((set) => ({
   // 3D terrain on/off
   terrain3D: false,
 
+  // Incremented to signal "re-fetch trails"
+  trailsVersion: 0,
+
   // Actions
   setMode: (mode) => set({ mode }),
   setSelectedTrail: (trail) => set({ selectedTrail: trail }),
@@ -25,4 +28,5 @@ export const useMapStore = create((set) => ({
           ? 'satellite-streets-v12'
           : 'outdoors-v12',
     })),
+  refreshTrails: () => set((s) => ({ trailsVersion: s.trailsVersion + 1 })),
 }))

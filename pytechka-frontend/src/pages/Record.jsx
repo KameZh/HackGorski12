@@ -4,6 +4,7 @@ import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
+import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
 import { uploadRoute, fetchRouteById } from '../api/routes'
@@ -85,7 +86,7 @@ export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
   const pendingCenterRef = useRef(null)
-  const { mapStyle, terrain3D, setSelectedTrail, setMode, selectedTrail } =
+  const { mapStyle, terrain3D, setSelectedTrail, setMode, selectedTrail, refreshTrails } =
     useMapStore()
 
   const [viewState, setViewState] = useState(INITIAL_VIEW)
@@ -106,6 +107,7 @@ export default function Record() {
   const [aiStatus, setAiStatus] = useState(null) // 'pending' | 'processing' | 'done' | 'error'
   const [aiResult, setAiResult] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [showPublishForm, setShowPublishForm] = useState(false)
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
@@ -329,41 +331,39 @@ export default function Record() {
     setCurrentSpeedKmh(0)
   }, [clearWatch])
 
-  const saveTracking = useCallback(async () => {
+  const recordedGeoJSON = useMemo(() => {
+    if (points.length < 2) return null
+    return {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: points.map((p) => [
+              p.longitude,
+              p.latitude,
+              ...(p.elevation != null ? [p.elevation] : []),
+            ]),
+          },
+          properties: {},
+        },
+      ],
+    }
+  }, [points])
+
+  const saveTracking = useCallback(() => {
     clearWatch()
     setIsTracking(false)
     if (points.length < 2) return
-
-    setSaving(true)
-    try {
-      const geojson = {
-        type: 'FeatureCollection',
-        features: [
-          {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: points.map((p) => [
-                p.longitude,
-                p.latitude,
-                ...(p.elevation != null ? [p.elevation] : []),
-              ]),
-            },
-            properties: {},
-          },
-        ],
-      }
-
-      const res = await uploadRoute(geojson)
-      setSavedRoute(res.data)
-      setAiStatus(res.data.ai?.status || 'pending')
-    } catch (err) {
-      console.error('Failed to save route:', err)
-      setGeoError('Failed to save route. Please try again.')
-    } finally {
-      setSaving(false)
-    }
+    setShowPublishForm(true)
   }, [clearWatch, points])
+
+  const handlePublishSuccess = useCallback(() => {
+    setShowPublishForm(false)
+    setSavedRoute({ published: true })
+    refreshTrails()
+  }, [refreshTrails])
 
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
@@ -804,6 +804,14 @@ export default function Record() {
           )}
         </div>
       </div>
+
+      {showPublishForm && recordedGeoJSON && (
+        <RouteBuilderForm
+          geojson={recordedGeoJSON}
+          onSuccess={handlePublishSuccess}
+          onCancel={() => setShowPublishForm(false)}
+        />
+      )}
 
       <div className="record-bottomnav-wrap">
         <BottomNav />

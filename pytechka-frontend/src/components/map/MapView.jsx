@@ -166,7 +166,7 @@ function buildTrailCenterPoint(geometry) {
 
 export default function MapView() {
   const mapRef = useRef(null)
-  const { mapStyle, terrain3D, setSelectedTrail } = useMapStore()
+  const { mapStyle, terrain3D, setSelectedTrail, trailsVersion } = useMapStore()
   const [trails, setTrails] = useState([])
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
@@ -259,7 +259,7 @@ export default function MapView() {
     return () => {
       active = false
     }
-  }, [])
+  }, [trailsVersion])
 
   // Apply/remove 3D terrain
   const applyTerrain = useCallback((map, enabled) => {

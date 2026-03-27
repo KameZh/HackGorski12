@@ -9,6 +9,18 @@ import { fetchMapTrails } from '../api/maps'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const MAPBOX_STYLE_URL = import.meta.env.VITE_MAPBOX_STYLE_URL
+const MAPBOX_TILESET_URL = import.meta.env.VITE_MAPBOX_TILESET_URL
+const MAPBOX_TILESET_TYPE = (
+  import.meta.env.VITE_MAPBOX_TILESET_TYPE || 'vector'
+).toLowerCase()
+const MAPBOX_TILESET_SOURCE_LAYER = import.meta.env
+  .VITE_MAPBOX_TILESET_SOURCE_LAYER
+const MAPBOX_TILESET_LINE_COLOR =
+  import.meta.env.VITE_MAPBOX_TILESET_LINE_COLOR || '#0ea5e9'
+const MAPBOX_TILESET_LINE_WIDTH = Number(
+  import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
+)
 
 const INITIAL_VIEW = {
   longitude: 25.4858,
@@ -31,16 +43,14 @@ function formatDuration(totalSeconds) {
   const hh = String(hours).padStart(2, '0')
   const mm = String(minutes).padStart(2, '0')
   const ss = String(seconds).padStart(2, '0')
-  return `${hh}:${mm}:${ss}`
+  return hours > 0 ? `${hh}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
 function parseTrailGeojson(geojson) {
   if (!geojson) return null
-
   try {
     const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson
     if (!parsed || typeof parsed !== 'object' || !parsed.type) return null
-
     if (
       parsed.type === 'FeatureCollection' ||
       parsed.type === 'Feature' ||
@@ -49,7 +59,6 @@ function parseTrailGeojson(geojson) {
     ) {
       return parsed
     }
-
     return null
   } catch {
     return null
@@ -57,7 +66,6 @@ function parseTrailGeojson(geojson) {
 }
 
 function distanceMeters(p1, p2) {
-  // простa Haversine формула
   const R = 6371000
   const toRad = (deg) => (deg * Math.PI) / 180
   const dLat = toRad(p2.latitude - p1.latitude)
@@ -75,6 +83,7 @@ function distanceMeters(p1, p2) {
 export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
+  const pendingCenterRef = useRef(null)
   const { mapStyle, terrain3D, setSelectedTrail, setMode, selectedTrail } =
     useMapStore()
 
@@ -83,16 +92,28 @@ export default function Record() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [distance, setDistance] = useState(0)
   const [isTracking, setIsTracking] = useState(false)
-  const [isPaused, setIsPaused] = useState(false)
   const [geoError, setGeoError] = useState('')
   const [trails, setTrails] = useState([])
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
-  const [currentLocation, setCurrentLocation] = useState(null) // <-- current location
+  const [currentLocation, setCurrentLocation] = useState(null)
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false)
+  const [currentElevation, setCurrentElevation] = useState(0)
+  const [elevationGain, setElevationGain] = useState(0)
+  const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
+  const [mapReady, setMapReady] = useState(false)
+
+  const resolvedMapStyle =
+    MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
+  const hasVectorTileset =
+    Boolean(MAPBOX_TILESET_URL) &&
+    MAPBOX_TILESET_TYPE === 'vector' &&
+    Boolean(MAPBOX_TILESET_SOURCE_LAYER)
+  const hasRasterTileset =
+    Boolean(MAPBOX_TILESET_URL) && MAPBOX_TILESET_TYPE === 'raster'
 
   const routeGeoJSON = useMemo(() => {
     if (points.length < 2) return null
-
     return {
       type: 'FeatureCollection',
       features: [
@@ -148,9 +169,36 @@ export default function Record() {
     }
   }, [])
 
+  const centerOnCurrentLocation = useCallback(
+    ({ longitude, latitude }, zoom = 16, duration = 1200) => {
+      setViewState((old) => ({ ...old, longitude, latitude, zoom }))
+      const map = mapRef.current?.getMap()
+      const target = {
+        center: [longitude, latitude],
+        zoom,
+        duration,
+        essential: true,
+      }
+
+      if (map) {
+        map.flyTo(target)
+      } else {
+        pendingCenterRef.current = target
+      }
+    },
+    []
+  )
+
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
-    if (map) applyTerrain(map, terrain3D)
+    if (map) {
+      applyTerrain(map, terrain3D)
+      setMapReady(true)
+      if (pendingCenterRef.current) {
+        map.flyTo(pendingCenterRef.current)
+        pendingCenterRef.current = null
+      }
+    }
   }, [applyTerrain, terrain3D])
 
   const handleZoomIn = useCallback(() => {
@@ -164,20 +212,54 @@ export default function Record() {
   }, [])
 
   const onPosition = useCallback((position) => {
+    const nextElevation = Number.isFinite(position.coords.altitude)
+      ? position.coords.altitude
+      : null
+
     const nextPoint = {
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
+      elevation: nextElevation,
       recordedAt: Date.now(),
+    }
+
+    if (Number.isFinite(nextElevation)) {
+      setCurrentElevation(nextElevation)
     }
 
     setGeoError('')
     setPoints((prev) => {
       if (prev.length > 0) {
         const increment = distanceMeters(prev[prev.length - 1], nextPoint)
+        const elapsedSinceLast =
+          (nextPoint.recordedAt - prev[prev.length - 1].recordedAt) / 1000
+
+        const gpsSpeedMps =
+          Number.isFinite(position.coords.speed) && position.coords.speed >= 0
+            ? position.coords.speed
+            : null
+
+        const derivedSpeedMps =
+          elapsedSinceLast > 0 ? increment / elapsedSinceLast : 0
+        const speedToUse = gpsSpeedMps ?? derivedSpeedMps
+
+        if (Number.isFinite(speedToUse)) {
+          setCurrentSpeedKmh(Math.max(0, speedToUse * 3.6))
+        }
+
         if (Number.isFinite(increment) && increment > 0.4) {
           setDistance((d) => d + increment)
         }
+
+        const prevElevation = prev[prev.length - 1].elevation
+        if (Number.isFinite(prevElevation) && Number.isFinite(nextElevation)) {
+          const positiveDiff = nextElevation - prevElevation
+          if (positiveDiff > 0.7) {
+            setElevationGain((gain) => gain + positiveDiff)
+          }
+        }
       }
+
       return [...prev, nextPoint]
     })
 
@@ -185,18 +267,11 @@ export default function Record() {
       ...old,
       latitude: nextPoint.latitude,
       longitude: nextPoint.longitude,
-      zoom: Math.max(old.zoom, 15),
+      zoom: Math.max(old.zoom, 15.5),
     }))
   }, [])
 
-  const startTracking = useCallback(() => {
-    if (!navigator.geolocation) {
-      setGeoError('Geolocation is not supported on this device.')
-      return
-    }
-
-    clearWatch()
-
+  const startWatch = useCallback(() => {
     watchRef.current = navigator.geolocation.watchPosition(
       onPosition,
       () => {
@@ -210,36 +285,63 @@ export default function Record() {
         timeout: 10000,
       }
     )
+  }, [onPosition])
 
-    setIsTracking(true)
-    setIsPaused(false)
-  }, [clearWatch, onPosition])
-
-  const pauseTracking = useCallback(() => {
-    clearWatch()
-    setIsPaused(true)
-  }, [clearWatch])
-
-  const resumeTracking = useCallback(() => {
-    if (isTracking && isPaused) {
-      startTracking()
+  const startTracking = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoError('Geolocation is not supported on this device.')
+      return
     }
-  }, [isTracking, isPaused, startTracking])
+
+    clearWatch()
+    setIsTracking(true)
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setGeoError('')
+        centerOnCurrentLocation({
+          longitude: coords.longitude,
+          latitude: coords.latitude,
+        })
+        startWatch()
+      },
+      () => {
+        setGeoError(
+          'Could not access location. Allow GPS permissions and try again.'
+        )
+        startWatch()
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000,
+      }
+    )
+  }, [centerOnCurrentLocation, clearWatch, startWatch])
 
   const stopTracking = useCallback(() => {
     clearWatch()
     setIsTracking(false)
-    setIsPaused(false)
+    setCurrentSpeedKmh(0)
   }, [clearWatch])
+
+  const saveTracking = useCallback(() => {
+    clearWatch()
+    setIsTracking(false)
+    // Add logic here to push current points/stats to your backend/API
+    console.log('Saving track with', points.length, 'points')
+  }, [clearWatch, points])
 
   const resetTracking = useCallback(() => {
     clearWatch()
     setPoints([])
     setElapsedSeconds(0)
     setDistance(0)
-    setIsTracking(false)
-    setIsPaused(false)
+    setElevationGain(0)
+    setCurrentSpeedKmh(0)
     setGeoError('')
+    setIsTracking(false)
+    setShowAdvancedControls(false)
     setViewState(INITIAL_VIEW)
   }, [clearWatch])
 
@@ -247,12 +349,14 @@ export default function Record() {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
         setGeoError('')
-        setViewState((old) => ({
-          ...old,
-          longitude: coords.longitude,
-          latitude: coords.latitude,
-          zoom: Math.max(old.zoom, 14),
-        }))
+        centerOnCurrentLocation(
+          {
+            longitude: coords.longitude,
+            latitude: coords.latitude,
+          },
+          15,
+          700
+        )
       },
       () => {
         setGeoError(
@@ -260,7 +364,7 @@ export default function Record() {
         )
       }
     )
-  }, [])
+  }, [centerOnCurrentLocation])
 
   const handleMapClick = useCallback(
     (event) => {
@@ -295,20 +399,25 @@ export default function Record() {
     [renderableTrails, setSelectedTrail, trails]
   )
 
-  // --- Current Location Effect ---
   useEffect(() => {
     if (!navigator.geolocation) return
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        const nextAltitude = Number.isFinite(position.coords.altitude)
+          ? position.coords.altitude
+          : null
+
         setCurrentLocation({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         })
+
+        if (Number.isFinite(nextAltitude)) {
+          setCurrentElevation(nextAltitude)
+        }
       },
-      (error) => {
-        console.error(error)
-      },
+      () => {},
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
     )
 
@@ -352,18 +461,19 @@ export default function Record() {
   }, [applyTerrain, terrain3D])
 
   useEffect(() => {
-    if (!isTracking || isPaused) return undefined
+    if (!isTracking) return undefined
 
     const interval = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1)
     }, 1000)
 
     return () => clearInterval(interval)
-  }, [isTracking, isPaused])
+  }, [isTracking])
 
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
-  const statusText = isTracking ? (isPaused ? 'Paused' : 'Recording') : 'Ready'
-  const hasTrackSession = isTracking || isPaused
+  const hasRecordingData =
+    points.length > 0 || elapsedSeconds > 0 || distance > 0
+  const showControls = showAdvancedControls || hasRecordingData || isTracking
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -371,10 +481,7 @@ export default function Record() {
         <div className="record-fallback">
           <div className="record-fallback-card">
             <h3>Record cannot start</h3>
-            <p>
-              Missing VITE_MAPBOX_TOKEN in frontend environment. Mapbox-only
-              mode is enabled.
-            </p>
+            <p>Missing VITE_MAPBOX_TOKEN in frontend environment.</p>
           </div>
         </div>
         <div className="record-bottomnav-wrap">
@@ -386,12 +493,15 @@ export default function Record() {
 
   return (
     <div id="record-page" className="record-page">
+      <div className="record-glow record-glow-top" />
+      <div className="record-glow record-glow-bottom" />
+
       <div className="record-map-layer">
         <Map
           ref={mapRef}
           {...viewState}
           onMove={(event) => setViewState(event.viewState)}
-          mapStyle={`mapbox://styles/mapbox/${mapStyle}`}
+          mapStyle={resolvedMapStyle}
           mapboxAccessToken={MAPBOX_TOKEN}
           className="record-map"
           attributionControl={false}
@@ -400,7 +510,6 @@ export default function Record() {
         >
           {renderableTrails.map(({ trail, geometry }) => {
             const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
-
             return (
               <Source
                 key={trail.id}
@@ -438,7 +547,7 @@ export default function Record() {
                 type="line"
                 layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                 paint={{
-                  'line-color': '#2563eb',
+                  'line-color': '#48a9a6',
                   'line-width': 5,
                   'line-opacity': 0.95,
                 }}
@@ -446,7 +555,6 @@ export default function Record() {
             </Source>
           )}
 
-          {/* Current Location Marker */}
           {currentLocation && (
             <Marker
               latitude={currentLocation.latitude}
@@ -456,29 +564,61 @@ export default function Record() {
               <div className="current-location-marker" />
             </Marker>
           )}
-
-          {markerPosition && (
-            <Marker
-              longitude={markerPosition.longitude}
-              latitude={markerPosition.latitude}
-              anchor="center"
-            >
-              <div className="record-marker" />
-            </Marker>
-          )}
         </Map>
       </div>
 
       <div className="record-status-wrap">
-        <div
-          className={`record-status-badge ${isTracking
-              ? isPaused
-                ? 'record-status-paused'
-                : 'record-status-active'
-              : ''
-            }`}
-        >
-          {statusText}
+        <div className="record-topbar">
+          <div className="record-title-row">
+            <h1 className="record-topbar-title">
+              {isTracking
+                ? 'Recording...'
+                : hasRecordingData
+                  ? 'Paused'
+                  : 'Record Active'}
+            </h1>
+          </div>
+
+          {showControls && (
+            <div className="record-stats-grid record-top-stats-enter">
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  {steps.toLocaleString()}
+                </span>
+                <span className="record-top-stat-label">Steps</span>
+              </div>
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  {formatDuration(elapsedSeconds)}
+                </span>
+                <span className="record-top-stat-label">Time</span>
+              </div>
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  {(distance / 1000).toFixed(2)}
+                </span>
+                <span className="record-top-stat-label">km</span>
+              </div>
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  {Math.round(currentElevation)}
+                </span>
+                <span className="record-top-stat-label">m Elev</span>
+              </div>
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  +{Math.round(elevationGain)}
+                </span>
+                <span className="record-top-stat-label">Gain</span>
+              </div>
+              <div className="record-top-stat">
+                <span className="record-top-stat-value">
+                  {currentSpeedKmh.toFixed(1)}
+                </span>
+                <span className="record-top-stat-label">km/h</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -486,7 +626,6 @@ export default function Record() {
         {loadingTrails && (
           <div className="record-info-box">Loading trails...</div>
         )}
-        {trailsError && <div className="record-info-box">{trailsError}</div>}
         {geoError && (
           <div className="record-info-box record-info-error">{geoError}</div>
         )}
@@ -497,108 +636,53 @@ export default function Record() {
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
       />
+
       {selectedTrail && <RoutePreviewCard />}
 
       <div className="record-live-panel-wrap">
         <div className="record-live-panel">
-          <div className="record-stats-row">
-            <div className="record-stat-box">
-              <div className="record-stat-value">{steps.toLocaleString()}</div>
-              <div className="record-stat-label">steps</div>
-            </div>
-            <div className="record-stat-box">
-              <div className="record-stat-value">
-                {formatDuration(elapsedSeconds)}
-              </div>
-              <div className="record-stat-label">time</div>
-            </div>
-            <div className="record-stat-box">
-              <div className="record-stat-value">
-                {(distance / 1000).toFixed(2)}
-              </div>
-              <div className="record-stat-label">km</div>
-            </div>
-          </div>
-
-          <div className="record-actions-row">
-            {isTracking && !isPaused ? (
+          {!hasRecordingData && !isTracking ? (
+            <div className="record-start-only-row">
               <button
-                type="button"
-                onClick={pauseTracking}
-                className="record-action-btn"
-                aria-label="Pause recording"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                >
-                  <line x1="8" y1="5" x2="8" y2="19" />
-                  <line x1="16" y1="5" x2="16" y2="19" />
-                </svg>
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={resumeTracking}
-                className={`record-action-btn resume ${!hasTrackSession ? 'record-action-disabled' : ''
-                  }`}
-                disabled={!hasTrackSession}
-                aria-label="Resume recording"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                >
-                  <polygon points="6 4 20 12 6 20 6 4" />
-                </svg>
-              </button>
-            )}
-
-            {hasTrackSession ? (
-              <button
-                type="button"
-                onClick={stopTracking}
-                className="record-primary-btn record-stop-btn"
-              >
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
                 onClick={startTracking}
                 className="record-primary-btn record-start-btn"
               >
-                Start
+                Start Recording
               </button>
-            )}
-
-            <button
-              type="button"
-              onClick={resetTracking}
-              className="record-action-btn reset"
-              aria-label="Reset recording"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
+            </div>
+          ) : (
+            <div className="record-actions-row record-actions-enter">
+              <button
+                onClick={resetTracking}
+                className="record-action-btn record-reset-btn"
               >
-                <path d="M21 12a9 9 0 1 1-3.2-6.9" />
-                <polyline points="21 3 21 9 15 9" />
-              </svg>
-            </button>
-          </div>
+                Reset
+              </button>
+
+              {isTracking ? (
+                <button
+                  onClick={stopTracking}
+                  className="record-primary-btn record-stop-btn"
+                >
+                  Stop
+                </button>
+              ) : (
+                <button
+                  onClick={startTracking}
+                  className="record-primary-btn record-resume-btn"
+                >
+                  Resume
+                </button>
+              )}
+
+              <button
+                onClick={saveTracking}
+                className="record-action-btn record-save-btn"
+              >
+                Save
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

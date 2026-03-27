@@ -3,8 +3,42 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background: #191923;
   overflow: hidden;
+  /* Replaced flat background with Maps gradient */
+  background:
+    radial-gradient(
+      900px 420px at 12% -14%,
+      rgba(66, 129, 164, 0.24),
+      transparent 60%
+    ),
+    radial-gradient(
+      760px 380px at 88% 114%,
+      rgba(72, 169, 166, 0.2),
+      transparent 60%
+    ),
+    linear-gradient(180deg, #10151f 0%, #191923 45%, #121926 100%);
+}
+
+/* Identical Maps Ambient Glows */
+.record-glow {
+  position: absolute;
+  pointer-events: none;
+  filter: blur(44px);
+  z-index: 2;
+}
+.record-glow-top {
+  width: 240px;
+  height: 240px;
+  top: -90px;
+  right: -70px;
+  background: rgba(66, 129, 164, 0.22);
+}
+.record-glow-bottom {
+  width: 260px;
+  height: 260px;
+  left: -90px;
+  bottom: 34px;
+  background: rgba(72, 169, 166, 0.18);
 }
 
 .record-map-layer {
@@ -18,6 +52,7 @@
   height: 100%;
 }
 
+/* Fallback state styles remain untouched */
 .record-fallback {
   position: absolute;
   inset: 0;
@@ -26,188 +61,258 @@
   padding: 16px;
   background: linear-gradient(180deg, #191923 0%, #000100 100%);
   color: #fbfef9;
-  text-align: center;
   z-index: 2;
 }
-
 .record-fallback-card {
-  max-width: 520px;
-  border-radius: 14px;
-  border: 1px solid rgba(25, 25, 35, 0.16);
-  background: rgba(25, 25, 35, 0.8);
-  padding: 16px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32);
+  max-width: 400px;
+  border-radius: 18px;
+  background: rgba(15, 23, 35, 0.92);
+  padding: 24px;
+  text-align: center;
 }
 
-.record-fallback-card h3 {
-  margin: 0 0 8px;
-  color: #fbfef9;
-}
-
-.record-fallback-card p {
-  margin: 0;
-  color: #fbfef9;
-}
-
+/* -------------------------------------
+   TOP DASHBOARD (Stats Grid)
+   ------------------------------------- */
 .record-status-wrap {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 680px;
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
   z-index: 16;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
 }
 
-.record-status-badge {
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #fbfef9;
-  background: rgba(148, 163, 184, 0.2);
-  border: 1px solid rgba(148, 163, 184, 0.35);
+.record-topbar {
+  pointer-events: none;
+  border-radius: 18px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  /* Brought over Maps.css panel styling */
+  border: 1px solid rgba(66, 129, 164, 0.36);
+  box-shadow: 0 18px 38px rgba(0, 1, 0, 0.38);
+  background: linear-gradient(
+    180deg,
+    rgba(19, 28, 43, 0.9),
+    rgba(25, 25, 35, 0.88)
+  );
   backdrop-filter: blur(8px);
 }
 
-.record-status-active {
-  background: rgba(34, 197, 94, 0.2);
-  border-color: rgba(34, 197, 94, 0.4);
+.record-title-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 4px;
+  margin-bottom: 6px;
 }
 
-.record-status-paused {
-  background: rgba(234, 179, 8, 0.2);
-  border-color: rgba(234, 179, 8, 0.42);
+/* Brought over Maps.css Skewed Teal Title */
+.record-topbar-title {
+  margin: 0;
+  position: relative;
+  font-size: 1.15rem;
+  line-height: 1.05;
+  font-weight: 820;
+  letter-spacing: -0.02em;
+  color: transparent;
+  background: linear-gradient(135deg, #74aed0 0%, #4281a4 52%, #48a9a6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 8px 22px rgba(72, 169, 166, 0.24);
 }
 
+.record-topbar-title::after {
+  content: '';
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: -6px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(66, 129, 164, 0.6),
+    rgba(72, 169, 166, 0.9),
+    rgba(66, 129, 164, 0.6)
+  );
+  transform: skewX(-14deg);
+}
+
+/* Clean 3x2 Grid */
+.record-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px 8px;
+}
+
+.record-top-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.record-top-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fbfef9; /* Matched to Maps text color */
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+
+.record-top-stat-label {
+  margin-top: 4px;
+  font-size: 0.65rem;
+  /* Teal accent matching Maps search icons/badges */
+  color: rgba(72, 169, 166, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.record-top-stats-enter {
+  animation: record-stats-in 460ms cubic-bezier(0.19, 1, 0.22, 1) both;
+}
+
+/* -------------------------------------
+   ERRORS & INFO ALERTS
+   ------------------------------------- */
 .record-info-wrap {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 56px);
+  top: calc(env(safe-area-inset-top, 0px) + 140px);
   left: 12px;
-  right: 76px;
-  bottom: max(155px, env(safe-area-inset-bottom, 0px) + 12px);
+  right: 68px;
   display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
+  z-index: 16;
 }
 
 .record-info-box {
-  border-radius: 10px;
-  border: 1px solid rgba(72, 169, 166, 0.35);
-  background: rgba(25, 25, 35, 0.78);
+  border-radius: 12px;
+  border: 1px solid rgba(66, 129, 164, 0.36);
+  background: rgba(19, 28, 43, 0.9);
+  backdrop-filter: blur(8px);
   color: #fbfef9;
-  padding: 8px 10px;
-  font-size: 12px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
   pointer-events: auto;
 }
 
 .record-info-error {
-  border-color: rgba(239, 68, 68, 0.6);
-  background: rgba(220, 80, 80, 0.22);
-  color: #fbfef9;
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
 }
 
+/* -------------------------------------
+   BOTTOM ACTION BAR (Controls)
+   ------------------------------------- */
 .record-live-panel-wrap {
   position: absolute;
-  left: 1vb;
-  right: 1vb;
-  bottom: 14.5vb;
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 32px);
+  max-width: 400px;
+  bottom: max(90px, env(safe-area-inset-bottom, 0px) + 24px);
   z-index: 24;
 }
 
 .record-live-panel {
-  border-radius: 14px;
-  border: 1px solid rgba(25, 25, 35, 0.16);
-  background: rgba(25, 25, 35, 0.9);
-  backdrop-filter: blur(10px);
-  color: #fbfef9;
-  padding: 10px 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  border-radius: 18px; /* Matched maps border radius */
+  padding: 10px;
+  pointer-events: auto;
+  /* Brought over Maps.css panel styling */
+  border: 1px solid rgba(66, 129, 164, 0.36);
+  box-shadow: 0 18px 38px rgba(0, 1, 0, 0.38);
+  background: linear-gradient(
+    180deg,
+    rgba(19, 28, 43, 0.9),
+    rgba(25, 25, 35, 0.88)
+  );
+  backdrop-filter: blur(8px);
 }
 
-.record-stats-row {
+.record-start-only-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.record-stat-box {
-  text-align: center;
-}
-
-.record-stat-value {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.record-stat-label {
-  margin-top: 2px;
-  color: rgba(251, 254, 249, 0.7);
-  font-size: 12px;
+  grid-template-columns: 1fr;
+  animation: record-controls-in 380ms ease both;
 }
 
 .record-actions-row {
   display: grid;
-  grid-template-columns: 54px 1fr 54px;
+  grid-template-columns: 1fr 1.5fr 1fr;
   gap: 8px;
   align-items: center;
 }
 
-.record-action-btn {
-  width: 54px;
-  height: 40px;
-  border-radius: 12px;
-  border: none;
-  color: #fbfef9;
-  cursor: pointer;
-  background: #191923;
-  display: grid;
-  place-items: center;
-  transition: transform 0.12s ease, background 0.18s ease;
+.record-actions-enter {
+  animation: record-controls-in 360ms cubic-bezier(0.21, 1, 0.31, 1) both;
 }
 
-.record-action-btn:hover {
-  transform: translateY(-1px);
-}
-
-.record-action-btn.resume {
-  background: #4281a4;
-}
-
-.record-action-btn.reset {
-  background: #000100;
-}
-
-.record-action-disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
+.record-action-btn,
 .record-primary-btn {
-  width: 100%;
-  height: 40px;
-  border-radius: 12px;
-  border: none;
+  height: 48px;
+  border-radius: 12px; /* Adjusted to fit the maps 12px input styling */
   color: #fbfef9;
   font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  border: none;
   cursor: pointer;
-  transition: transform 0.12s ease, background 0.18s ease;
+  transition: all 0.2s ease;
+  display: grid;
+  place-items: center;
 }
 
-.record-primary-btn:hover {
-  transform: translateY(-1px);
+.record-action-btn:active,
+.record-primary-btn:active {
+  transform: scale(0.96);
 }
 
+/* Secondary Buttons */
+.record-reset-btn {
+  background: rgba(66, 129, 164, 0.15);
+  border: 1px solid rgba(66, 129, 164, 0.4);
+}
+.record-reset-btn:hover {
+  background: rgba(66, 129, 164, 0.25);
+}
+
+.record-resume-btn {
+  background: linear-gradient(125deg, #4281a4 0%, #48a9a6 100%);
+}
+
+.record-save-btn {
+  /* Using the maps gradient */
+  background: linear-gradient(135deg, #4281a4 0%, #48a9a6 100%);
+  box-shadow: 0 4px 16px rgba(72, 169, 166, 0.3);
+}
+.record-save-btn:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 4px 20px rgba(72, 169, 166, 0.4);
+}
+
+/* Primary Big Buttons */
 .record-start-btn {
-  background: #22c55e;
+  background: linear-gradient(125deg, #2cb85f 0%, #22c55e 100%);
+  box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
+}
+.record-start-btn:hover {
+  filter: brightness(1.1);
 }
 
 .record-stop-btn {
-  background: #ef4444;
+  background: linear-gradient(125deg, #ef4444 0%, #dc2626 100%);
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+}
+.record-stop-btn:hover {
+  filter: brightness(1.1);
 }
 
 .record-bottomnav-wrap {
@@ -218,21 +323,24 @@
   z-index: 30;
 }
 
+/* -------------------------------------
+   MAP MARKERS
+   ------------------------------------- */
 .record-marker {
   width: 14px;
   height: 14px;
   border-radius: 50%;
   background: #48a9a6;
   border: 2px solid #fbfef9;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 @keyframes pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgba(72, 169, 166, 0.7);
+    box-shadow: 0 0 0 0 rgba(72, 169, 166, 0.6);
   }
-  50% {
-    box-shadow: 0 0 0 10px rgba(72, 169, 166, 0);
+  70% {
+    box-shadow: 0 0 0 12px rgba(72, 169, 166, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(72, 169, 166, 0);
@@ -243,13 +351,11 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #3b82f6;
-  border: 3px solid #60a5fa;
-  box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  background: #48a9a6; /* Matched to teal theme */
+  border: 3px solid #8de0dc;
   animation: pulse-ring 2s infinite;
   position: relative;
 }
-
 .current-location-marker::before {
   content: '';
   position: absolute;
@@ -260,4 +366,26 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
+}
+
+@keyframes record-controls-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes record-stats-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

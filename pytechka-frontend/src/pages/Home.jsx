@@ -19,9 +19,10 @@ export default function Home() {
       setLoading(false)
       return
     }
-    api.get('/user/profile')
-      .then(res => setDbUser(res.data))
-      .catch(err => console.error('Failed to fetch profile:', err))
+    api
+      .get('/user/profile')
+      .then((res) => setDbUser(res.data))
+      .catch((err) => console.error('Failed to fetch profile:', err))
       .finally(() => setLoading(false))
   }, [isSignedIn])
 
@@ -46,10 +47,53 @@ export default function Home() {
     return (
       <div className="account-page">
         <div className="account-login-prompt">
-          <h2>Welcome to Pytechka</h2>
-          <p>Please sign up or log in to continue.</p>
-          <Link to="/signup"><button className="account-btn">Sign Up</button></Link>
-          <Link to="/login"><button className="account-btn">Log In</button></Link>
+          <div className="account-guest-shell">
+            <span className="account-guest-badge">YOUR PERSONAL TRAIL HUB</span>
+            <h2>Welcome to Pytechka</h2>
+            <p>
+              Build your mountain routine with live recording, saved routes, and
+              a cleaner map experience.
+            </p>
+
+            <div className="account-guest-grid">
+              <div className="account-guest-card">
+                <span className="account-guest-icon">🧭</span>
+                <div>
+                  <h4>Explore Better</h4>
+                  <p>Find trails faster with map-focused discovery.</p>
+                </div>
+              </div>
+
+              <div className="account-guest-card">
+                <span className="account-guest-icon">📍</span>
+                <div>
+                  <h4>Record Every Step</h4>
+                  <p>Track your movement live with route visualization.</p>
+                </div>
+              </div>
+
+              <div className="account-guest-card">
+                <span className="account-guest-icon">📈</span>
+                <div>
+                  <h4>See Progress</h4>
+                  <p>Keep your account history in one place.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="account-guest-actions">
+              <Link to="/signup" className="account-guest-link">
+                <button className="account-btn account-btn-primary">
+                  Sign Up
+                </button>
+              </Link>
+              <Link to="/login" className="account-guest-link">
+                <button className="account-btn account-btn-secondary">
+                  Log In
+                </button>
+              </Link>
+            </div>
+          </div>
         </div>
         <BottomNav />
       </div>
@@ -122,15 +166,36 @@ export default function Home() {
         {/* Action buttons */}
         <div className="account-actions">
           <button className="account-btn-settings">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <circle cx="12" cy="12" r="3" />
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
             Settings
           </button>
 
-          <button className="account-btn-signout" onClick={() => setShowLogoutConfirm(true)}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            className="account-btn-signout"
+            onClick={() => setShowLogoutConfirm(true)}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
@@ -138,8 +203,20 @@ export default function Home() {
             Sign out
           </button>
 
-          <button className="account-btn-delete" onClick={() => setShowDeleteConfirm(true)}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <button
+            className="account-btn-delete"
+            onClick={() => setShowDeleteConfirm(true)}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
               <line x1="10" y1="11" x2="10" y2="17" />
@@ -152,12 +229,22 @@ export default function Home() {
 
       {/* Logout confirmation */}
       {showLogoutConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowLogoutConfirm(false)}>
+        <div
+          className="confirm-overlay"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
           <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <p>Are you sure you want to sign out?</p>
             <div className="confirm-buttons">
-              <button className="confirm-yes" onClick={handleLogout}>Yes, sign out</button>
-              <button className="confirm-no" onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
+              <button className="confirm-yes" onClick={handleLogout}>
+                Yes, sign out
+              </button>
+              <button
+                className="confirm-no"
+                onClick={() => setShowLogoutConfirm(false)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
@@ -165,12 +252,28 @@ export default function Home() {
 
       {/* Delete confirmation */}
       {showDeleteConfirm && (
-        <div className="confirm-overlay" onClick={() => setShowDeleteConfirm(false)}>
-          <div className="confirm-dialog confirm-dialog-danger" onClick={(e) => e.stopPropagation()}>
-            <p>Are you sure you want to delete your account? This action cannot be undone.</p>
+        <div
+          className="confirm-overlay"
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="confirm-dialog confirm-dialog-danger"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p>
+              Are you sure you want to delete your account? This action cannot
+              be undone.
+            </p>
             <div className="confirm-buttons">
-              <button className="confirm-danger" onClick={handleDeleteAccount}>Delete account</button>
-              <button className="confirm-no" onClick={() => setShowDeleteConfirm(false)}>Cancel</button>
+              <button className="confirm-danger" onClick={handleDeleteAccount}>
+                Delete account
+              </button>
+              <button
+                className="confirm-no"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

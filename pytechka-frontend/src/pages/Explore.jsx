@@ -17,6 +17,18 @@ import { fetchTrails } from '../api/trails'
 import { fetchEcoStats } from '../api/eco'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const MAPBOX_STYLE_URL = import.meta.env.VITE_MAPBOX_STYLE_URL
+const MAPBOX_TILESET_URL = import.meta.env.VITE_MAPBOX_TILESET_URL
+const MAPBOX_TILESET_TYPE = (
+  import.meta.env.VITE_MAPBOX_TILESET_TYPE || 'vector'
+).toLowerCase()
+const MAPBOX_TILESET_SOURCE_LAYER = import.meta.env
+  .VITE_MAPBOX_TILESET_SOURCE_LAYER
+const MAPBOX_TILESET_LINE_COLOR =
+  import.meta.env.VITE_MAPBOX_TILESET_LINE_COLOR || '#0ea5e9'
+const MAPBOX_TILESET_LINE_WIDTH = Number(
+  import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
+)
 
 const INITIAL_REGION_VIEW = {
   longitude: 25.4858,
@@ -65,6 +77,28 @@ function getTrailCenterPoint(trail) {
   }
 }
 
+function parseTrailGeojson(geojson) {
+  if (!geojson) return null
+
+  try {
+    const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson
+    if (!parsed || typeof parsed !== 'object' || !parsed.type) return null
+
+    if (
+      parsed.type === 'FeatureCollection' ||
+      parsed.type === 'Feature' ||
+      parsed.type === 'LineString' ||
+      parsed.type === 'MultiLineString'
+    ) {
+      return parsed
+    }
+
+    return null
+  } catch {
+    return null
+  }
+}
+
 export default function Explore() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeActivity, setActiveActivity] = useState(FILTER_DEFAULTS.activity)
@@ -81,6 +115,15 @@ export default function Explore() {
 
   const [loadingTrails, setLoadingTrails] = useState(false)
   const [errorTrails, setErrorTrails] = useState(null)
+
+  const resolvedMapStyle =
+    MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/outdoors-v12'
+  const hasVectorTileset =
+    Boolean(MAPBOX_TILESET_URL) &&
+    MAPBOX_TILESET_TYPE === 'vector' &&
+    Boolean(MAPBOX_TILESET_SOURCE_LAYER)
+  const hasRasterTileset =
+    Boolean(MAPBOX_TILESET_URL) && MAPBOX_TILESET_TYPE === 'raster'
 
   const filterOptions = useMemo(
     () =>
@@ -176,6 +219,16 @@ export default function Explore() {
       return booleanPointInPolygon(centerPoint, selectedAreaFeature)
     })
   }, [trails, selectedAreaFeature])
+
+  const visibleRenderableTrails = useMemo(() => {
+    return visibleTrails
+      .map((trail) => {
+        const geometry = parseTrailGeojson(trail.geojson)
+        if (!geometry) return null
+        return { trail, geometry }
+      })
+      .filter(Boolean)
+  }, [visibleTrails])
 
   const featuredTrail = visibleTrails[0] ?? null
   const ecoFocusTrails = useMemo(
@@ -368,7 +421,7 @@ export default function Explore() {
               <Map
                 {...regionMapView}
                 mapboxAccessToken={MAPBOX_TOKEN}
-                mapStyle="mapbox://styles/mapbox/outdoors-v12"
+                mapStyle={resolvedMapStyle}
                 style={{ width: '100%', height: 260 }}
                 onMove={(event) => setRegionMapView(event.viewState)}
                 onClick={(event) => {
@@ -377,6 +430,59 @@ export default function Explore() {
                 }}
                 attributionControl={false}
               >
+                {visibleRenderableTrails.map(({ trail, geometry }) => (
+                  <Source
+                    key={`explore-trail-source-${trail.id}`}
+                    id={`explore-trail-source-${trail.id}`}
+                    type="geojson"
+                    data={geometry}
+                  >
+                    <Layer
+                      id={`explore-trail-line-${trail.id}`}
+                      type="line"
+                      layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                      paint={{
+                        'line-color': '#48a9a6',
+                        'line-width': 3,
+                        'line-opacity': 0.9,
+                      }}
+                    />
+                  </Source>
+                ))}
+
+                {hasVectorTileset ? (
+                  <Source
+                    id="explore-custom-tileset-source"
+                    type="vector"
+                    url={MAPBOX_TILESET_URL}
+                  >
+                    <Layer
+                      id="explore-custom-tileset-layer"
+                      type="line"
+                      source="explore-custom-tileset-source"
+                      source-layer={MAPBOX_TILESET_SOURCE_LAYER}
+                      paint={{
+                        'line-color': MAPBOX_TILESET_LINE_COLOR,
+                        'line-width': MAPBOX_TILESET_LINE_WIDTH,
+                      }}
+                    />
+                  </Source>
+                ) : null}
+
+                {hasRasterTileset ? (
+                  <Source
+                    id="explore-custom-tileset-source"
+                    type="raster"
+                    url={MAPBOX_TILESET_URL}
+                  >
+                    <Layer
+                      id="explore-custom-tileset-raster-layer"
+                      type="raster"
+                      paint={{ 'raster-opacity': 0.9 }}
+                    />
+                  </Source>
+                ) : null}
+
                 {selectedAreaFeature ? (
                   <Source
                     id="explore-selected-area"

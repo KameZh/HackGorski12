@@ -16,9 +16,6 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
   const [description, setDescription] = useState('')
   const [equipment, setEquipment] = useState('')
   const [resources, setResources] = useState('')
-  const [startPoint, setStartPoint] = useState('')
-  const [endPoint, setEndPoint] = useState('')
-  const [highestPoint, setHighestPoint] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
@@ -28,11 +25,6 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
       setError('Trail name is required')
       return
     }
-    if (!startPoint.trim() || !endPoint.trim() || !highestPoint.trim()) {
-      setError('Starting point, end point and highest point are required')
-      return
-    }
-
     setSubmitting(true)
     setError('')
 
@@ -45,9 +37,6 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
         description: description.trim(),
         equipment: equipment.trim(),
         resources: resources.trim(),
-        startPoint: startPoint.trim(),
-        endPoint: endPoint.trim(),
-        highestPoint: highestPoint.trim(),
       })
       onSuccess?.(res.data)
     } catch (err) {
@@ -143,42 +132,6 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
               placeholder="Water sources, huts, shelters, phone signal..."
               rows={2}
               maxLength={1000}
-            />
-          </label>
-
-          <label className="rbf-field">
-            <span className="rbf-label">Starting Point *</span>
-            <input
-              className="rbf-input"
-              type="text"
-              value={startPoint}
-              onChange={(e) => setStartPoint(e.target.value)}
-              placeholder="e.g. Borovets parking lot"
-              maxLength={200}
-            />
-          </label>
-
-          <label className="rbf-field">
-            <span className="rbf-label">End Point *</span>
-            <input
-              className="rbf-input"
-              type="text"
-              value={endPoint}
-              onChange={(e) => setEndPoint(e.target.value)}
-              placeholder="e.g. Musala Peak summit"
-              maxLength={200}
-            />
-          </label>
-
-          <label className="rbf-field">
-            <span className="rbf-label">Highest Point *</span>
-            <input
-              className="rbf-input"
-              type="text"
-              value={highestPoint}
-              onChange={(e) => setHighestPoint(e.target.value)}
-              placeholder="e.g. Musala Peak 2925m"
-              maxLength={200}
             />
           </label>
 

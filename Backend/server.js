@@ -111,6 +111,26 @@ function deriveTrailStartEndCenter(geojson) {
   };
 }
 
+function deriveTrailPointLabels(geojson) {
+  const coords = extractCoordinatesFromGeojson(geojson);
+  if (!coords.length) return { startPoint: '', endPoint: '', highestPoint: '' };
+
+  const fmt = (c) => `${Math.abs(c[1]).toFixed(5)}°${c[1] >= 0 ? 'N' : 'S'}, ${Math.abs(c[0]).toFixed(5)}°${c[0] >= 0 ? 'E' : 'W'}`;
+  const startPoint = fmt(coords[0]);
+  const endPoint = fmt(coords[coords.length - 1]);
+
+  // Find highest elevation from 3rd element of coordinates (altitude)
+  let maxElev = null;
+  for (const c of coords) {
+    if (c.length >= 3 && Number.isFinite(c[2]) && (maxElev === null || c[2] > maxElev)) {
+      maxElev = c[2];
+    }
+  }
+  const highestPoint = maxElev !== null ? `${Math.round(maxElev)} m` : '';
+
+  return { startPoint, endPoint, highestPoint };
+}
+
 app.get("/api/user/profile", requireAuth(), checkUser, async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -137,9 +157,6 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       description,
       equipment,
       resources,
-      startPoint,
-      endPoint,
-      highestPoint,
     } = req.body;
     if (!geojson) return res.status(400).json({ error: "geojson is required" });
     if (!name) return res.status(400).json({ error: "name is required" });
@@ -166,9 +183,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       description: description || "",
       equipment: equipment || "",
       resources: resources || "",
-      startPoint: startPoint || "",
-      endPoint: endPoint || "",
-      highestPoint: highestPoint || "",
+      ...deriveTrailPointLabels(geojson),
       startCoordinates,
       endCoordinates,
       geojson,
@@ -509,9 +524,6 @@ app.put("/api/trails/:id", requireAuth(), async (req, res) => {
       "description",
       "equipment",
       "resources",
-      "startPoint",
-      "endPoint",
-      "highestPoint",
     ];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {

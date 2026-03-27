@@ -11,8 +11,6 @@ export default function TrailCard({ trail }) {
     elevation,
     duration,
     region,
-    ecoScore,
-    ecoWarnings,
     tags,
     authorAvatar,
     authorName,
@@ -27,12 +25,14 @@ export default function TrailCard({ trail }) {
 
   const trailId = id || _id
   const trailTags = tags || []
-  const trailEcoScore = ecoScore ?? 0
   const trailRating = rating ?? averageAccuracy ?? 0
   const trailRatingCount = ratingCount ?? 0
-  const trailDistance = distance ?? (stats?.distance ? (stats.distance / 1000).toFixed(1) : '0')
+  const trailDistance =
+    distance ?? (stats?.distance ? (stats.distance / 1000).toFixed(1) : '0')
   const trailElevation = elevation ?? stats?.elevationGain ?? 0
-  const trailDuration = duration ?? (stats?.duration ? `${Math.round(stats.duration / 60)} min` : '—')
+  const trailDuration =
+    duration ??
+    (stats?.duration ? `${Math.round(stats.duration / 60)} min` : '—')
   const trailDescription = shortDescription || description || ''
   const trailAuthorName = authorName || username || 'Unknown'
 
@@ -101,50 +101,30 @@ export default function TrailCard({ trail }) {
     <article id={`trail-card-${trailId}`} className="trail-card">
       {/* Image */}
       {image && (
-      <div
-        id={`trail-card-image-wrapper-${trailId}`}
-        className="trail-card-image-wrapper"
-      >
-        <img
-          id={`trail-card-image-${trailId}`}
-          src={image}
-          alt={name}
-          className="trail-card-image"
-        />
+        <div
+          id={`trail-card-image-wrapper-${trailId}`}
+          className="trail-card-image-wrapper"
+        >
+          <img
+            id={`trail-card-image-${trailId}`}
+            src={image}
+            alt={name}
+            className="trail-card-image"
+          />
 
-        {/* Activity type badge */}
-        {activityType && (
-        <div id={`trail-activity-badge-${trailId}`} className="trail-activity-badge">
-          <span className="trail-activity-icon">
-            {activityIconMap[activityType]}
-          </span>
-          <span className="trail-activity-label">{activityType}</span>
+          {/* Activity type badge */}
+          {activityType && (
+            <div
+              id={`trail-activity-badge-${trailId}`}
+              className="trail-activity-badge"
+            >
+              <span className="trail-activity-icon">
+                {activityIconMap[activityType]}
+              </span>
+              <span className="trail-activity-label">{activityType}</span>
+            </div>
+          )}
         </div>
-        )}
-
-        {/* Eco warning indicator */}
-        {ecoWarnings > 0 && (
-          <div id={`trail-eco-warning-${trailId}`} className="trail-eco-warning">
-            <span className="trail-eco-warning-icon">
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.5"
-              >
-                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                <line x1="12" y1="9" x2="12" y2="13" />
-                <line x1="12" y1="17" x2="12.01" y2="17" />
-              </svg>
-            </span>
-            <span className="trail-eco-warning-count">
-              {ecoWarnings} eco reports
-            </span>
-          </div>
-        )}
-      </div>
       )}
 
       {/* Content */}
@@ -233,81 +213,73 @@ export default function TrailCard({ trail }) {
           </div>
         </div>
 
-        {/* Eco score + tags */}
+        {/* Highest point placeholder + tags */}
         <div id={`trail-card-footer-${trailId}`} className="trail-card-footer">
-          {/* Eco score */}
-          <div id={`trail-eco-score-${trailId}`} className="trail-eco-score">
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12c0-2.76 1.12-5.26 2.93-7.07" />
-              <path d="M12 6v6l4 2" />
-              <path d="M2 2l4.5 4.5" />
-            </svg>
-            <span className="trail-eco-score-label">Eco</span>
-            <span className="trail-eco-score-value">{trailEcoScore}/10</span>
+          <div
+            id={`trail-highest-point-${trailId}`}
+            className="trail-highest-point"
+          >
+            <span className="trail-highest-point-label">Highest point</span>
+            <span
+              className="trail-highest-point-value"
+              aria-label="Highest point value pending backend"
+            />
           </div>
 
           {/* Tags */}
           {trailTags.length > 0 && (
-          <div id={`trail-tags-${trailId}`} className="trail-tags">
-            {trailTags.slice(0, 2).map((tag) => (
-              <span key={tag} className="trail-tag">
-                {tag}
-              </span>
-            ))}
-          </div>
+            <div id={`trail-tags-${trailId}`} className="trail-tags">
+              {trailTags.slice(0, 2).map((tag) => (
+                <span key={tag} className="trail-tag">
+                  {tag}
+                </span>
+              ))}
+            </div>
           )}
-
-          {/* Rating */}
-          <div id={`trail-rating-${trailId}`} className="trail-rating">
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="trail-rating-star"
-            >
-              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-            </svg>
-            <span className="trail-rating-value">{trailRating}</span>
-            <span className="trail-rating-count">({trailRatingCount})</span>
-          </div>
         </div>
 
         {/* Author + photos */}
         <div id={`trail-author-row-${trailId}`} className="trail-author-row">
           <div className="trail-author">
             {authorAvatar && (
-            <img
-              src={authorAvatar}
-              alt={trailAuthorName}
-              className="trail-author-avatar"
-            />
+              <img
+                src={authorAvatar}
+                alt={trailAuthorName}
+                className="trail-author-avatar"
+              />
             )}
             <span className="trail-author-name">{trailAuthorName}</span>
+
+            <div id={`trail-rating-${trailId}`} className="trail-author-rating">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="trail-rating-star"
+              >
+                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+              </svg>
+              <span className="trail-rating-value">{trailRating}</span>
+              <span className="trail-rating-count">({trailRatingCount})</span>
+            </div>
           </div>
           {photoCount > 0 && (
-          <div className="trail-photo-count">
-            <svg
-              width="13"
-              height="13"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-            <span>{photoCount} photos</span>
-          </div>
+            <div className="trail-photo-count">
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                <circle cx="8.5" cy="8.5" r="1.5" />
+                <polyline points="21 15 16 10 5 21" />
+              </svg>
+              <span>{photoCount} photos</span>
+            </div>
           )}
         </div>
       </div>

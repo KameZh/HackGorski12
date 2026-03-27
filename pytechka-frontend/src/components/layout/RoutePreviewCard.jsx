@@ -114,12 +114,6 @@ export default function RoutePreviewCard() {
   if (!selectedTrail) return null
 
   const trail = selectedTrail
-  const ecoColor =
-    trail.ecoScore >= 8
-      ? '#34d399'
-      : trail.ecoScore >= 5
-        ? '#facc15'
-        : '#f87171'
 
   return (
     <>
@@ -252,31 +246,6 @@ export default function RoutePreviewCard() {
                     {trail.duration}
                   </span>
                   <span style={{ color: '#64748b', fontSize: 11 }}>time</span>
-                </div>
-              )}
-              {trail.ecoScore != null && (
-                <div
-                  id="route-preview-eco"
-                  style={{ ...styles.statCol, marginLeft: 'auto' }}
-                >
-                  <span
-                    style={{ fontWeight: 700, fontSize: 13, color: ecoColor }}
-                  >
-                    {trail.ecoScore}/10
-                  </span>
-                  <span style={{ color: '#64748b', fontSize: 11 }}>eco</span>
-                </div>
-              )}
-              {trail.ecoWarnings != null && trail.ecoWarnings > 0 && (
-                <div id="route-preview-warnings" style={styles.statCol}>
-                  <span
-                    style={{ color: '#facc15', fontWeight: 600, fontSize: 13 }}
-                  >
-                    ⚠ {trail.ecoWarnings}
-                  </span>
-                  <span style={{ color: '#64748b', fontSize: 11 }}>
-                    warnings
-                  </span>
                 </div>
               )}
             </div>

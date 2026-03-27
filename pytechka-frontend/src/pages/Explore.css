@@ -481,6 +481,32 @@
   border-color: rgba(72, 169, 166, 0.44);
 }
 
+.explore-page .explore-card-shell .trail-card {
+  --color-ink: #eef7ff;
+  --ink-80: rgba(238, 247, 255, 0.86);
+  --ink-65: rgba(238, 247, 255, 0.68);
+  --ink-50: rgba(238, 247, 255, 0.5);
+  --ink-40: rgba(238, 247, 255, 0.38);
+  --surface-soft: rgba(14, 24, 38, 0.55);
+  --surface-weak: rgba(126, 176, 206, 0.18);
+  --surface-strong: rgba(126, 176, 206, 0.28);
+
+  background:
+    linear-gradient(165deg, rgba(21, 31, 47, 0.96), rgba(14, 21, 34, 0.96)),
+    radial-gradient(
+      120% 180% at 100% 0%,
+      rgba(72, 169, 166, 0.14),
+      transparent 58%
+    );
+  border: 1px solid rgba(89, 145, 183, 0.26);
+  box-shadow: 0 12px 24px rgba(0, 1, 0, 0.27);
+}
+
+.explore-page .explore-card-shell .trail-card:hover {
+  border-color: rgba(72, 169, 166, 0.42);
+  box-shadow: 0 16px 30px rgba(0, 1, 0, 0.32);
+}
+
 .explore-state-box {
   border-radius: 12px;
   border: 1px dashed rgba(66, 129, 164, 0.42);

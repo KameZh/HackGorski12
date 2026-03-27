@@ -99,6 +99,10 @@ function summarizeForecastEntry(entry) {
   return { weatherMain, temp, wind, rain }
 }
 
+function resolveTrailId(trail) {
+  return String(trail?.id || trail?._id || '').trim()
+}
+
 function scoreForecast({ weatherMain, temp, wind, rain }) {
   let score = 0
   score += Math.max(0, rain) * 2
@@ -115,8 +119,11 @@ function scoreForecast({ weatherMain, temp, wind, rain }) {
 async function chooseSuggestedWeekend({ latitude, longitude, weatherApiKey }) {
   const candidates = nextWeekendCandidates(4)
   const fallbackDate = candidates[0]
+  const lat = Number(latitude)
+  const lon = Number(longitude)
+  const normalizedApiKey = String(weatherApiKey || '').trim()
 
-  if (!weatherApiKey || !latitude || !longitude) {
+  if (!normalizedApiKey || !Number.isFinite(lat) || !Number.isFinite(lon)) {
     return {
       suggestedDateISO: fallbackDate.toISOString(),
       aiBadge: `${formatDateBadge(fallbackDate)} · AI weekend pick`,
@@ -126,10 +133,10 @@ async function chooseSuggestedWeekend({ latitude, longitude, weatherApiKey }) {
 
   try {
     const query = new URLSearchParams({
-      lat: String(latitude),
-      lon: String(longitude),
+      lat: String(lat),
+      lon: String(lon),
       units: 'metric',
-      appid: weatherApiKey,
+      appid: normalizedApiKey,
     })
 
     const response = await fetch(
@@ -247,10 +254,62 @@ export async function syncCleanupEventsFromTrails({
   )
 
   const created = []
+  const updated = []
+  const trailsByRouteId = new Map(
+    trails
+      .map((trail) => [resolveTrailId(trail), trail])
+      .filter(([routeId]) => Boolean(routeId))
+  )
+
+  const shouldRefreshWeather = String(weatherApiKey || '').trim().length > 0
+
+  if (shouldRefreshWeather) {
+    for (const event of existing) {
+      if (!event || !['scheduled', 'active'].includes(event.status)) continue
+
+      const weatherSummary = String(event.weatherSummary || '').toLowerCase()
+      const needsWeatherRefresh =
+        weatherSummary.includes('fallback') ||
+        weatherSummary.includes('missing') ||
+        weatherSummary.includes('unavailable')
+
+      if (!needsWeatherRefresh) continue
+
+      const sourceTrail = trailsByRouteId.get(String(event.routeId || ''))
+      if (!sourceTrail) continue
+
+      const centerCoordinates = Array.isArray(event.centerCoordinates)
+        ? event.centerCoordinates
+        : computeCenterCoordinates(sourceTrail.geojson)
+
+      const schedule = await chooseSuggestedWeekend({
+        latitude: centerCoordinates[1],
+        longitude: centerCoordinates[0],
+        weatherApiKey,
+      })
+
+      updated.push({
+        ...event,
+        suggestedDateISO: schedule.suggestedDateISO,
+        aiBadge: schedule.aiBadge,
+        weatherSummary: schedule.weatherSummary,
+        centerCoordinates,
+        updatedAt: new Date().toISOString(),
+      })
+    }
+  }
 
   for (const trail of trails) {
-    const routeId = String(trail.id)
-    const issueCount = Number(feedbackCounts[routeId] ?? trail.ecoWarnings ?? 0)
+    const routeId = resolveTrailId(trail)
+    if (!routeId) continue
+
+    const issueCount = Number(
+      feedbackCounts[routeId] ??
+        trail.issueReports ??
+        trail.issueCount ??
+        trail.reportsCount ??
+        0
+    )
 
     if (issueCount <= 3) continue
     if (routeIdsWithEvent.has(routeId)) continue
@@ -279,7 +338,7 @@ export async function syncCleanupEventsFromTrails({
       createdAt: nowIso,
       updatedAt: nowIso,
       trailSnapshot: {
-        id: trail.id,
+        id: routeId,
         name: trail.name,
         region: trail.region,
         difficulty: trail.difficulty,
@@ -295,11 +354,16 @@ export async function syncCleanupEventsFromTrails({
     routeIdsWithEvent.add(routeId)
   }
 
-  if (!created.length) {
+  if (!created.length && !updated.length) {
     return existing
   }
 
-  const next = sortEvents([...existing, ...created])
+  const updatedById = new Map(updated.map((event) => [event.id, event]))
+  const mergedExisting = existing.map(
+    (event) => updatedById.get(event.id) || event
+  )
+
+  const next = sortEvents([...mergedExisting, ...created])
   safeWriteJson(EVENTS_KEY, next)
   return next
 }

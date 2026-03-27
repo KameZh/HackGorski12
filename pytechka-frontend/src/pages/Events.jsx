@@ -26,7 +26,7 @@ const DEMO_TRAILS = [
     distance: '13.4',
     elevation: '760',
     duration: '4h 10m',
-    ecoWarnings: 5,
+    issueReports: 5,
     geojson: {
       type: 'FeatureCollection',
       features: [
@@ -56,7 +56,7 @@ const DEMO_TRAILS = [
     distance: '15.7',
     elevation: '1030',
     duration: '6h 20m',
-    ecoWarnings: 7,
+    issueReports: 7,
     geojson: {
       type: 'FeatureCollection',
       features: [

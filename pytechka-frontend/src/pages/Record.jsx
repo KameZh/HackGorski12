@@ -393,7 +393,7 @@ export default function Record() {
       if (!map) return
 
       const layerIds = renderableTrails
-        .map(({ trail }) => `record-trail-hit-${trail.id}`)
+        .map(({ trail }) => `record-trail-hit-${trail._id || trail.id}`)
         .filter((id) => map.getLayer(id))
 
       if (!layerIds.length) {
@@ -411,7 +411,7 @@ export default function Record() {
 
       const trailId = features[0].layer.id.replace('record-trail-hit-', '')
       const selected = trails.find(
-        (trail) => String(trail.id) === String(trailId)
+        (trail) => String(trail._id || trail.id) === String(trailId)
       )
       if (selected) {
         setSelectedTrail(selected)
@@ -556,15 +556,16 @@ export default function Record() {
         >
           {renderableTrails.map(({ trail, geometry }) => {
             const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
+            const tid = trail._id || trail.id
             return (
               <Source
-                key={trail.id}
-                id={`record-trail-source-${trail.id}`}
+                key={tid}
+                id={`record-trail-source-${tid}`}
                 type="geojson"
                 data={geometry}
               >
                 <Layer
-                  id={`record-trail-hit-${trail.id}`}
+                  id={`record-trail-hit-${tid}`}
                   type="line"
                   paint={{
                     'line-color': color,
@@ -573,7 +574,7 @@ export default function Record() {
                   }}
                 />
                 <Layer
-                  id={`record-trail-line-${trail.id}`}
+                  id={`record-trail-line-${tid}`}
                   type="line"
                   layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                   paint={{

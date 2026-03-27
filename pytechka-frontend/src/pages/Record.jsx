@@ -1282,6 +1282,15 @@ export default function Record() {
             </div>
           ) : (
             <div className="record-actions-row record-actions-enter">
+              
+              <button
+                onClick={saveTracking}
+                disabled={saving || points.length < 2}
+                className="record-action-btn record-save-btn"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+
               {isTracking ? (
                 <button
                   onClick={stopTracking}
@@ -1297,14 +1306,6 @@ export default function Record() {
                   Resume
                 </button>
               )}
-
-              <button
-                onClick={saveTracking}
-                disabled={saving || points.length < 2}
-                className="record-action-btn record-save-btn"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
 
               <button
                 onClick={resetActivity}

@@ -5,6 +5,7 @@ import cors from 'cors'
 import checkUser from './middleware.js'
 import { connectDB } from './connection.js'
 import Trail from './models/trail.js'
+import Ping from './models/ping.js'
 import User from './models/user.js'
 import { calculateStats, processRouteAI } from './services/aiAnalysis.js'
 
@@ -242,6 +243,69 @@ app.get('/api/trails/:id/reviews', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to fetch reviews' })
+  }
+})
+
+// =====================
+// PINGS (trail hazard markers)
+// =====================
+
+// POST /api/pings — create a ping (auth required)
+app.post('/api/pings', requireAuth(), checkUser, async (req, res) => {
+  try {
+    const { trailId, type, description, coordinates } = req.body
+    if (!trailId) return res.status(400).json({ error: 'trailId is required' })
+    if (!type) return res.status(400).json({ error: 'type is required' })
+    if (!coordinates || !Array.isArray(coordinates) || coordinates.length !== 2) {
+      return res.status(400).json({ error: 'coordinates must be [longitude, latitude]' })
+    }
+
+    const trail = await Trail.findById(trailId)
+    if (!trail) return res.status(404).json({ error: 'Trail not found' })
+
+    const { userId } = getAuth(req)
+    const ping = await Ping.create({
+      trailId,
+      userId,
+      username: req.dbUser?.username || 'Anonymous',
+      type,
+      description: description || '',
+      coordinates,
+    })
+
+    res.status(201).json(ping)
+  } catch (err) {
+    console.error('Ping create error:', err)
+    res.status(500).json({ error: 'Failed to create ping' })
+  }
+})
+
+// GET /api/pings — list all pings (public)
+app.get('/api/pings', async (req, res) => {
+  try {
+    const filter = {}
+    if (req.query.trailId) filter.trailId = req.query.trailId
+    const pings = await Ping.find(filter).sort({ createdAt: -1 })
+    res.json(pings)
+  } catch (err) {
+    console.error('Pings list error:', err)
+    res.status(500).json({ error: 'Failed to fetch pings' })
+  }
+})
+
+// DELETE /api/pings/:id — delete a ping (owner only)
+app.delete('/api/pings/:id', requireAuth(), async (req, res) => {
+  try {
+    const ping = await Ping.findById(req.params.id)
+    if (!ping) return res.status(404).json({ error: 'Ping not found' })
+    if (ping.userId !== getAuth(req).userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this ping' })
+    }
+    await Ping.findByIdAndDelete(req.params.id)
+    res.json({ success: true })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to delete ping' })
   }
 })
 

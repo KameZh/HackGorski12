@@ -5,10 +5,13 @@ import {
   booleanPointInPolygon,
   center as turfCenter,
   circle as turfCircle,
+  nearestPointOnLine,
+  point as turfPoint,
 } from '@turf/turf'
 
 import { useMapStore } from '../../store/mapStore'
 import { fetchMapTrails } from '../../api/maps'
+import { fetchPings, createPing } from '../../api/pings'
 import MapControls from './MapControls'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
 
@@ -123,6 +126,49 @@ const styles = {
   },
 }
 
+const PING_TYPES = {
+  junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
+  mud: { label: 'Mud', emoji: '💧', color: '#92400e' },
+  environmental_danger: { label: 'Environmental Danger', emoji: '🌳', color: '#dc2626' },
+}
+
+const pingMarkerStyle = {
+  width: 32,
+  height: 32,
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 18,
+  cursor: 'pointer',
+  border: '2px solid #fff',
+  boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+}
+
+const pingPopupStyle = {
+  position: 'absolute',
+  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 290px)',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: 'min(90vw, 340px)',
+  zIndex: 25,
+  border: '1px solid rgba(66, 129, 164, 0.5)',
+  borderRadius: 14,
+  background: 'rgba(17, 26, 40, 0.95)',
+  boxShadow: '0 12px 28px rgba(0,1,0,0.4)',
+  backdropFilter: 'blur(8px)',
+  padding: '14px 16px',
+  color: '#e2e8f0',
+}
+
+const pingBtnBase = {
+  padding: '8px 14px',
+  borderRadius: 10,
+  border: 'none',
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: 'pointer',
+}
+
 function parseTrailGeojson(geojson) {
   if (!geojson) return null
 
@@ -177,6 +223,15 @@ export default function MapView({ searchQuery = '' }) {
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
+
+  // Ping state
+  const [pings, setPings] = useState([])
+  const [pingMode, setPingMode] = useState(false)
+  const [pendingPing, setPendingPing] = useState(null) // { coordinates, trailId }
+  const [pingType, setPingType] = useState('junk')
+  const [pingDesc, setPingDesc] = useState('')
+  const [pingSubmitting, setPingSubmitting] = useState(false)
+  const [selectedPing, setSelectedPing] = useState(null)
 
   const defaultMapStyle = useMemo(
     () => `mapbox://styles/mapbox/${mapStyle}`,
@@ -266,6 +321,41 @@ export default function MapView({ searchQuery = '' }) {
     }
   }, [trailsVersion, searchQuery, setSelectedTrail])
 
+  // Load pings
+  useEffect(() => {
+    let active = true
+    fetchPings()
+      .then((res) => {
+        if (active) setPings(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (active) setPings([])
+      })
+    return () => { active = false }
+  }, [trailsVersion])
+
+  // Submit a pending ping
+  const handlePingSubmit = useCallback(async () => {
+    if (!pendingPing) return
+    setPingSubmitting(true)
+    try {
+      const res = await createPing({
+        trailId: pendingPing.trailId,
+        type: pingType,
+        description: pingDesc,
+        coordinates: pendingPing.coordinates,
+      })
+      setPings((prev) => [res.data, ...prev])
+      setPendingPing(null)
+      setPingDesc('')
+      setPingMode(false)
+    } catch (err) {
+      console.error('Ping submit error:', err)
+    } finally {
+      setPingSubmitting(false)
+    }
+  }, [pendingPing, pingType, pingDesc])
+
   // Apply/remove 3D terrain
   const applyTerrain = useCallback((map, enabled) => {
     if (enabled) {
@@ -351,12 +441,53 @@ export default function MapView({ searchQuery = '' }) {
     )
   }, [])
 
-  // Tap a trail line → show preview card
+  // Tap a trail line → show preview card OR place ping
   const handleMapClick = useCallback(
     (e) => {
       const map = mapRef.current?.getMap()
       if (!map) return
       const { lng, lat } = e.lngLat
+
+      if (pingMode) {
+        // In ping mode, only respond if user clicks near a trail
+        const layerIds = visibleRenderableTrails
+          .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
+          .filter((id) => map.getLayer(id))
+        if (!layerIds.length) return
+
+        const features = map.queryRenderedFeatures(e.point, { layers: layerIds })
+        if (!features.length) return
+
+        const trailId = features[0].layer.id.replace('trail-hit-', '')
+        const match = renderableTrails.find(
+          ({ trail }) => String(trail._id || trail.id) === String(trailId)
+        )
+        if (!match) return
+
+        // Snap to nearest point on the trail line
+        const clickPt = turfPoint([lng, lat])
+        let geom = match.geometry
+        if (geom.type === 'FeatureCollection') {
+          geom = geom.features?.[0]?.geometry || geom
+        } else if (geom.type === 'Feature') {
+          geom = geom.geometry
+        }
+
+        let snapped = [lng, lat]
+        try {
+          const nearest = nearestPointOnLine(geom, clickPt)
+          if (nearest?.geometry?.coordinates) {
+            snapped = nearest.geometry.coordinates
+          }
+        } catch {
+          // fall back to raw click
+        }
+
+        setPendingPing({ coordinates: snapped, trailId })
+        return
+      }
+
+      // Normal mode
       setSelectedAreaCenter([lng, lat])
 
       const layerIds = visibleRenderableTrails
@@ -375,7 +506,7 @@ export default function MapView({ searchQuery = '' }) {
       const trail = trails.find((t) => String(t._id || t.id) === String(trailId))
       if (trail) setSelectedTrail(trail)
     },
-    [visibleRenderableTrails, trails, setSelectedTrail]
+    [visibleRenderableTrails, renderableTrails, trails, setSelectedTrail, pingMode]
   )
 
   const handleResetView = useCallback(() => {
@@ -537,9 +668,228 @@ export default function MapView({ searchQuery = '' }) {
                 />
               </Marker>
             ) : null}
+
+            {/* Ping markers — only visible when zoomed in close (zoom >= 12) */}
+            {viewState.zoom >= 12 && pings.map((ping) => {
+              const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+              return (
+                <Marker
+                  key={ping._id}
+                  longitude={ping.coordinates[0]}
+                  latitude={ping.coordinates[1]}
+                  anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation()
+                    setSelectedPing(selectedPing?._id === ping._id ? null : ping)
+                  }}
+                >
+                  <div
+                    style={{
+                      ...pingMarkerStyle,
+                      background: cfg.color,
+                    }}
+                    title={`${cfg.label}: ${ping.description || 'No description'}`}
+                  >
+                    {cfg.emoji}
+                  </div>
+                </Marker>
+              )
+            })}
+
+            {/* Pending ping marker (preview before submit) */}
+            {pendingPing ? (
+              <Marker
+                longitude={pendingPing.coordinates[0]}
+                latitude={pendingPing.coordinates[1]}
+                anchor="center"
+              >
+                <div
+                  style={{
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    background: '#f43f5e',
+                    border: '3px solid #fff',
+                    boxShadow: '0 0 0 4px rgba(244,63,94,0.35)',
+                    animation: 'pulse 1.2s infinite',
+                  }}
+                />
+              </Marker>
+            ) : null}
           </>
         ) : null}
       </Map>
+
+      {/* Ping mode toggle button */}
+      <button
+        onClick={() => {
+          setPingMode((v) => !v)
+          setPendingPing(null)
+          setSelectedPing(null)
+        }}
+        style={{
+          position: 'absolute',
+          top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
+          right: 12,
+          zIndex: 20,
+          ...pingBtnBase,
+          background: pingMode
+            ? 'linear-gradient(135deg, #f43f5e, #dc2626)'
+            : 'linear-gradient(135deg, #48a9a6, #4281a4)',
+          color: '#fff',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+        }}
+      >
+        {pingMode ? '✕ Cancel Ping' : '📌 Add Ping'}
+      </button>
+
+      {/* Ping mode banner */}
+      {pingMode && !pendingPing && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 'calc(env(safe-area-inset-top, 0px) + 172px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 20,
+            padding: '8px 16px',
+            borderRadius: 12,
+            border: '1px solid rgba(244,63,94,0.5)',
+            background: 'rgba(18, 26, 40, 0.92)',
+            color: '#fda4af',
+            fontSize: 13,
+            fontWeight: 700,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.25)',
+          }}
+        >
+          Tap on a trail to place a ping
+        </div>
+      )}
+
+      {/* Ping creation form */}
+      {pendingPing && (
+        <div style={pingPopupStyle}>
+          <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
+            New Ping
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            {Object.entries(PING_TYPES).map(([key, cfg]) => (
+              <button
+                key={key}
+                onClick={() => setPingType(key)}
+                style={{
+                  flex: 1,
+                  padding: '8px 4px',
+                  borderRadius: 10,
+                  border: pingType === key
+                    ? `2px solid ${cfg.color}`
+                    : '2px solid rgba(148,163,184,0.2)',
+                  background: pingType === key
+                    ? `${cfg.color}22`
+                    : 'rgba(15,23,35,0.6)',
+                  color: '#e2e8f0',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  textAlign: 'center',
+                  lineHeight: 1.3,
+                }}
+              >
+                <span style={{ fontSize: 20, display: 'block' }}>{cfg.emoji}</span>
+                {cfg.label}
+              </button>
+            ))}
+          </div>
+
+          <input
+            type="text"
+            placeholder="Brief description (optional)"
+            value={pingDesc}
+            onChange={(e) => setPingDesc(e.target.value)}
+            maxLength={200}
+            style={{
+              width: '100%',
+              padding: '9px 11px',
+              borderRadius: 10,
+              border: '1px solid rgba(66,129,164,0.34)',
+              background: 'rgba(15,23,35,0.88)',
+              color: '#fbfef9',
+              fontSize: 13,
+              outline: 'none',
+              marginBottom: 10,
+              boxSizing: 'border-box',
+            }}
+          />
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={() => {
+                setPendingPing(null)
+                setPingDesc('')
+              }}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(148,163,184,0.15)',
+                color: '#94a3b8',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handlePingSubmit}
+              disabled={pingSubmitting}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'linear-gradient(135deg, #48a9a6, #4281a4)',
+                color: '#fff',
+                opacity: pingSubmitting ? 0.6 : 1,
+              }}
+            >
+              {pingSubmitting ? 'Saving...' : 'Place Ping'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Selected ping detail popup */}
+      {selectedPing && !pendingPing && (
+        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontSize: 22 }}>
+              {PING_TYPES[selectedPing.type]?.emoji || '📌'}
+            </span>
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {PING_TYPES[selectedPing.type]?.label || selectedPing.type}
+            </span>
+          </div>
+          {selectedPing.description ? (
+            <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
+              {selectedPing.description}
+            </div>
+          ) : null}
+          <div style={{ fontSize: 11, color: '#64748b' }}>
+            By {selectedPing.username || 'Anonymous'} &middot;{' '}
+            {new Date(selectedPing.createdAt).toLocaleDateString()}
+          </div>
+          <button
+            onClick={() => setSelectedPing(null)}
+            style={{
+              ...pingBtnBase,
+              marginTop: 8,
+              background: 'rgba(148,163,184,0.15)',
+              color: '#94a3b8',
+              width: '100%',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
 
       {/* Info overlay intentionally removed per request */}
 

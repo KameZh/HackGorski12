@@ -30,6 +30,14 @@ function pickTier(category, value = 0) {
   return found || null
 }
 
+function getNextGoal(category, value = 0) {
+  const tiers = (BADGE_TIERS[category] || [])
+    .map((tier) => Number(tier.min) || 0)
+    .sort((a, b) => a - b)
+
+  return tiers.find((goal) => value < goal) ?? null
+}
+
 export default function Home() {
   const { isSignedIn } = useAuth()
   const { user } = useUser()
@@ -76,9 +84,6 @@ export default function Home() {
       description: trail.description || '',
       equipment: trail.equipment || '',
       resources: trail.resources || '',
-      startPoint: trail.startPoint || '',
-      endPoint: trail.endPoint || '',
-      highestPoint: trail.highestPoint || '',
     })
   }
 
@@ -136,7 +141,8 @@ export default function Home() {
           <div className="account-guest-shell">
             <h2 className="explore-title">Welcome to Pytechka</h2>
             <p>
-              Create an account to start your adventure or log into an existing one
+              Create an account to start your adventure or log into an existing
+              one
             </p>
             <div className="account-guest-actions">
               <Link to="/signup" className="account-guest-link">
@@ -159,12 +165,23 @@ export default function Home() {
 
   const displayName = dbUser?.username || '—'
   const email = dbUser?.email || ''
-  const avatarUrl = dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
-  const avatarInitial = (dbUser?.username || user?.firstName || user?.username || '?')[0]?.toUpperCase?.() || '?'
+  const avatarUrl =
+    dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
+  const avatarInitial =
+    (dbUser?.username ||
+      user?.firstName ||
+      user?.username ||
+      '?')[0]?.toUpperCase?.() || '?'
 
   // Aggregate stats from user's trails
-  const totalDistance = myTrails.reduce((sum, t) => sum + (t.stats?.distance || 0), 0)
-  const totalDuration = myTrails.reduce((sum, t) => sum + (t.stats?.duration || 0), 0)
+  const totalDistance = myTrails.reduce(
+    (sum, t) => sum + (t.stats?.distance || 0),
+    0
+  )
+  const totalDuration = myTrails.reduce(
+    (sum, t) => sum + (t.stats?.duration || 0),
+    0
+  )
   const totalSteps = Math.round(totalDistance / 0.762) // avg stride ~0.762m
 
   const formatDistance = (m) => {
@@ -186,18 +203,21 @@ export default function Home() {
       title: 'Trailers',
       progress: badgeProgress?.trailCompletions || 0,
       tier: pickTier('trailers', badgeProgress?.trailCompletions || 0),
+      nextGoal: getNextGoal('trailers', badgeProgress?.trailCompletions || 0),
     },
     {
       key: 'contribution',
       title: 'Contribution',
       progress: badgeProgress?.createdTrails || 0,
       tier: pickTier('contribution', badgeProgress?.createdTrails || 0),
+      nextGoal: getNextGoal('contribution', badgeProgress?.createdTrails || 0),
     },
     {
       key: 'campaign',
       title: 'Campaign',
       progress: badgeProgress?.campaignPoints || 0,
       tier: pickTier('campaign', badgeProgress?.campaignPoints || 0),
+      nextGoal: getNextGoal('campaign', badgeProgress?.campaignPoints || 0),
     },
   ]
 
@@ -216,21 +236,77 @@ export default function Home() {
           <div className="account-info">
             <h2 className="account-name">{displayName}</h2>
             <p className="account-email">{email}</p>
+          </div>
+        </div>
 
-            <div className="badge-inline-row">
+        <div className="account-section account-badges-section">
+          <h3 className="account-section-title">Badges</h3>
+          <div className="account-badges-box">
+            <div className="badge-grid">
               {badgeCards.map((card) => (
-                <div key={card.key} className="badge-inline-pill">
-                  <span className="badge-inline-title">{card.title}</span>
-                  {card.tier ? (
-                    <span
-                      className="badge-inline-tier"
-                      style={{ color: card.tier.color }}
-                    >
-                      {card.tier.name}
-                    </span>
-                  ) : (
-                    <span className="badge-inline-tier badge-pill-empty">Earn it</span>
-                  )}
+                <div key={card.key} className="badge-card">
+                  {(() => {
+                    const isOverMaxGoal = card.progress >= 20
+                    const progressTarget = card.nextGoal || 20
+                    const progressPercent = Math.max(
+                      0,
+                      Math.min(100, (card.progress / progressTarget) * 100)
+                    )
+
+                    return (
+                      <>
+                        <div className="badge-card-top">
+                          <span className="badge-title">{card.title}</span>
+                          {card.tier ? (
+                            <span
+                              className="badge-pill"
+                              style={{ color: card.tier.color }}
+                            >
+                              {card.tier.name}
+                            </span>
+                          ) : (
+                            <span className="badge-pill badge-pill-empty">
+                              Earn it
+                            </span>
+                          )}
+                        </div>
+                        <div className="badge-progress">
+                          <div className="badge-progress-head">
+                            <span className="badge-count">{card.progress}</span>
+                            <span className="badge-hint">
+                              {card.nextGoal
+                                ? `${Math.max(0, card.nextGoal - card.progress)} to next goal`
+                                : 'Top goal reached'}
+                            </span>
+                          </div>
+
+                          {!isOverMaxGoal ? (
+                            <>
+                              <div
+                                className="badge-progress-track"
+                                role="progressbar"
+                                aria-valuemin={0}
+                                aria-valuemax={progressTarget}
+                                aria-valuenow={Math.min(
+                                  card.progress,
+                                  progressTarget
+                                )}
+                                aria-label={`${card.title} progress`}
+                              >
+                                <span
+                                  className="badge-progress-fill"
+                                  style={{ width: `${progressPercent}%` }}
+                                />
+                              </div>
+                              <div className="badge-progress-target">
+                                Goal: {progressTarget}
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      </>
+                    )
+                  })()}
                 </div>
               ))}
             </div>
@@ -239,7 +315,7 @@ export default function Home() {
 
         {/* Today stats placeholder */}
         <div className="account-section">
-          <h3 className="account-section-title">Recent activity</h3>
+          <h3 className="account-section-title">Overall Activity</h3>
           <div className="account-stats-row">
             <div className="account-stat">
               <span className="stat-icon stat-steps">Steps</span>
@@ -251,11 +327,138 @@ export default function Home() {
             </div>
             <div className="account-stat">
               <span className="stat-icon stat-dist">Distance</span>
-              <span className="stat-value">{formatDistance(totalDistance)}</span>
+              <span className="stat-value">
+                {formatDistance(totalDistance)}
+              </span>
             </div>
           </div>
         </div>
 
+        {/* My Trails */}
+        {myTrails.length > 0 && (
+          <div className="account-section" style={{ marginTop: '1rem' }}>
+            <h3 className="account-section-title">My Trails</h3>
+            <div className="my-trails-list">
+              {myTrails.map((trail) => (
+                <div key={trail._id} className="my-trail-item">
+                  {editingTrail === trail._id ? (
+                    <div className="my-trail-edit-form">
+                      <label className="rbf-label">Name</label>
+                      <input
+                        className="rbf-input"
+                        value={editForm.name}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, name: e.target.value })
+                        }
+                        placeholder="Trail name"
+                      />
+                      <label className="rbf-label">Region</label>
+                      <input
+                        className="rbf-input"
+                        value={editForm.region}
+                        onChange={(e) =>
+                          setEditForm({ ...editForm, region: e.target.value })
+                        }
+                        placeholder="Region"
+                      />
+                      <label className="rbf-label">Difficulty</label>
+                      <select
+                        className="rbf-input"
+                        value={editForm.difficulty}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            difficulty: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="easy">Easy</option>
+                        <option value="moderate">Moderate</option>
+                        <option value="hard">Hard</option>
+                        <option value="extreme">Extreme</option>
+                      </select>
+                      <label className="rbf-label">Description</label>
+                      <textarea
+                        className="rbf-input"
+                        value={editForm.description}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            description: e.target.value,
+                          })
+                        }
+                        placeholder="Description"
+                        rows={2}
+                      />
+                      <label className="rbf-label">Equipment</label>
+                      <input
+                        className="rbf-input"
+                        value={editForm.equipment}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            equipment: e.target.value,
+                          })
+                        }
+                        placeholder="Equipment"
+                      />
+                      <label className="rbf-label">Resources</label>
+                      <input
+                        className="rbf-input"
+                        value={editForm.resources}
+                        onChange={(e) =>
+                          setEditForm({
+                            ...editForm,
+                            resources: e.target.value,
+                          })
+                        }
+                        placeholder="Resources"
+                      />
+                      <div className="my-trail-edit-actions">
+                        <button
+                          className="my-trail-save-btn"
+                          onClick={handleEditSave}
+                          disabled={editSaving}
+                        >
+                          {editSaving ? 'Saving...' : 'Save'}
+                        </button>
+                        <button
+                          className="my-trail-cancel-btn"
+                          onClick={() => setEditingTrail(null)}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="my-trail-info">
+                        <span className="my-trail-name">{trail.name}</span>
+                        <span className="my-trail-meta">
+                          {trail.difficulty} · {trail.region || 'No region'}
+                        </span>
+                      </div>
+                      <div className="my-trail-actions">
+                        <button
+                          className="my-trail-edit-btn"
+                          onClick={() => handleEditOpen(trail)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="my-trail-delete-btn"
+                          onClick={() => handleDeleteTrail(trail._id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Action buttons */}
         <div className="account-actions">
@@ -319,116 +522,6 @@ export default function Home() {
             Delete account
           </button>
         </div>
-
-        {/* My Trails */}
-        {myTrails.length > 0 && (
-          <div className="account-section" style={{ marginTop: '1rem' }}>
-            <h3 className="account-section-title">My Trails</h3>
-            <div className="my-trails-list">
-              {myTrails.map((trail) => (
-                <div key={trail._id} className="my-trail-item">
-                  {editingTrail === trail._id ? (
-                    <div className="my-trail-edit-form">
-                      <label className="rbf-label">Name</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.name}
-                        onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                        placeholder="Trail name"
-                      />
-                      <label className="rbf-label">Region</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.region}
-                        onChange={(e) => setEditForm({ ...editForm, region: e.target.value })}
-                        placeholder="Region"
-                      />
-                      <label className="rbf-label">Difficulty</label>
-                      <select
-                        className="rbf-input"
-                        value={editForm.difficulty}
-                        onChange={(e) => setEditForm({ ...editForm, difficulty: e.target.value })}
-                      >
-                        <option value="easy">Easy</option>
-                        <option value="moderate">Moderate</option>
-                        <option value="hard">Hard</option>
-                        <option value="extreme">Extreme</option>
-                      </select>
-                      <label className="rbf-label">Description</label>
-                      <textarea
-                        className="rbf-input"
-                        value={editForm.description}
-                        onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
-                        placeholder="Description"
-                        rows={2}
-                      />
-                      <label className="rbf-label">Equipment</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.equipment}
-                        onChange={(e) => setEditForm({ ...editForm, equipment: e.target.value })}
-                        placeholder="Equipment"
-                      />
-                      <label className="rbf-label">Resources</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.resources}
-                        onChange={(e) => setEditForm({ ...editForm, resources: e.target.value })}
-                        placeholder="Resources"
-                      />
-                      <label className="rbf-label">Starting point</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.startPoint}
-                        onChange={(e) => setEditForm({ ...editForm, startPoint: e.target.value })}
-                        placeholder="Starting point"
-                      />
-                      <label className="rbf-label">End point</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.endPoint}
-                        onChange={(e) => setEditForm({ ...editForm, endPoint: e.target.value })}
-                        placeholder="End point"
-                      />
-                      <label className="rbf-label">Highest point</label>
-                      <input
-                        className="rbf-input"
-                        value={editForm.highestPoint}
-                        onChange={(e) => setEditForm({ ...editForm, highestPoint: e.target.value })}
-                        placeholder="Highest point"
-                      />
-                      <div className="my-trail-edit-actions">
-                        <button className="my-trail-save-btn" onClick={handleEditSave} disabled={editSaving}>
-                          {editSaving ? 'Saving...' : 'Save'}
-                        </button>
-                        <button className="my-trail-cancel-btn" onClick={() => setEditingTrail(null)}>
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="my-trail-info">
-                        <span className="my-trail-name">{trail.name}</span>
-                        <span className="my-trail-meta">
-                          {trail.difficulty} · {trail.region || 'No region'}
-                        </span>
-                      </div>
-                      <div className="my-trail-actions">
-                        <button className="my-trail-edit-btn" onClick={() => handleEditOpen(trail)}>
-                          Edit
-                        </button>
-                        <button className="my-trail-delete-btn" onClick={() => handleDeleteTrail(trail._id)}>
-                          Delete
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Logout confirmation */}

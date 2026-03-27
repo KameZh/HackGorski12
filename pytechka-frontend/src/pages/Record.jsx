@@ -438,6 +438,31 @@ export default function Record() {
     setCurrentSpeedKmh(0)
   }, [clearWatch])
 
+  const resetActivity = useCallback(() => {
+    clearWatch()
+    setIsTracking(false)
+    setPoints([])
+    setElapsedSeconds(0)
+    setDistance(0)
+    setElevationGain(0)
+    setCurrentSpeedKmh(0)
+    setGeoError('')
+    setPingMode(false)
+    setPingDesc('')
+    setSelectedPing(null)
+    setLoadedTrailActivity(null)
+    setSelectedTrail(null)
+    setShowPublishForm(false)
+    setSavedRoute(null)
+    setAiStatus(null)
+    setAiResult(null)
+    setShowFinishModal(false)
+    setFinishRating(0)
+    setFinishComment('')
+    setFinishError('')
+    setFinishSuccess('')
+  }, [clearWatch, setSelectedTrail])
+
   const recordedGeoJSON = useMemo(() => {
     if (points.length < 2) return null
     return {
@@ -932,7 +957,9 @@ export default function Record() {
           }}
           style={{
             position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
+            top: showControls
+              ? 'calc(env(safe-area-inset-top, 0px) + 214px)'
+              : 'calc(env(safe-area-inset-top, 0px) + 150px)',
             right: 12,
             zIndex: 20,
             ...pingBtnBase,
@@ -1277,6 +1304,13 @@ export default function Record() {
                 className="record-action-btn record-save-btn"
               >
                 {saving ? 'Saving...' : 'Save'}
+              </button>
+
+              <button
+                onClick={resetActivity}
+                className="record-action-btn record-reset-btn"
+              >
+                Reset
               </button>
             </div>
           )}

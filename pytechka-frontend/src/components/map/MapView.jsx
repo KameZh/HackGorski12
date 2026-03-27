@@ -87,7 +87,7 @@ const styles = {
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
-    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 132px)',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 164px)',
     width: 'min(92vw, 420px)',
     zIndex: 17,
     border: '1px solid rgba(66, 129, 164, 0.42)',

@@ -175,10 +175,7 @@ export default function MapView({ searchQuery = '' }) {
   const [styleFailed, setStyleFailed] = useState(false)
   const [mapReady, setMapReady] = useState(false)
   const [viewState, setViewState] = useState(INITIAL_VIEW)
-  const [selectedAreaCenter, setSelectedAreaCenter] = useState([
-    INITIAL_VIEW.longitude,
-    INITIAL_VIEW.latitude,
-  ])
+  const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
 
   const defaultMapStyle = useMemo(
@@ -363,7 +360,7 @@ export default function MapView({ searchQuery = '' }) {
       setSelectedAreaCenter([lng, lat])
 
       const layerIds = visibleRenderableTrails
-        .map(({ trail }) => `trail-hit-${trail.id}`)
+        .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
         .filter((id) => map.getLayer(id))
       if (!layerIds.length) {
         setSelectedTrail(null)
@@ -375,7 +372,7 @@ export default function MapView({ searchQuery = '' }) {
         return
       }
       const trailId = features[0].layer.id.replace('trail-hit-', '')
-      const trail = trails.find((t) => String(t.id) === String(trailId))
+      const trail = trails.find((t) => String(t._id || t.id) === String(trailId))
       if (trail) setSelectedTrail(trail)
     },
     [visibleRenderableTrails, trails, setSelectedTrail]
@@ -384,7 +381,7 @@ export default function MapView({ searchQuery = '' }) {
   const handleResetView = useCallback(() => {
     const map = mapRef.current?.getMap()
     setViewState(INITIAL_VIEW)
-    setSelectedAreaCenter([INITIAL_VIEW.longitude, INITIAL_VIEW.latitude])
+    setSelectedAreaCenter(null)
     setSelectedAreaRadiusKm(8)
     setSelectedTrail(null)
     setGeoError('')
@@ -431,15 +428,16 @@ export default function MapView({ searchQuery = '' }) {
           <>
             {visibleRenderableTrails.map(({ trail, geometry }) => {
               const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
+              const tid = trail._id || trail.id
               return (
                 <Source
-                  key={trail.id}
-                  id={`trail-source-${trail.id}`}
+                  key={tid}
+                  id={`trail-source-${tid}`}
                   type="geojson"
                   data={geometry}
                 >
                   <Layer
-                    id={`trail-hit-${trail.id}`}
+                    id={`trail-hit-${tid}`}
                     type="line"
                     paint={{
                       'line-color': color,
@@ -448,7 +446,7 @@ export default function MapView({ searchQuery = '' }) {
                     }}
                   />
                   <Layer
-                    id={`trail-line-${trail.id}`}
+                    id={`trail-line-${tid}`}
                     type="line"
                     layout={{ 'line-cap': 'round', 'line-join': 'round' }}
                     paint={{

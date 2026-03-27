@@ -113,22 +113,88 @@ function deriveTrailStartEndCenter(geojson) {
 
 function deriveTrailPointLabels(geojson) {
   const coords = extractCoordinatesFromGeojson(geojson);
-  if (!coords.length) return { startPoint: '', endPoint: '', highestPoint: '' };
+  if (!coords.length) return { startPoint: "", endPoint: "", highestPoint: "" };
 
-  const fmt = (c) => `${Math.abs(c[1]).toFixed(5)}°${c[1] >= 0 ? 'N' : 'S'}, ${Math.abs(c[0]).toFixed(5)}°${c[0] >= 0 ? 'E' : 'W'}`;
+  const fmt = (c) =>
+    `${Math.abs(c[1]).toFixed(5)}°${c[1] >= 0 ? "N" : "S"}, ${Math.abs(c[0]).toFixed(5)}°${c[0] >= 0 ? "E" : "W"}`;
   const startPoint = fmt(coords[0]);
   const endPoint = fmt(coords[coords.length - 1]);
 
   // Find highest elevation from 3rd element of coordinates (altitude)
   let maxElev = null;
   for (const c of coords) {
-    if (c.length >= 3 && Number.isFinite(c[2]) && (maxElev === null || c[2] > maxElev)) {
+    if (
+      c.length >= 3 &&
+      Number.isFinite(c[2]) &&
+      (maxElev === null || c[2] > maxElev)
+    ) {
       maxElev = c[2];
     }
   }
-  const highestPoint = maxElev !== null ? `${Math.round(maxElev)} m` : '';
+  const highestPoint = maxElev !== null ? `${Math.round(maxElev)} m` : "";
 
   return { startPoint, endPoint, highestPoint };
+}
+
+async function attachClusterVoterProfiles(clusterPayload) {
+  const clusters = Array.isArray(clusterPayload)
+    ? clusterPayload.filter(Boolean)
+    : clusterPayload
+      ? [clusterPayload]
+      : [];
+
+  if (!clusters.length) {
+    return Array.isArray(clusterPayload) ? [] : null;
+  }
+
+  const voterIds = [
+    ...new Set(
+      clusters
+        .flatMap((cluster) =>
+          Array.isArray(cluster.goneVotes) ? cluster.goneVotes : [],
+        )
+        .filter(Boolean)
+        .map(String),
+    ),
+  ];
+
+  let usersByClerkId = new Map();
+  if (voterIds.length) {
+    const users = await User.find({ clerkId: { $in: voterIds } })
+      .select("clerkId username email")
+      .lean();
+
+    usersByClerkId = new Map(
+      users.map((entry) => [String(entry.clerkId), entry]),
+    );
+  }
+
+  const enriched = clusters.map((cluster) => {
+    const goneVotes = Array.isArray(cluster.goneVotes)
+      ? cluster.goneVotes.map(String)
+      : [];
+
+    const voterProfiles = goneVotes.map((userId) => {
+      const profile = usersByClerkId.get(String(userId));
+      const emailPrefix = profile?.email
+        ? String(profile.email).split("@")[0]
+        : "";
+      return {
+        userId,
+        name:
+          profile?.username ||
+          emailPrefix ||
+          `User ${String(userId).slice(0, 6)}`,
+      };
+    });
+
+    return {
+      ...cluster,
+      voterProfiles,
+    };
+  });
+
+  return Array.isArray(clusterPayload) ? enriched : enriched[0] || null;
 }
 
 app.get("/api/user/profile", requireAuth(), checkUser, async (req, res) => {
@@ -812,10 +878,14 @@ app.delete("/api/pings/:id", requireAuth(), async (req, res) => {
 // GET /api/clusters — list all active clusters/events (public)
 app.get("/api/clusters", async (req, res) => {
   try {
-    const clusters = await TrashCluster.find({ resolved: { $ne: true } }).sort({
-      createdAt: -1,
-    });
-    res.json(clusters);
+    const clusters = await TrashCluster.find({ resolved: { $ne: true } })
+      .sort({
+        createdAt: -1,
+      })
+      .lean();
+
+    const withVoters = await attachClusterVoterProfiles(clusters);
+    res.json(withVoters);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch clusters" });
@@ -824,35 +894,43 @@ app.get("/api/clusters", async (req, res) => {
 
 // POST /api/clusters/:id/vote — vote "gone" on a cluster/event (auth required)
 // Clutter needs 3 votes, Event needs 5 votes
-app.post("/api/clusters/:id/vote", requireAuth(), async (req, res) => {
-  try {
-    const cluster = await TrashCluster.findById(req.params.id);
-    if (!cluster) return res.status(404).json({ error: "Cluster not found" });
-    if (cluster.resolved)
-      return res.status(400).json({ error: "Already resolved" });
+app.post(
+  "/api/clusters/:id/vote",
+  requireAuth(),
+  checkUser,
+  async (req, res) => {
+    try {
+      const cluster = await TrashCluster.findById(req.params.id);
+      if (!cluster) return res.status(404).json({ error: "Cluster not found" });
+      if (cluster.resolved)
+        return res.status(400).json({ error: "Already resolved" });
 
-    const { userId } = getAuth(req);
-    if (cluster.goneVotes.includes(userId)) {
-      return res.status(400).json({ error: "You already voted" });
-    }
+      const { userId } = getAuth(req);
+      if (cluster.goneVotes.includes(userId)) {
+        return res.status(400).json({ error: "You already voted" });
+      }
 
-    cluster.goneVotes.push(userId);
-    const needed = cluster.level === "event" ? 5 : 3;
-    if (cluster.goneVotes.length >= needed) {
-      cluster.resolved = true;
-      // Also resolve all member pings
-      await Ping.updateMany(
-        { _id: { $in: cluster.pingIds } },
-        { $set: { resolved: true } },
-      );
+      cluster.goneVotes.push(userId);
+      const needed = cluster.level === "event" ? 5 : 3;
+      if (cluster.goneVotes.length >= needed) {
+        cluster.resolved = true;
+        // Also resolve all member pings
+        await Ping.updateMany(
+          { _id: { $in: cluster.pingIds } },
+          { $set: { resolved: true } },
+        );
+      }
+      await cluster.save();
+
+      const freshCluster = await TrashCluster.findById(cluster._id).lean();
+      const withVoters = await attachClusterVoterProfiles(freshCluster);
+      res.json(withVoters);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: "Failed to vote on cluster" });
     }
-    await cluster.save();
-    res.json(cluster);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to vote on cluster" });
-  }
-});
+  },
+);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);

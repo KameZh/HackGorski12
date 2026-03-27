@@ -140,6 +140,23 @@
   gap: 12px;
 }
 
+.events-cluster-title {
+  grid-column: 1 / -1;
+  margin: 0 0 4px;
+  font-size: 1rem;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+}
+
+.events-cluster-title-event {
+  color: #ef4444;
+}
+
+.events-cluster-title-clutter {
+  color: #f59e0b;
+  margin-top: 12px;
+}
+
 .events-card {
   border: 1px solid rgba(66, 129, 164, 0.34);
   border-radius: 16px;
@@ -148,6 +165,18 @@
     linear-gradient(180deg, rgba(19, 28, 43, 0.9), rgba(25, 25, 35, 0.88)),
     linear-gradient(135deg, rgba(66, 129, 164, 0.18), rgba(72, 169, 166, 0.16));
   box-shadow: 0 14px 28px rgba(0, 1, 0, 0.26);
+}
+
+.events-cluster-card {
+  border-left-width: 3px;
+}
+
+.events-cluster-card-event {
+  border-left-color: #ef4444;
+}
+
+.events-cluster-card-clutter {
+  border-left-color: #f59e0b;
 }
 
 .events-card-head {
@@ -181,6 +210,18 @@
   line-height: 1.3;
   padding: 6px 9px;
   text-align: center;
+}
+
+.events-date-badge-event {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.5);
+  color: #ef4444;
+}
+
+.events-date-badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #f59e0b;
 }
 
 .events-purpose {
@@ -221,6 +262,10 @@
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+}
+
+.events-card-actions-single {
+  grid-template-columns: 1fr;
 }
 
 .events-primary-btn,

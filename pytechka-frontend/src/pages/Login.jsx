@@ -26,8 +26,10 @@ export default function Login() {
 
       <div className="auth-shell">
         <section className="auth-hero">
-          <span className="auth-badge">PYTECHKA ACCESS</span>
-          <h1 className="auth-title">Welcome Back</h1>
+          <div className="auth-title-inline">
+            <h1 className="auth-title">Welcome Back</h1>
+            <span className="auth-badge">PYTECHKA ACCESS</span>
+          </div>
           <p className="auth-subtitle">
             Log in to continue tracking routes, reviewing map layers, and saving
             your progress.

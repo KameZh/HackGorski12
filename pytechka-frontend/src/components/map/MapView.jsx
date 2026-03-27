@@ -473,6 +473,7 @@ export default function MapView({
   const mapRef = useRef(null)
   const locationWatchRef = useRef(null)
   const lastActivityPointRef = useRef(null)
+  const lastStartReadinessLocationRef = useRef(null)
   const promptedReportsRef = useRef(new Set())
   const initialStartFocusAppliedRef = useRef('')
   const initialTrailSelectionRef = useRef('')
@@ -819,6 +820,7 @@ export default function MapView({
     if (!startPanelTrail) return undefined
 
     let active = true
+    lastStartReadinessLocationRef.current = null
     setStartPanelLoading(true)
     setStartPanelError('')
     setStartReadiness(null)
@@ -828,30 +830,18 @@ export default function MapView({
 
     const trailId = startPanelTrail?._id || startPanelTrail?.id
 
-    const readinessParams = {
-      maxDistanceMeters: 1000,
-      ...(userLocation
-        ? {
-            userLng: userLocation.longitude,
-            userLat: userLocation.latitude,
-          }
-        : {}),
-    }
-
-    const startCoords = deriveTrailStartCoordinates(startPanelTrail)
-
     Promise.all([
-      fetchTrailStartReadiness(trailId, readinessParams),
-      hasWeatherApiKey() && startCoords
+      fetchTrailStartReadiness(trailId, { maxDistanceMeters: 1000 }),
+      hasWeatherApiKey() && startPanelCoordinates
         ? fetchCurrentWeather({
-            latitude: startCoords[1],
-            longitude: startCoords[0],
+            latitude: startPanelCoordinates[1],
+            longitude: startPanelCoordinates[0],
           })
         : Promise.resolve(null),
-      hasWeatherApiKey() && startCoords
+      hasWeatherApiKey() && startPanelCoordinates
         ? fetchWeatherForecast({
-            latitude: startCoords[1],
-            longitude: startCoords[0],
+            latitude: startPanelCoordinates[1],
+            longitude: startPanelCoordinates[0],
             limit: 10,
           })
         : Promise.resolve([]),
@@ -868,6 +858,53 @@ export default function MapView({
       })
       .finally(() => {
         if (active) setStartPanelLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [startPanelTrail, startPanelCoordinates])
+
+  useEffect(() => {
+    if (!startPanelTrail || !userLocation) return undefined
+
+    const trailId = startPanelTrail?._id || startPanelTrail?.id
+    if (!trailId) return undefined
+
+    const lastLocation = lastStartReadinessLocationRef.current
+    if (lastLocation) {
+      const movedMeters = haversineMeters(
+        [lastLocation.longitude, lastLocation.latitude],
+        [userLocation.longitude, userLocation.latitude]
+      )
+      if (movedMeters < 25) {
+        return undefined
+      }
+    }
+
+    lastStartReadinessLocationRef.current = {
+      longitude: userLocation.longitude,
+      latitude: userLocation.latitude,
+    }
+
+    let active = true
+
+    fetchTrailStartReadiness(trailId, {
+      maxDistanceMeters: 1000,
+      userLng: userLocation.longitude,
+      userLat: userLocation.latitude,
+    })
+      .then((res) => {
+        if (!active) return
+        setStartReadiness(res.data || null)
+        setStartPanelError('')
+      })
+      .catch(() => {
+        if (!active) return
+        setStartPanelError(
+          (current) =>
+            current || 'Could not refresh distance to start right now.'
+        )
       })
 
     return () => {

@@ -59,8 +59,7 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
   import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
 )
 
-const MAPS_BOTTOM_CARD_OFFSET =
-  'max(5.5rem, calc(env(safe-area-inset-bottom, 0px) +72px))'
+const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
 
 const styles = {
   container: {

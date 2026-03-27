@@ -139,6 +139,20 @@ app.post('/api/trails', requireAuth(), checkUser, async (req, res) => {
   }
 })
 
+// GET /api/trails/mine — get current user's trails (auth required)
+app.get('/api/trails/mine', requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req)
+    const trails = await Trail.find({ userId })
+      .sort({ createdAt: -1 })
+      .select('-reviews -geojson')
+    res.json(trails)
+  } catch (err) {
+    console.error('My trails error:', err)
+    res.status(500).json({ error: 'Failed to fetch your trails' })
+  }
+})
+
 // GET /api/trails/geojson — public GeoJSON FeatureCollection for Mapbox
 app.get('/api/trails/geojson', async (req, res) => {
   try {

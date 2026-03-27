@@ -1,15 +1,12 @@
 import Trail from "../models/trail.js";
 
 // Local LLM (e.g., Ollama) config
-const USE_LOCAL_LLM = process.env.USE_LOCAL_LLM === "true";
 const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || "gpt-oss:20b-cloud";
 const LOCAL_LLM_URL =
   process.env.LOCAL_LLM_URL || "http://localhost:11434/v1/chat/completions";
-const THINK_LEVEL_LLM = process.env.THINK_LEVEL_LLM || "low";
-const GITHUB_TOKEN = String(process.env.GITHUB_TOKEN || "").trim();
-const GITHUB_CHAT_URL = String(process.env.GITHUB_CHAT_URL || "").trim();
-const GITHUB_MODEL =
-  String(process.env.GITHUB_MODEL || "").trim() || "gpt-4o-mini";
+const THINK_LEVEL_LLM = String(process.env.THINK_LEVEL_LLM || "low")
+  .trim()
+  .toLowerCase();
 
 export function calculateStats(geojson) {
   const coords = extractCoordinates(geojson);
@@ -129,7 +126,7 @@ function buildElevationProfile(coords) {
 }
 
 /**
- * Async: called after route creation. Sends data to Gemini and stores the result.
+ * Async: called after route creation. Sends data to local LLM and stores the result.
  */
 export async function processRouteAI(routeId) {
   try {
@@ -184,61 +181,35 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
   "overallDifficulty": "easy|moderate|hard|extreme"
 }`;
 
-    const useLocal = USE_LOCAL_LLM || !GITHUB_TOKEN || !GITHUB_CHAT_URL;
-    const targetUrl = useLocal ? LOCAL_LLM_URL : GITHUB_CHAT_URL;
-    const targetModel = useLocal ? LOCAL_LLM_MODEL : GITHUB_MODEL;
+    const normalizedThinkLevel = ["low", "medium", "high"].includes(
+      THINK_LEVEL_LLM,
+    )
+      ? THINK_LEVEL_LLM
+      : "low";
 
-    const headers = {
-      "Content-Type": "application/json",
-      ...(useLocal,
-      THINK_LEVEL_LLM
-        ? {}
-        : {
-            Authorization: `Bearer ${GITHUB_TOKEN}`,
-            "X-GitHub-Api-Version": "2023-07-01",
-          }),
-    };
-
-    const body = useLocal
-      ? {
-          model: targetModel,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an expert hiking trail analyst. Respond with JSON only, no markdown, no code fences.",
-            },
-            { role: "user", content: prompt },
-          ],
-          stream: false,
-          temperature: 0.8,
-        }
-      : {
-          model: targetModel,
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are an expert hiking trail analyst. Respond with JSON only, no markdown, no code fences.",
-            },
-            { role: "user", content: prompt },
-          ],
-          response_format: { type: "json_object" },
-          max_completion_tokens: 1200,
-          temperature: 1,
-        };
-
-    const response = await fetch(targetUrl, {
+    const response = await fetch(LOCAL_LLM_URL, {
       method: "POST",
-      headers,
-      body: JSON.stringify(body),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: LOCAL_LLM_MODEL,
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert hiking trail analyst. Reasoning depth preference: ${normalizedThinkLevel}. Respond with JSON only, no markdown, no code fences.`,
+          },
+          { role: "user", content: prompt },
+        ],
+        stream: false,
+        temperature: 0.8,
+      }),
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      const source = useLocal ? "Local LLM" : "GitHub model";
       throw new Error(
-        `${source} request failed: ${response.status} ${errText}`,
+        `Local LLM request failed: ${response.status} ${errText}`,
       );
     }
 

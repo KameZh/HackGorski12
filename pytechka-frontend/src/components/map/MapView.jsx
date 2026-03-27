@@ -164,7 +164,7 @@ function buildTrailCenterPoint(geometry) {
   }
 }
 
-export default function MapView() {
+export default function MapView({ searchQuery = '' }) {
   const mapRef = useRef(null)
   const { mapStyle, terrain3D, setSelectedTrail, trailsVersion } = useMapStore()
   const [trails, setTrails] = useState([])
@@ -236,30 +236,38 @@ export default function MapView() {
   // Load trails from backend and surface non-blocking status.
   useEffect(() => {
     let active = true
+    const normalizedSearch = searchQuery.trim()
+
     setLoadingTrails(true)
     setTrailsError('')
+    setSelectedTrail(null)
 
-    fetchMapTrails()
-      .then((res) => {
-        if (!active) return
-        const next = Array.isArray(res.data) ? res.data : []
-        setTrails(next)
-      })
-      .catch(() => {
-        if (!active) return
-        setTrails([])
-        setTrailsError(
-          'Could not load trails from the API. The base map is still available.'
-        )
-      })
-      .finally(() => {
-        if (active) setLoadingTrails(false)
-      })
+    const fetchTimeout = setTimeout(() => {
+      const params = normalizedSearch ? { search: normalizedSearch } : {}
+
+      fetchMapTrails(params)
+        .then((res) => {
+          if (!active) return
+          const next = Array.isArray(res.data) ? res.data : []
+          setTrails(next)
+        })
+        .catch(() => {
+          if (!active) return
+          setTrails([])
+          setTrailsError(
+            'Could not load trails from the API. The base map is still available.'
+          )
+        })
+        .finally(() => {
+          if (active) setLoadingTrails(false)
+        })
+    }, 180)
 
     return () => {
       active = false
+      clearTimeout(fetchTimeout)
     }
-  }, [trailsVersion])
+  }, [trailsVersion, searchQuery, setSelectedTrail])
 
   // Apply/remove 3D terrain
   const applyTerrain = useCallback((map, enabled) => {

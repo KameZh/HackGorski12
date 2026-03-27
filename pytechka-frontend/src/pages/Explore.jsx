@@ -15,6 +15,7 @@ import {
 } from '../components/data/Explorerdata'
 import { fetchTrails } from '../api/trails'
 import { fetchEcoStats } from '../api/eco'
+import { getSearchSuggestions } from '../utils/searchSuggestions'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const MAPBOX_STYLE_URL = import.meta.env.VITE_MAPBOX_STYLE_URL
@@ -35,6 +36,15 @@ const INITIAL_REGION_VIEW = {
   latitude: 42.7339,
   zoom: 6.6,
 }
+
+const EXPLORE_FALLBACK_TERMS = [
+  'Hiking',
+  'Running',
+  'Forest',
+  'Waterfall',
+  'Mountain',
+  'Eco',
+]
 
 function SectionBlock({ title, subtitle, children }) {
   return (
@@ -239,6 +249,16 @@ export default function Explore() {
     [visibleTrails]
   )
   const latestTrails = visibleTrails.slice(1, 5)
+  const searchSuggestions = useMemo(
+    () =>
+      getSearchSuggestions({
+        query: searchQuery,
+        trails,
+        fallbackTerms: EXPLORE_FALLBACK_TERMS,
+        limit: 9,
+      }),
+    [searchQuery, trails]
+  )
 
   return (
     <div id="explore-page" className="explore-page">
@@ -403,8 +423,18 @@ export default function Explore() {
                   placeholder="Search routes, mountain ranges, or terrain..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  list="explore-search-suggestions"
+                  autoComplete="off"
                   className="explore-search-input"
                 />
+                <datalist id="explore-search-suggestions">
+                  {searchSuggestions.map((suggestion) => (
+                    <option
+                      key={`explore-suggestion-${suggestion.toLowerCase()}`}
+                      value={suggestion}
+                    />
+                  ))}
+                </datalist>
                 {searchQuery ? (
                   <button
                     type="button"

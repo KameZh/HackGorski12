@@ -1,13 +1,54 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import MapView from '../components/map/MapView'
 import BottomNav from '../components/layout/Bottomnav'
 import { useMapStore } from '../store/mapStore'
+import { fetchMapTrails } from '../api/maps'
+import { getSearchSuggestions } from '../utils/searchSuggestions'
 import './Maps.css'
+
+const MAPS_FALLBACK_TERMS = [
+  'Hiking',
+  'Running',
+  'Forest',
+  'Waterfall',
+  'Mountain',
+  'Eco',
+]
 
 export default function Maps() {
   const { mode } = useMapStore()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
+  const [suggestionTrails, setSuggestionTrails] = useState([])
+
+  useEffect(() => {
+    let active = true
+
+    fetchMapTrails()
+      .then((response) => {
+        if (!active) return
+        setSuggestionTrails(Array.isArray(response.data) ? response.data : [])
+      })
+      .catch(() => {
+        if (!active) return
+        setSuggestionTrails([])
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const mapSearchSuggestions = useMemo(
+    () =>
+      getSearchSuggestions({
+        query: searchQuery,
+        trails: suggestionTrails,
+        fallbackTerms: MAPS_FALLBACK_TERMS,
+        limit: 9,
+      }),
+    [searchQuery, suggestionTrails]
+  )
 
   return (
     <div id="maps-page" className="maps-page">
@@ -15,7 +56,7 @@ export default function Maps() {
       <div className="maps-glow maps-glow-bottom" />
 
       <div className="maps-layer">
-        <MapView />
+        <MapView searchQuery={searchQuery} />
       </div>
 
       <div id="maps-topbar" className="maps-topbar">
@@ -48,8 +89,18 @@ export default function Maps() {
               onChange={(e) => setSearchQuery(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
+              list="maps-search-suggestions"
+              autoComplete="off"
               className="maps-search-input"
             />
+            <datalist id="maps-search-suggestions">
+              {mapSearchSuggestions.map((suggestion) => (
+                <option
+                  key={`maps-suggestion-${suggestion.toLowerCase()}`}
+                  value={suggestion}
+                />
+              ))}
+            </datalist>
             {searchQuery && (
               <button
                 id="maps-search-clear"

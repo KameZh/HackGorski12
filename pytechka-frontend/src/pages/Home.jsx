@@ -48,39 +48,10 @@ export default function Home() {
       <div className="account-page">
         <div className="account-login-prompt">
           <div className="account-guest-shell">
-            <span className="account-guest-badge">YOUR PERSONAL TRAIL HUB</span>
-            <h2>Welcome to Pytechka</h2>
+            <h2 className="explore-title">Welcome to Pytechka</h2>
             <p>
-              Build your mountain routine with live recording, saved routes, and
-              a cleaner map experience.
+              Create an account to start your adventure or log into an existing one
             </p>
-
-            <div className="account-guest-grid">
-              <div className="account-guest-card">
-                <span className="account-guest-icon">🧭</span>
-                <div>
-                  <h4>Explore Better</h4>
-                  <p>Find trails faster with map-focused discovery.</p>
-                </div>
-              </div>
-
-              <div className="account-guest-card">
-                <span className="account-guest-icon">📍</span>
-                <div>
-                  <h4>Record Every Step</h4>
-                  <p>Track your movement live with route visualization.</p>
-                </div>
-              </div>
-
-              <div className="account-guest-card">
-                <span className="account-guest-icon">📈</span>
-                <div>
-                  <h4>See Progress</h4>
-                  <p>Keep your account history in one place.</p>
-                </div>
-              </div>
-            </div>
-
             <div className="account-guest-actions">
               <Link to="/signup" className="account-guest-link">
                 <button className="account-btn account-btn-primary">

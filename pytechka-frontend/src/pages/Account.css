@@ -205,29 +205,52 @@
   box-shadow: 0 22px 42px rgba(0, 1, 0, 0.36);
 }
 
-.account-guest-badge {
-  display: inline-flex;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(72, 169, 166, 0.58);
-  background: rgba(72, 169, 166, 0.14);
-  color: #89d3cf;
-  letter-spacing: 0.12em;
-  font-size: 0.62rem;
-  font-weight: 800;
+.explore-title-row {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  align-items: center;
 }
 
-.account-login-prompt h2 {
-  color: #fbfef9;
-  font-size: clamp(1.65rem, 5vw, 2.1rem);
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin: 12px 0 0.5rem;
+.explore-title {
+  position: relative;
+  display: inline-block;
+  margin: 0;
+  font-size: clamp(1.95rem, 5.2vw, 2.6rem);
+  letter-spacing: -0.03em;
+  font-weight: 820;
+  line-height: 1.02;
+  text-align: center;
+  color: transparent;
+  background: linear-gradient(135deg, #74aed0 0%, #4281a4 48%, #48a9a6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow: 0 8px 26px rgba(72, 169, 166, 0.28);
+}
+
+.explore-title::after {
+  content: '';
+  position: absolute;
+  left: 18%;
+  right: 18%;
+  bottom: -8px;
+  height: 3px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(66, 129, 164, 0.55),
+    rgba(72, 169, 166, 0.9),
+    rgba(66, 129, 164, 0.55)
+  );
+  transform: skewX(-16deg);
+  opacity: 0.92;
+  box-shadow: 0 3px 12px rgba(72, 169, 166, 0.24);
 }
 
 .account-login-prompt p {
   color: rgba(251, 254, 249, 0.74);
-  margin-bottom: 1rem;
+  padding-top: 1rem;
+  margin-bottom: 1.4rem;
 }
 
 .account-guest-grid {

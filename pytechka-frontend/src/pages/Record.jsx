@@ -98,7 +98,6 @@ export default function Record() {
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
   const [currentLocation, setCurrentLocation] = useState(null)
-  const [showAdvancedControls, setShowAdvancedControls] = useState(false)
   const [currentElevation, setCurrentElevation] = useState(0)
   const [elevationGain, setElevationGain] = useState(0)
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
@@ -366,22 +365,6 @@ export default function Record() {
     }
   }, [clearWatch, points])
 
-  const resetTracking = useCallback(() => {
-    clearWatch()
-    setPoints([])
-    setElapsedSeconds(0)
-    setDistance(0)
-    setElevationGain(0)
-    setCurrentSpeedKmh(0)
-    setGeoError('')
-    setIsTracking(false)
-    setShowAdvancedControls(false)
-    setViewState(INITIAL_VIEW)
-    setSavedRoute(null)
-    setAiStatus(null)
-    setAiResult(null)
-  }, [clearWatch])
-
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
@@ -535,7 +518,7 @@ export default function Record() {
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
-  const showControls = showAdvancedControls || hasRecordingData || isTracking
+  const showControls = hasRecordingData || isTracking
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -697,6 +680,7 @@ export default function Record() {
         onCenterMe={handleCenterMe}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
+        showResetViewButton={false}
       />
 
       {selectedTrail && <RoutePreviewCard />}
@@ -713,7 +697,7 @@ export default function Record() {
 
           {aiStatus === 'error' && (
             <div className="record-ai-error">
-              <span>⚠️ AI analysis failed</span>
+              <span> AI analysis failed</span>
               {aiResult?.error && <p>{aiResult.error}</p>}
             </div>
           )}
@@ -723,7 +707,9 @@ export default function Record() {
               <h3 className="record-ai-title">🧠 AI Trail Analysis</h3>
 
               {aiResult.overallDifficulty && (
-                <div className={`record-ai-difficulty record-ai-diff-${aiResult.overallDifficulty}`}>
+                <div
+                  className={`record-ai-difficulty record-ai-diff-${aiResult.overallDifficulty}`}
+                >
                   Overall: {aiResult.overallDifficulty.toUpperCase()}
                 </div>
               )}
@@ -736,11 +722,20 @@ export default function Record() {
                 <div className="record-ai-segments">
                   <h4>Segments</h4>
                   {aiResult.segments.map((seg, i) => (
-                    <div key={i} className={`record-ai-segment record-ai-seg-${seg.difficulty}`}>
+                    <div
+                      key={i}
+                      className={`record-ai-segment record-ai-seg-${seg.difficulty}`}
+                    >
                       <div className="record-ai-seg-header">
                         <strong>{seg.name}</strong>
-                        <span className="record-ai-seg-badge">{seg.difficulty}</span>
-                        {seg.estimatedTime && <span className="record-ai-seg-time">⏱ {seg.estimatedTime}</span>}
+                        <span className="record-ai-seg-badge">
+                          {seg.difficulty}
+                        </span>
+                        {seg.estimatedTime && (
+                          <span className="record-ai-seg-time">
+                            ⏱ {seg.estimatedTime}
+                          </span>
+                        )}
                       </div>
                       <p>{seg.description}</p>
                     </div>
@@ -752,8 +747,13 @@ export default function Record() {
                 <div className="record-ai-warnings">
                   <h4>⚠️ Warnings</h4>
                   {aiResult.warnings.map((w, i) => (
-                    <div key={i} className={`record-ai-warning record-ai-warn-${w.severity}`}>
-                      <span className="record-ai-warn-severity">{w.severity?.toUpperCase()}</span>
+                    <div
+                      key={i}
+                      className={`record-ai-warning record-ai-warn-${w.severity}`}
+                    >
+                      <span className="record-ai-warn-severity">
+                        {w.severity?.toUpperCase()}
+                      </span>
                       <span>{w.description}</span>
                     </div>
                   ))}
@@ -777,13 +777,6 @@ export default function Record() {
             </div>
           ) : (
             <div className="record-actions-row record-actions-enter">
-              <button
-                onClick={resetTracking}
-                className="record-action-btn record-reset-btn"
-              >
-                Reset
-              </button>
-
               {isTracking ? (
                 <button
                   onClick={stopTracking}

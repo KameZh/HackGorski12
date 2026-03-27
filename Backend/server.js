@@ -18,9 +18,58 @@ app.use(clerkMiddleware())
 
 connectDB()
 
-app.get('/api/user/profile', requireAuth(), checkUser, (req, res) => {
-  console.log('User profile requested for:', req.dbUser)
-  res.json(req.dbUser)
+const BADGE_TIERS = {
+  trailers: [
+    { min: 20, name: 'Senior' },
+    { min: 10, name: 'Junior' },
+    { min: 3, name: 'Rookie' },
+  ],
+  contribution: [
+    { min: 20, name: 'Country guide' },
+    { min: 10, name: 'Local guide' },
+    { min: 3, name: 'New guide' },
+  ],
+  campaign: [
+    { min: 20, name: 'Basically organizer' },
+    { min: 10, name: 'Helper' },
+    { min: 3, name: 'Volunteer' },
+  ],
+}
+
+function pickTier(category, value = 0) {
+  const tiers = BADGE_TIERS[category] || []
+  const found = tiers.find((t) => value >= t.min)
+  return found?.name || null
+}
+
+async function updateBadgeProgress(userId, increments = {}) {
+  const user = await User.findOne({ clerkId: userId })
+  if (!user) return null
+
+  user.badgeProgress = user.badgeProgress || {}
+  const p = user.badgeProgress
+  p.trailCompletions = (p.trailCompletions || 0) + (increments.trailCompletions || 0)
+  p.createdTrails = (p.createdTrails || 0) + (increments.createdTrails || 0)
+  p.campaignPoints = (p.campaignPoints || 0) + (increments.campaignPoints || 0)
+
+  p.awarded = p.awarded || {}
+  p.awarded.trailers = pickTier('trailers', p.trailCompletions)
+  p.awarded.contribution = pickTier('contribution', p.createdTrails)
+  p.awarded.campaign = pickTier('campaign', p.campaignPoints)
+
+  await user.save()
+  return user
+}
+
+app.get('/api/user/profile', requireAuth(), checkUser, async (req, res) => {
+  try {
+    const { userId } = getAuth(req)
+    const user = await User.findOne({ clerkId: userId })
+    res.json(user)
+  } catch (err) {
+    console.error('User profile error:', err)
+    res.status(500).json({ error: 'Failed to load profile' })
+  }
 })
 
 // =====================
@@ -54,6 +103,9 @@ app.post('/api/trails', requireAuth(), checkUser, async (req, res) => {
     // Fire-and-forget async AI processing
     processRouteAI(trail._id)
 
+    // Contribution badge progress
+    await updateBadgeProgress(userId, { createdTrails: 1 })
+
     res.status(201).json(trail)
   } catch (err) {
     console.error('Trail publish error:', err)
@@ -72,6 +124,32 @@ app.get('/api/trails/mine', requireAuth(), async (req, res) => {
   } catch (err) {
     console.error('My trails error:', err)
     res.status(500).json({ error: 'Failed to fetch your trails' })
+  }
+})
+
+// POST /api/badges/trailers/complete — mark a completed trail
+app.post('/api/badges/trailers/complete', requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req)
+    const amount = Number(req.body?.amount || 1)
+    const user = await updateBadgeProgress(userId, { trailCompletions: amount })
+    res.json({ badgeProgress: user?.badgeProgress || null })
+  } catch (err) {
+    console.error('Badge trailer update error:', err)
+    res.status(500).json({ error: 'Failed to update trailer badge' })
+  }
+})
+
+// POST /api/badges/campaign/participate — add participation point
+app.post('/api/badges/campaign/participate', requireAuth(), async (req, res) => {
+  try {
+    const { userId } = getAuth(req)
+    const amount = Number(req.body?.amount || 1)
+    const user = await updateBadgeProgress(userId, { campaignPoints: amount })
+    res.json({ badgeProgress: user?.badgeProgress || null })
+  } catch (err) {
+    console.error('Badge campaign update error:', err)
+    res.status(500).json({ error: 'Failed to update campaign badge' })
   }
 })
 

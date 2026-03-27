@@ -6,6 +6,30 @@ import { fetchMyTrails, updateTrail, deleteTrail } from '../api/trails'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
+const BADGE_TIERS = {
+  trailers: [
+    { min: 20, name: 'Senior', color: '#48a9a6' },
+    { min: 10, name: 'Junior', color: '#74aed0' },
+    { min: 3, name: 'Rookie', color: '#82c0de' },
+  ],
+  contribution: [
+    { min: 20, name: 'Country guide', color: '#48a9a6' },
+    { min: 10, name: 'Local guide', color: '#74aed0' },
+    { min: 3, name: 'New guide', color: '#82c0de' },
+  ],
+  campaign: [
+    { min: 20, name: 'Basically organizer', color: '#48a9a6' },
+    { min: 10, name: 'Helper', color: '#74aed0' },
+    { min: 3, name: 'Volunteer', color: '#82c0de' },
+  ],
+}
+
+function pickTier(category, value = 0) {
+  const tiers = BADGE_TIERS[category] || []
+  const found = tiers.find((t) => value >= t.min)
+  return found || null
+}
+
 export default function Home() {
   const { isSignedIn } = useAuth()
   const { user } = useUser()
@@ -14,6 +38,7 @@ export default function Home() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [dbUser, setDbUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [badgeProgress, setBadgeProgress] = useState(null)
   const [myTrails, setMyTrails] = useState([])
   const [editingTrail, setEditingTrail] = useState(null)
   const [editForm, setEditForm] = useState({})
@@ -27,7 +52,10 @@ export default function Home() {
     }
     api
       .get('/user/profile')
-      .then((res) => setDbUser(res.data))
+      .then((res) => {
+        setDbUser(res.data)
+        setBadgeProgress(res.data?.badgeProgress || null)
+      })
       .catch((err) => console.error('Failed to fetch profile:', err))
       .finally(() => setLoading(false))
   }, [isSignedIn])
@@ -131,6 +159,27 @@ export default function Home() {
   const avatarUrl = dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
   const avatarInitial = (dbUser?.username || user?.firstName || user?.username || '?')[0]?.toUpperCase?.() || '?'
 
+  const badgeCards = [
+    {
+      key: 'trailers',
+      title: 'Trailers',
+      progress: badgeProgress?.trailCompletions || 0,
+      tier: pickTier('trailers', badgeProgress?.trailCompletions || 0),
+    },
+    {
+      key: 'contribution',
+      title: 'Contribution',
+      progress: badgeProgress?.createdTrails || 0,
+      tier: pickTier('contribution', badgeProgress?.createdTrails || 0),
+    },
+    {
+      key: 'campaign',
+      title: 'Campaign',
+      progress: badgeProgress?.campaignPoints || 0,
+      tier: pickTier('campaign', badgeProgress?.campaignPoints || 0),
+    },
+  ]
+
   return (
     <div className="account-page">
       <div className="account-scroll">
@@ -146,6 +195,24 @@ export default function Home() {
           <div className="account-info">
             <h2 className="account-name">{displayName}</h2>
             <p className="account-email">{email}</p>
+
+            <div className="badge-inline-row">
+              {badgeCards.map((card) => (
+                <div key={card.key} className="badge-inline-pill">
+                  <span className="badge-inline-title">{card.title}</span>
+                  {card.tier ? (
+                    <span
+                      className="badge-inline-tier"
+                      style={{ color: card.tier.color }}
+                    >
+                      {card.tier.name}
+                    </span>
+                  ) : (
+                    <span className="badge-inline-tier badge-pill-empty">Earn it</span>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -167,6 +234,7 @@ export default function Home() {
             </div>
           </div>
         </div>
+
 
         {/* Action buttons */}
         <div className="account-actions">

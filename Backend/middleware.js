@@ -1,10 +1,10 @@
-import { clerkClient } from '@clerk/express'
+import { clerkClient, getAuth } from '@clerk/express'
 import User from './models/user.js'
 
 const checkUser = async (req, res, next) => {
     console.log('Entering checkUser middleware')
     try {
-        const { userId } = req.auth;
+        const { userId } = getAuth(req);
 
         console.log('Authenticated userId:', userId);
 

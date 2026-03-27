@@ -93,7 +93,7 @@ const styles = {
  * RoutePreviewCard — bottom sheet that slides up when a trail is selected.
  * Dismissed by tapping outside or the X button.
  */
-export default function RoutePreviewCard() {
+export default function RoutePreviewCard({ onStartTrail, onScheduleTrail }) {
   const { selectedTrail, setSelectedTrail } = useMapStore()
   const cardRef = useRef(null)
 
@@ -114,6 +114,14 @@ export default function RoutePreviewCard() {
   if (!selectedTrail) return null
 
   const trail = selectedTrail
+
+  const handleStart = () => {
+    onStartTrail?.(trail)
+  }
+
+  const handleSchedule = () => {
+    onScheduleTrail?.(trail)
+  }
 
   return (
     <>
@@ -252,10 +260,18 @@ export default function RoutePreviewCard() {
 
             {/* Actions */}
             <div style={styles.actions}>
-              <button id="route-preview-start" style={styles.startBtn}>
+              <button
+                id="route-preview-start"
+                style={styles.startBtn}
+                onClick={handleStart}
+              >
                 Start
               </button>
-              <button id="route-preview-schedule" style={styles.scheduleBtn}>
+              <button
+                id="route-preview-schedule"
+                style={styles.scheduleBtn}
+                onClick={handleSchedule}
+              >
                 Schedule
               </button>
             </div>

@@ -76,16 +76,19 @@
 
 .maps-title-row {
   display: flex;
-  justify-content: space-between;
+  justify-content: center;
   align-items: center;
   gap: 10px;
+  position: relative;
+  min-height: 34px;
   margin-bottom: 10px;
 }
 
 .maps-title {
   margin: 0;
   position: relative;
-  font-size: clamp(1.25rem, 3.8vw, 1.8rem);
+  text-align: center;
+  font-size: clamp(1.4rem, 4.4vw, 2rem);
   line-height: 1.05;
   font-weight: 820;
   letter-spacing: -0.02em;
@@ -114,6 +117,10 @@
 }
 
 .maps-badge {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -180,24 +187,6 @@
   color: rgba(251, 254, 249, 0.62);
 }
 
-.maps-draw-banner {
-  position: absolute;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 164px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 19;
-  padding: 8px 14px;
-  border-radius: 12px;
-  border: 1px solid rgba(72, 169, 166, 0.52);
-  background: rgba(18, 26, 40, 0.92);
-  color: #8de0dc;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  pointer-events: none;
-  box-shadow: 0 10px 24px rgba(0, 1, 0, 0.24);
-}
-
 .maps-bottomnav-wrap {
   position: absolute;
   left: 0;
@@ -214,10 +203,5 @@
 
   .maps-title-row {
     margin-bottom: 8px;
-  }
-
-  .maps-draw-banner {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 158px);
-    font-size: 11px;
   }
 }

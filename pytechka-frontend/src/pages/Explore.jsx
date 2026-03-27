@@ -14,6 +14,7 @@ import {
   buildExploreFilterOptions,
 } from '../components/data/Explorerdata'
 import { fetchTrails } from '../api/trails'
+import { buildCenteredView } from '../utils/mapDefaults'
 import { getSearchSuggestions } from '../utils/searchSuggestions'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -30,11 +31,7 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
   import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
 )
 
-const INITIAL_REGION_VIEW = {
-  longitude: 25.4858,
-  latitude: 42.7339,
-  zoom: 6.6,
-}
+const INITIAL_REGION_VIEW = buildCenteredView(6.6)
 
 const EXPLORE_FALLBACK_TERMS = [
   'Hiking',

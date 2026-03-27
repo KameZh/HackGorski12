@@ -279,8 +279,30 @@
 
 .trail-highest-point-value {
   display: inline-block;
-  width: 28px;
+  max-width: 160px;
   min-height: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--ink-80);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trail-start-link {
+  margin-left: auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 35%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.trail-start-link:hover {
+  background: color-mix(in srgb, var(--color-primary) 18%, transparent);
 }
 
 .trail-tags {

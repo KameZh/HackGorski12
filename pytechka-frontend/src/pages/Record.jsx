@@ -7,8 +7,10 @@ import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
+import { completeTrailFromMap } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
 import { createPing, fetchPings } from '../api/pings'
+import { buildCenteredView } from '../utils/mapDefaults'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -25,11 +27,7 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
   import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
 )
 
-const INITIAL_VIEW = {
-  longitude: 25.4858,
-  latitude: 42.7339,
-  zoom: 7,
-}
+const INITIAL_VIEW = buildCenteredView(7)
 
 const DIFFICULTY_COLOR = {
   easy: '#22c55e',
@@ -41,7 +39,11 @@ const DIFFICULTY_COLOR = {
 const PING_TYPES = {
   junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
   mud: { label: 'Mud', emoji: '💧', color: '#92400e' },
-  environmental_danger: { label: 'Environmental Danger', emoji: '🌳', color: '#dc2626' },
+  environmental_danger: {
+    label: 'Environmental Danger',
+    emoji: '🌳',
+    color: '#dc2626',
+  },
 }
 
 const pingMarkerStyle = {
@@ -112,6 +114,44 @@ function parseTrailGeojson(geojson) {
   }
 }
 
+function deriveTrailStartCoordinates(trail) {
+  const direct = Array.isArray(trail?.startCoordinates)
+    ? trail.startCoordinates
+    : Array.isArray(trail?.stats?.startCoordinates)
+      ? trail.stats.startCoordinates
+      : null
+
+  if (Array.isArray(direct) && direct.length === 2) {
+    return [Number(direct[0]), Number(direct[1])]
+  }
+
+  const parsed = parseTrailGeojson(trail?.geojson)
+  if (!parsed) return null
+
+  const extract = (shape) => {
+    if (!shape || typeof shape !== 'object') return []
+    if (shape.type === 'LineString') {
+      return Array.isArray(shape.coordinates) ? shape.coordinates : []
+    }
+    if (shape.type === 'MultiLineString') {
+      return Array.isArray(shape.coordinates)
+        ? shape.coordinates.flatMap((line) => (Array.isArray(line) ? line : []))
+        : []
+    }
+    if (shape.type === 'Feature') return extract(shape.geometry)
+    if (shape.type === 'FeatureCollection') {
+      return Array.isArray(shape.features)
+        ? shape.features.flatMap((feature) => extract(feature?.geometry))
+        : []
+    }
+    return []
+  }
+
+  const coordinates = extract(parsed)
+  if (!coordinates.length) return null
+  return [Number(coordinates[0][0]), Number(coordinates[0][1])]
+}
+
 function distanceMeters(p1, p2) {
   const R = 6371000
   const toRad = (deg) => (deg * Math.PI) / 180
@@ -131,8 +171,14 @@ export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
   const pendingCenterRef = useRef(null)
-  const { mapStyle, terrain3D, setSelectedTrail, setMode, selectedTrail, refreshTrails } =
-    useMapStore()
+  const {
+    mapStyle,
+    terrain3D,
+    setSelectedTrail,
+    setMode,
+    selectedTrail,
+    refreshTrails,
+  } = useMapStore()
 
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [points, setPoints] = useState([])
@@ -161,6 +207,14 @@ export default function Record() {
   const [pingDesc, setPingDesc] = useState('')
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
+  const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
+
+  const [showFinishModal, setShowFinishModal] = useState(false)
+  const [finishRating, setFinishRating] = useState(0)
+  const [finishComment, setFinishComment] = useState('')
+  const [finishSubmitting, setFinishSubmitting] = useState(false)
+  const [finishError, setFinishError] = useState('')
+  const [finishSuccess, setFinishSuccess] = useState('')
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
@@ -409,15 +463,75 @@ export default function Record() {
     clearWatch()
     setIsTracking(false)
     if (points.length < 2) return
-    setShowPublishForm(true)
-  }, [clearWatch, points])
 
-  const handlePublishSuccess = useCallback((trail) => {
-    setShowPublishForm(false)
-    setSavedRoute(trail)
-    setAiStatus(trail?.ai?.status || 'pending')
-    refreshTrails()
-  }, [refreshTrails])
+    if (selectedTrail?._id || selectedTrail?.id) {
+      setShowFinishModal(true)
+      setFinishRating(0)
+      setFinishComment('')
+      setFinishError('')
+      setFinishSuccess('')
+    }
+
+    setShowPublishForm(true)
+  }, [clearWatch, points, selectedTrail])
+
+  const submitTrailCompletion = useCallback(async () => {
+    const trailId = selectedTrail?._id || selectedTrail?.id
+    if (!trailId) {
+      setFinishError('No selected trail to rate.')
+      return
+    }
+
+    setFinishSubmitting(true)
+    setFinishError('')
+    setFinishSuccess('')
+
+    try {
+      const payload = {
+        durationSeconds: elapsedSeconds,
+        distanceMeters: Math.round(distance),
+        elevationGain: Math.round(elevationGain),
+        ...(finishRating > 0 ? { accuracy: finishRating } : {}),
+        ...(finishComment.trim() ? { comment: finishComment.trim() } : {}),
+      }
+
+      const res = await completeTrailFromMap(trailId, payload)
+      const data = res?.data || {}
+
+      if (data.reviewAdded) {
+        setFinishSuccess('Trail completed and your rating was saved.')
+      } else if (finishRating > 0 && data.alreadyReviewed) {
+        setFinishSuccess('Trail completed. You already reviewed it before.')
+      } else {
+        setFinishSuccess('Trail completion saved successfully.')
+      }
+
+      setTimeout(() => setShowFinishModal(false), 1000)
+    } catch (err) {
+      setFinishError(
+        err.response?.data?.error || 'Could not save completion now.'
+      )
+    } finally {
+      setFinishSubmitting(false)
+    }
+  }, [
+    selectedTrail,
+    elapsedSeconds,
+    distance,
+    elevationGain,
+    finishRating,
+    finishComment,
+  ])
+
+  const handlePublishSuccess = useCallback(
+    (trail) => {
+      setShowPublishForm(false)
+      setSavedRoute(trail)
+      setAiStatus(trail?.ai?.status || 'pending')
+      refreshTrails()
+    },
+    [refreshTrails]
+  )
 
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
@@ -439,6 +553,37 @@ export default function Record() {
       }
     )
   }, [centerOnCurrentLocation])
+
+  const startLoadedTrailActivity = useCallback(
+    (trail) => {
+      if (!trail) return
+
+      const trailId = trail._id || trail.id
+      if (!trailId) return
+
+      setLoadedTrailActivity({ trailId, trailName: trail.name || 'Trail' })
+
+      const startCoordinates = deriveTrailStartCoordinates(trail)
+      if (startCoordinates) {
+        setViewState((old) => ({
+          ...old,
+          longitude: startCoordinates[0],
+          latitude: startCoordinates[1],
+          zoom: Math.max(old.zoom, 13),
+        }))
+        mapRef.current?.getMap()?.flyTo({
+          center: startCoordinates,
+          zoom: 13,
+          duration: 700,
+          essential: true,
+        })
+      }
+
+      setSelectedTrail(null)
+      setPingMode(false)
+    },
+    [setSelectedTrail]
+  )
 
   const handleMapClick = useCallback(
     (event) => {
@@ -573,25 +718,41 @@ export default function Record() {
   useEffect(() => {
     let active = true
     fetchPings()
-      .then((res) => { if (active) setPings(Array.isArray(res.data) ? res.data : []) })
-      .catch(() => { if (active) setPings([]) })
-    return () => { active = false }
+      .then((res) => {
+        if (active) setPings(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (active) setPings([])
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
   // Submit a ping at current location
   const handlePingSubmit = useCallback(async () => {
-    if (!currentLocation) return
+    const activityActive =
+      isTracking ||
+      points.length > 0 ||
+      elapsedSeconds > 0 ||
+      distance > 0 ||
+      Boolean(loadedTrailActivity)
+
+    if (!activityActive || !currentLocation) return
     setPingSubmitting(true)
     try {
       // Find the nearest trail to associate with (optional)
-      let nearestTrailId = null
+      let nearestTrailId = loadedTrailActivity?.trailId || null
       if (trails.length > 0) {
         let minDist = Infinity
         for (const trail of trails) {
           const center = trail.stats?.centerCoordinates
           if (Array.isArray(center) && center.length === 2) {
             const d = distanceMeters(
-              { latitude: currentLocation.latitude, longitude: currentLocation.longitude },
+              {
+                latitude: currentLocation.latitude,
+                longitude: currentLocation.longitude,
+              },
               { latitude: center[1], longitude: center[0] }
             )
             if (d < minDist) {
@@ -618,12 +779,29 @@ export default function Record() {
     } finally {
       setPingSubmitting(false)
     }
-  }, [currentLocation, pingType, pingDesc, trails])
+  }, [
+    isTracking,
+    points,
+    elapsedSeconds,
+    distance,
+    currentLocation,
+    pingType,
+    pingDesc,
+    trails,
+    loadedTrailActivity,
+  ])
 
   const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
+  const isActivityActive =
+    isTracking || hasRecordingData || Boolean(loadedTrailActivity)
   const showControls = hasRecordingData || isTracking
+
+  useEffect(() => {
+    if (isActivityActive) return
+    setPingMode(false)
+  }, [isActivityActive])
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -717,55 +895,63 @@ export default function Record() {
           )}
 
           {/* Ping markers */}
-          {viewState.zoom >= 12 && pings.map((ping) => {
-            const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
-            return (
-              <Marker
-                key={ping._id}
-                longitude={ping.coordinates[0]}
-                latitude={ping.coordinates[1]}
-                anchor="center"
-                onClick={(e) => {
-                  e.originalEvent.stopPropagation()
-                  setSelectedPing(selectedPing?._id === ping._id ? null : ping)
-                }}
-              >
-                <div
-                  style={{ ...pingMarkerStyle, background: cfg.color }}
-                  title={`${cfg.label}: ${ping.description || 'No description'}`}
+          {viewState.zoom >= 12 &&
+            pings.map((ping) => {
+              const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+              return (
+                <Marker
+                  key={ping._id}
+                  longitude={ping.coordinates[0]}
+                  latitude={ping.coordinates[1]}
+                  anchor="center"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation()
+                    setSelectedPing(
+                      selectedPing?._id === ping._id ? null : ping
+                    )
+                  }}
                 >
-                  {cfg.emoji}
-                </div>
-              </Marker>
-            )
-          })}
+                  <div
+                    style={{ ...pingMarkerStyle, background: cfg.color }}
+                    title={`${cfg.label}: ${ping.description || 'No description'}`}
+                  >
+                    {cfg.emoji}
+                  </div>
+                </Marker>
+              )
+            })}
         </Map>
       </div>
 
       {/* Add Ping button */}
-      <button
-        onClick={() => {
-          setPingMode((v) => !v)
-          setSelectedPing(null)
-        }}
-        style={{
-          position: 'absolute',
-          top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
-          right: 12,
-          zIndex: 20,
-          ...pingBtnBase,
-          background: pingMode
-            ? 'linear-gradient(135deg, #f43f5e, #dc2626)'
-            : 'linear-gradient(135deg, #48a9a6, #4281a4)',
-          color: '#fff',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-        }}
-      >
-        {pingMode ? '✕ Cancel' : '📌 Add Ping'}
-      </button>
+      {isActivityActive ? (
+        <button
+          onClick={() => {
+            setPingMode((v) => !v)
+            setSelectedPing(null)
+          }}
+          style={{
+            position: 'absolute',
+            top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
+            right: 12,
+            zIndex: 20,
+            ...pingBtnBase,
+            minWidth: 118,
+            background: pingMode
+              ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
+              : 'linear-gradient(135deg, #0f766e, #0e7490)',
+            color: '#fff',
+            border: '1px solid rgba(255,255,255,0.22)',
+            boxShadow: '0 8px 20px rgba(0,0,0,0.32)',
+            letterSpacing: '0.02em',
+          }}
+        >
+          {pingMode ? 'Cancel Ping' : 'Add Ping'}
+        </button>
+      ) : null}
 
       {/* Ping creation form */}
-      {pingMode && (
+      {pingMode && isActivityActive && (
         <div style={pingPopupStyle}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
             New Ping at your location
@@ -780,12 +966,12 @@ export default function Record() {
                   flex: 1,
                   padding: '8px 4px',
                   borderRadius: 10,
-                  border: pingType === key
-                    ? `2px solid ${cfg.color}`
-                    : '2px solid rgba(148,163,184,0.2)',
-                  background: pingType === key
-                    ? `${cfg.color}22`
-                    : 'rgba(15,23,35,0.6)',
+                  border:
+                    pingType === key
+                      ? `2px solid ${cfg.color}`
+                      : '2px solid rgba(148,163,184,0.2)',
+                  background:
+                    pingType === key ? `${cfg.color}22` : 'rgba(15,23,35,0.6)',
                   color: '#e2e8f0',
                   cursor: 'pointer',
                   fontSize: 11,
@@ -794,7 +980,9 @@ export default function Record() {
                   lineHeight: 1.3,
                 }}
               >
-                <span style={{ fontSize: 20, display: 'block' }}>{cfg.emoji}</span>
+                <span style={{ fontSize: 20, display: 'block' }}>
+                  {cfg.emoji}
+                </span>
                 {cfg.label}
               </button>
             ))}
@@ -828,8 +1016,16 @@ export default function Record() {
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button
-              onClick={() => { setPingMode(false); setPingDesc('') }}
-              style={{ ...pingBtnBase, flex: 1, background: 'rgba(148,163,184,0.15)', color: '#94a3b8' }}
+              onClick={() => {
+                setPingMode(false)
+                setPingDesc('')
+              }}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(148,163,184,0.15)',
+                color: '#94a3b8',
+              }}
             >
               Cancel
             </button>
@@ -841,7 +1037,7 @@ export default function Record() {
                 flex: 1,
                 background: 'linear-gradient(135deg, #48a9a6, #4281a4)',
                 color: '#fff',
-                opacity: (pingSubmitting || !currentLocation) ? 0.6 : 1,
+                opacity: pingSubmitting || !currentLocation ? 0.6 : 1,
               }}
             >
               {pingSubmitting ? 'Saving...' : 'Place Ping'}
@@ -853,7 +1049,14 @@ export default function Record() {
       {/* Selected ping detail popup */}
       {selectedPing && !pingMode && (
         <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
             <span style={{ fontSize: 22 }}>
               {PING_TYPES[selectedPing.type]?.emoji || '📌'}
             </span>
@@ -872,7 +1075,13 @@ export default function Record() {
           </div>
           <button
             onClick={() => setSelectedPing(null)}
-            style={{ ...pingBtnBase, marginTop: 8, background: 'rgba(148,163,184,0.15)', color: '#94a3b8', width: '100%' }}
+            style={{
+              ...pingBtnBase,
+              marginTop: 8,
+              background: 'rgba(148,163,184,0.15)',
+              color: '#94a3b8',
+              width: '100%',
+            }}
           >
             Close
           </button>
@@ -950,7 +1159,9 @@ export default function Record() {
         showResetViewButton={false}
       />
 
-      {selectedTrail && <RoutePreviewCard />}
+      {selectedTrail && (
+        <RoutePreviewCard onStartTrail={startLoadedTrailActivity} />
+      )}
 
       {/* AI Analysis Results */}
       {savedRoute && (
@@ -1078,6 +1289,155 @@ export default function Record() {
           onSuccess={handlePublishSuccess}
           onCancel={() => setShowPublishForm(false)}
         />
+      )}
+
+      {showFinishModal && selectedTrail && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 60,
+            background: 'rgba(3, 9, 17, 0.56)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 14,
+          }}
+          onClick={() => {
+            if (!finishSubmitting) setShowFinishModal(false)
+          }}
+        >
+          <div
+            style={{
+              width: 'min(92vw, 460px)',
+              border: '1px solid rgba(66,129,164,0.5)',
+              borderRadius: 14,
+              background: 'rgba(17,26,40,0.96)',
+              boxShadow: '0 12px 28px rgba(0,1,0,0.45)',
+              backdropFilter: 'blur(8px)',
+              color: '#e2e8f0',
+              padding: 14,
+            }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div style={{ fontSize: 12, color: '#89afc2', fontWeight: 700 }}>
+              TRAIL COMPLETED
+            </div>
+            <h3 style={{ margin: '4px 0 8px 0' }}>
+              Congrats! You finished {selectedTrail.name}.
+            </h3>
+
+            <div
+              style={{
+                border: '1px solid rgba(148,163,184,0.28)',
+                borderRadius: 10,
+                padding: '8px 10px',
+                fontSize: 13,
+                display: 'grid',
+                gap: 4,
+              }}
+            >
+              <div>Distance: {(distance / 1000).toFixed(2)} km</div>
+              <div>Time: {formatDuration(elapsedSeconds)}</div>
+              <div>Elevation gain: +{Math.round(elevationGain)} m</div>
+            </div>
+
+            <div style={{ marginTop: 10, fontSize: 12, color: '#bfd4de' }}>
+              Rate this trail (optional):
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <button
+                  key={star}
+                  onClick={() => setFinishRating(star)}
+                  style={{
+                    ...pingBtnBase,
+                    flex: 1,
+                    background:
+                      finishRating >= star
+                        ? 'rgba(250,204,21,0.25)'
+                        : 'rgba(148,163,184,0.12)',
+                    color: finishRating >= star ? '#facc15' : '#94a3b8',
+                    padding: '8px 0',
+                  }}
+                >
+                  ★
+                </button>
+              ))}
+            </div>
+
+            <textarea
+              value={finishComment}
+              onChange={(event) => setFinishComment(event.target.value)}
+              placeholder="Share quick feedback (optional)"
+              rows={3}
+              maxLength={500}
+              style={{
+                width: '100%',
+                marginTop: 10,
+                borderRadius: 10,
+                border: '1px solid rgba(66,129,164,0.34)',
+                background: 'rgba(15,23,35,0.88)',
+                color: '#fbfef9',
+                fontSize: 13,
+                outline: 'none',
+                padding: 10,
+                boxSizing: 'border-box',
+              }}
+            />
+
+            {finishError && (
+              <div
+                style={{
+                  marginTop: 8,
+                  color: '#fca5a5',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {finishError}
+              </div>
+            )}
+            {finishSuccess && (
+              <div
+                style={{
+                  marginTop: 8,
+                  color: '#86efac',
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {finishSuccess}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button
+                onClick={submitTrailCompletion}
+                disabled={finishSubmitting}
+                style={{
+                  ...pingBtnBase,
+                  flex: 1,
+                  background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                  color: '#fff',
+                  opacity: finishSubmitting ? 0.6 : 1,
+                }}
+              >
+                {finishSubmitting ? 'Saving...' : 'Submit Completion'}
+              </button>
+              <button
+                onClick={() => setShowFinishModal(false)}
+                style={{
+                  ...pingBtnBase,
+                  flex: 1,
+                  background: 'rgba(148,163,184,0.15)',
+                  color: '#94a3b8',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="record-bottomnav-wrap">

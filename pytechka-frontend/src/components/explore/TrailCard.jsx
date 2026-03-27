@@ -1,3 +1,63 @@
+import { Link } from 'react-router-dom'
+
+function extractLineCoordinates(geojson) {
+  if (!geojson) return []
+
+  const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson
+  if (!parsed || typeof parsed !== 'object') return []
+
+  if (parsed.type === 'LineString') {
+    return Array.isArray(parsed.coordinates) ? parsed.coordinates : []
+  }
+
+  if (parsed.type === 'MultiLineString') {
+    return Array.isArray(parsed.coordinates)
+      ? parsed.coordinates.flatMap((line) => (Array.isArray(line) ? line : []))
+      : []
+  }
+
+  if (parsed.type === 'Feature') {
+    return extractLineCoordinates(parsed.geometry)
+  }
+
+  if (parsed.type === 'FeatureCollection') {
+    return Array.isArray(parsed.features)
+      ? parsed.features.flatMap((feature) =>
+          extractLineCoordinates(feature?.geometry)
+        )
+      : []
+  }
+
+  return []
+}
+
+function resolveTrailStartCoordinates(trail) {
+  const fromTrail = Array.isArray(trail?.startCoordinates)
+    ? trail.startCoordinates
+    : Array.isArray(trail?.stats?.startCoordinates)
+      ? trail.stats.startCoordinates
+      : null
+
+  if (Array.isArray(fromTrail) && fromTrail.length === 2) {
+    return [Number(fromTrail[0]), Number(fromTrail[1])]
+  }
+
+  try {
+    const coords = extractLineCoordinates(trail?.geojson)
+    if (!coords.length) return null
+    return [Number(coords[0][0]), Number(coords[0][1])]
+  } catch {
+    return null
+  }
+}
+
+function formatHighestPoint(value) {
+  if (value == null) return '—'
+  const text = String(value).trim()
+  if (!text) return '—'
+  return text
+}
+
 export default function TrailCard({ trail }) {
   const {
     id,
@@ -21,6 +81,7 @@ export default function TrailCard({ trail }) {
     stats,
     username,
     averageAccuracy,
+    highestPoint,
   } = trail
 
   const trailId = id || _id
@@ -35,6 +96,12 @@ export default function TrailCard({ trail }) {
     (stats?.duration ? `${Math.round(stats.duration / 60)} min` : '—')
   const trailDescription = shortDescription || description || ''
   const trailAuthorName = authorName || username || 'Unknown'
+  const trailHighestPoint = formatHighestPoint(highestPoint)
+  const trailStartCoordinates = resolveTrailStartCoordinates(trail)
+  const trailIdQuery = trailId ? `&trailId=${encodeURIComponent(trailId)}` : ''
+  const mapsStartHref = trailStartCoordinates
+    ? `/maps?startLng=${encodeURIComponent(trailStartCoordinates[0])}&startLat=${encodeURIComponent(trailStartCoordinates[1])}${trailIdQuery}`
+    : null
 
   const difficultyMap = {
     easy: { label: 'Easy', className: 'difficulty-badge-easy' },
@@ -220,10 +287,9 @@ export default function TrailCard({ trail }) {
             className="trail-highest-point"
           >
             <span className="trail-highest-point-label">Highest point</span>
-            <span
-              className="trail-highest-point-value"
-              aria-label="Highest point value pending backend"
-            />
+            <span className="trail-highest-point-value">
+              {trailHighestPoint}
+            </span>
           </div>
 
           {/* Tags */}
@@ -236,6 +302,16 @@ export default function TrailCard({ trail }) {
               ))}
             </div>
           )}
+
+          {mapsStartHref ? (
+            <Link
+              to={mapsStartHref}
+              className="trail-start-link"
+              onClick={(event) => event.stopPropagation()}
+            >
+              Start position on map
+            </Link>
+          ) : null}
         </div>
 
         {/* Author + photos */}

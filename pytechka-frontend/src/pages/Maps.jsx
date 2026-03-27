@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import MapView from '../components/map/MapView'
 import BottomNav from '../components/layout/Bottomnav'
-import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails } from '../api/maps'
 import { getSearchSuggestions } from '../utils/searchSuggestions'
 import './Maps.css'
@@ -16,10 +16,37 @@ const MAPS_FALLBACK_TERMS = [
 ]
 
 export default function Maps() {
-  const { mode } = useMapStore()
+  const location = useLocation()
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [suggestionTrails, setSuggestionTrails] = useState([])
+
+  const initialStartFocus = useMemo(() => {
+    const params = new URLSearchParams(location.search)
+    const rawStartLng = params.get('startLng')
+    const rawStartLat = params.get('startLat')
+    const trailId = String(params.get('trailId') || '').trim()
+
+    if (rawStartLng == null || rawStartLat == null) {
+      return null
+    }
+
+    const startLng = Number(rawStartLng)
+    const startLat = Number(rawStartLat)
+
+    if (!Number.isFinite(startLng) || !Number.isFinite(startLat)) {
+      return null
+    }
+
+    if (Math.abs(startLng) > 180 || Math.abs(startLat) > 90) {
+      return null
+    }
+
+    return {
+      startCoordinates: [startLng, startLat],
+      trailId: trailId || null,
+    }
+  }, [location.search])
 
   useEffect(() => {
     let active = true
@@ -56,7 +83,10 @@ export default function Maps() {
       <div className="maps-glow maps-glow-bottom" />
 
       <div className="maps-layer">
-        <MapView searchQuery={searchQuery} />
+        <MapView
+          searchQuery={searchQuery}
+          initialStartFocus={initialStartFocus}
+        />
       </div>
 
       <div id="maps-topbar" className="maps-topbar">
@@ -124,12 +154,6 @@ export default function Maps() {
           </div>
         </div>
       </div>
-
-      {mode === 'draw' && (
-        <div className="maps-draw-banner">
-          Draw mode: tap the map to add points
-        </div>
-      )}
 
       <div className="maps-bottomnav-wrap">
         <BottomNav />

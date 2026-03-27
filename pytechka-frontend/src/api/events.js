@@ -1,4 +1,5 @@
 import { center as turfCenter } from '@turf/turf'
+import { BULGARIA_CENTER_COORDINATES } from '../utils/mapDefaults'
 
 const EVENTS_KEY = 'pytechka_cleanup_events_v1'
 const FEEDBACK_COUNTS_KEY = 'pytechka_feedback_counts_v1'
@@ -42,18 +43,18 @@ function parseTrailGeojson(geojson) {
 
 function computeCenterCoordinates(geojson) {
   const parsed = parseTrailGeojson(geojson)
-  if (!parsed) return [25.4858, 42.7339]
+  if (!parsed) return [...BULGARIA_CENTER_COORDINATES]
 
   try {
     const centered = turfCenter(parsed)
     const coords = centered?.geometry?.coordinates
     if (!Array.isArray(coords) || coords.length < 2) {
-      return [25.4858, 42.7339]
+      return [...BULGARIA_CENTER_COORDINATES]
     }
 
     return [Number(coords[0]), Number(coords[1])]
   } catch {
-    return [25.4858, 42.7339]
+    return [...BULGARIA_CENTER_COORDINATES]
   }
 }
 

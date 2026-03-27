@@ -1,51 +1,73 @@
-import mongoose from 'mongoose'
+import mongoose from "mongoose";
 
 const reviewSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true },
-    username: { type: String, default: 'Anonymous' },
+    username: { type: String, default: "Anonymous" },
     accuracy: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, default: '' },
+    comment: { type: String, default: "" },
   },
-  { timestamps: true }
-)
+  { timestamps: true },
+);
 
 const trailSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true, index: true },
-    username: { type: String, default: '' },
+    username: { type: String, default: "" },
     name: { type: String, required: true },
-    region: { type: String, default: '' },
+    region: { type: String, default: "" },
     difficulty: {
       type: String,
-      enum: ['easy', 'moderate', 'hard', 'extreme'],
-      default: 'moderate',
+      enum: ["easy", "moderate", "hard", "extreme"],
+      default: "moderate",
     },
-    description: { type: String, default: '' },
-    equipment: { type: String, default: '' },
-    resources: { type: String, default: '' },
-    startPoint: { type: String, default: '' },
-    endPoint: { type: String, default: '' },
-    highestPoint: { type: String, default: '' },
+    description: { type: String, default: "" },
+    equipment: { type: String, default: "" },
+    resources: { type: String, default: "" },
+    startPoint: { type: String, default: "" },
+    endPoint: { type: String, default: "" },
+    highestPoint: { type: String, default: "" },
+    startCoordinates: {
+      type: [Number],
+      default: null,
+      validate: {
+        validator: (v) => !v || v.length === 2,
+        message: "startCoordinates must be [longitude, latitude]",
+      },
+    },
+    endCoordinates: {
+      type: [Number],
+      default: null,
+      validate: {
+        validator: (v) => !v || v.length === 2,
+        message: "endCoordinates must be [longitude, latitude]",
+      },
+    },
     geojson: { type: Object, required: true },
     stats: {
       distance: Number,
       elevationGain: Number,
       duration: Number,
       pointCount: Number,
+      centerCoordinates: [Number],
+      startCoordinates: [Number],
+      endCoordinates: [Number],
     },
     reviews: [reviewSchema],
     averageAccuracy: { type: Number, default: 0 },
     ai: {
       status: {
         type: String,
-        enum: ['pending', 'processing', 'done', 'error'],
-        default: 'pending',
+        enum: ["pending", "processing", "done", "error"],
+        default: "pending",
       },
       segments: [
         {
           name: String,
-          difficulty: { type: String, enum: ['easy', 'moderate', 'hard', 'extreme'] },
+          difficulty: {
+            type: String,
+            enum: ["easy", "moderate", "hard", "extreme"],
+          },
           description: String,
           estimatedTime: String,
           startIndex: Number,
@@ -56,7 +78,7 @@ const trailSchema = new mongoose.Schema(
         {
           type_: String,
           description: String,
-          severity: { type: String, enum: ['low', 'medium', 'high'] },
+          severity: { type: String, enum: ["low", "medium", "high"] },
         },
       ],
       summary: String,
@@ -64,17 +86,17 @@ const trailSchema = new mongoose.Schema(
       error: String,
     },
   },
-  { timestamps: true }
-)
+  { timestamps: true },
+);
 
 trailSchema.methods.recalcAverageAccuracy = function () {
   if (!this.reviews.length) {
-    this.averageAccuracy = 0
-    return
+    this.averageAccuracy = 0;
+    return;
   }
-  const sum = this.reviews.reduce((acc, r) => acc + r.accuracy, 0)
-  this.averageAccuracy = Math.round((sum / this.reviews.length) * 10) / 10
-}
+  const sum = this.reviews.reduce((acc, r) => acc + r.accuracy, 0);
+  this.averageAccuracy = Math.round((sum / this.reviews.length) * 10) / 10;
+};
 
-const Trail = mongoose.model('Trail', trailSchema)
-export default Trail
+const Trail = mongoose.model("Trail", trailSchema);
+export default Trail;

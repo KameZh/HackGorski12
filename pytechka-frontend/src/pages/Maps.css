@@ -3,7 +3,9 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
   background:
     radial-gradient(
       900px 420px at 12% -14%,

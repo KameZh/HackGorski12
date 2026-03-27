@@ -26,8 +26,10 @@ export default function Signup() {
 
       <div className="auth-shell">
         <section className="auth-hero">
-          <span className="auth-badge">CREATE ACCOUNT</span>
-          <h1 className="auth-title">Join Pytechka</h1>
+          <div className="auth-title-inline">
+            <h1 className="auth-title">Join Pytechka</h1>
+            <span className="auth-badge">CREATE ACCOUNT</span>
+          </div>
           <p className="auth-subtitle">
             Create an account to record trails, personalize your map view, and
             keep all activity in one place.

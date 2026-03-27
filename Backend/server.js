@@ -1,6 +1,6 @@
 import 'dotenv/config' // To read CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY
 import express from 'express'
-import { clerkMiddleware, requireAuth } from '@clerk/express'
+import { clerkMiddleware, requireAuth, getAuth } from '@clerk/express'
 import cors from 'cors'
 import checkUser from './middleware.js'
 import { connectDB } from './connection.js'
@@ -39,7 +39,7 @@ app.post('/api/routes', requireAuth(), async (req, res) => {
     const stats = calculateStats(geojson)
 
     const route = await Route.create({
-      userId: req.auth.userId,
+      userId: getAuth(req).userId,
       name: name || 'Untitled Route',
       geojson,
       stats,
@@ -59,7 +59,7 @@ app.post('/api/routes', requireAuth(), async (req, res) => {
 // GET /api/routes — list all routes for the current user
 app.get('/api/routes', requireAuth(), async (req, res) => {
   try {
-    const routes = await Route.find({ userId: req.auth.userId })
+    const routes = await Route.find({ userId: getAuth(req).userId })
       .sort({ createdAt: -1 })
       .select('-geojson') // exclude large geojson from list
     res.json(routes)
@@ -74,7 +74,7 @@ app.get('/api/routes/:id', requireAuth(), async (req, res) => {
   try {
     const route = await Route.findOne({
       _id: req.params.id,
-      userId: req.auth.userId,
+      userId: getAuth(req).userId,
     })
     if (!route) return res.status(404).json({ error: 'Route not found' })
     res.json(route)
@@ -89,7 +89,7 @@ app.delete('/api/routes/:id', requireAuth(), async (req, res) => {
   try {
     const result = await Route.findOneAndDelete({
       _id: req.params.id,
-      userId: req.auth.userId,
+      userId: getAuth(req).userId,
     })
     if (!result) return res.status(404).json({ error: 'Route not found' })
     res.json({ success: true })
@@ -116,10 +116,11 @@ app.post('/api/trails', requireAuth(), checkUser, async (req, res) => {
     if (!geojson) return res.status(400).json({ error: 'geojson is required' })
     if (!name) return res.status(400).json({ error: 'name is required' })
 
+    const { userId } = getAuth(req)
     const stats = calculateStats(geojson)
 
     const trail = await Trail.create({
-      userId: req.auth.userId,
+      userId,
       username: req.dbUser?.username || '',
       name,
       region: region || '',
@@ -226,7 +227,7 @@ app.put('/api/trails/:id', requireAuth(), async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id)
     if (!trail) return res.status(404).json({ error: 'Trail not found' })
-    if (trail.userId !== req.auth.userId) {
+    if (trail.userId !== getAuth(req).userId) {
       return res.status(403).json({ error: 'Not authorized to edit this trail' })
     }
 
@@ -250,7 +251,7 @@ app.delete('/api/trails/:id', requireAuth(), async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id)
     if (!trail) return res.status(404).json({ error: 'Trail not found' })
-    if (trail.userId !== req.auth.userId) {
+    if (trail.userId !== getAuth(req).userId) {
       return res.status(403).json({ error: 'Not authorized to delete this trail' })
     }
 
@@ -274,13 +275,14 @@ app.post('/api/trails/:id/reviews', requireAuth(), checkUser, async (req, res) =
     if (!trail) return res.status(404).json({ error: 'Trail not found' })
 
     // Prevent duplicate reviews from the same user
-    const existing = trail.reviews.find((r) => r.userId === req.auth.userId)
+    const reviewUserId = getAuth(req).userId
+    const existing = trail.reviews.find((r) => r.userId === reviewUserId)
     if (existing) {
       return res.status(400).json({ error: 'You have already reviewed this trail' })
     }
 
     trail.reviews.push({
-      userId: req.auth.userId,
+      userId: reviewUserId,
       username: req.dbUser?.username || 'Anonymous',
       accuracy: Number(accuracy),
       comment: comment || '',

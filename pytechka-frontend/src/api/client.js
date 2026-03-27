@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 const api = axios.create({
-  baseURL: 'http://localhost:5174/api',
+  baseURL: '/api',
 })
 
 // Clerk stores its session token accessible via this global.

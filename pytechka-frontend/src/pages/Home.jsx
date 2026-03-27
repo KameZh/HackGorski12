@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth, useClerk, UserButton } from '@clerk/clerk-react'
+import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
 import api from '../api/client'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
 export default function Home() {
   const { isSignedIn } = useAuth()
-  const { signOut } = useClerk()
+  const { user } = useUser()
+  const { signOut, openUserProfile } = useClerk()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [dbUser, setDbUser] = useState(null)
@@ -34,12 +35,16 @@ export default function Home() {
 
   const handleDeleteAccount = async () => {
     try {
-      await user.delete()
+      await user?.delete()
       setShowDeleteConfirm(false)
       navigate('/signup')
     } catch {
       setShowDeleteConfirm(false)
     }
+  }
+
+  const handleOpenProfile = () => {
+    if (openUserProfile) openUserProfile()
   }
 
   if (!isSignedIn || loading) {
@@ -73,6 +78,8 @@ export default function Home() {
 
   const displayName = dbUser?.username || '—'
   const email = dbUser?.email || ''
+  const avatarUrl = dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
+  const avatarInitial = (dbUser?.username || user?.firstName || user?.username || '?')[0]?.toUpperCase?.() || '?'
 
   return (
     <div className="account-page">
@@ -80,7 +87,11 @@ export default function Home() {
         {/* Profile header */}
         <div className="account-profile">
           <div className="account-avatar">
-            <UserButton afterSignOutUrl="/login" />
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profile" />
+            ) : (
+              <span>{avatarInitial}</span>
+            )}
           </div>
           <div className="account-info">
             <h2 className="account-name">{displayName}</h2>
@@ -90,45 +101,18 @@ export default function Home() {
 
         {/* Today stats placeholder */}
         <div className="account-section">
-          <h3 className="account-section-title">Today</h3>
+          <h3 className="account-section-title">Recent activity</h3>
           <div className="account-stats-row">
             <div className="account-stat">
-              <span className="stat-icon stat-steps">👣</span>
+              <span className="stat-icon stat-steps">Steps</span>
               <span className="stat-value">—</span>
             </div>
             <div className="account-stat">
-              <span className="stat-icon stat-time">⏱</span>
+              <span className="stat-icon stat-time">Time</span>
               <span className="stat-value">—</span>
             </div>
             <div className="account-stat">
-              <span className="stat-icon stat-cal">🔥</span>
-              <span className="stat-value">—</span>
-            </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-dist">📍</span>
-              <span className="stat-value">—</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Yesterday stats placeholder */}
-        <div className="account-section">
-          <h3 className="account-section-title">Yesterday</h3>
-          <div className="account-stats-row">
-            <div className="account-stat">
-              <span className="stat-icon stat-steps">👣</span>
-              <span className="stat-value">—</span>
-            </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-time">⏱</span>
-              <span className="stat-value">—</span>
-            </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-cal">🔥</span>
-              <span className="stat-value">—</span>
-            </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-dist">📍</span>
+              <span className="stat-icon stat-dist">Distance</span>
               <span className="stat-value">—</span>
             </div>
           </div>
@@ -136,7 +120,7 @@ export default function Home() {
 
         {/* Action buttons */}
         <div className="account-actions">
-          <button className="account-btn-settings">
+          <button className="account-btn-settings" onClick={handleOpenProfile}>
             <svg
               width="18"
               height="18"

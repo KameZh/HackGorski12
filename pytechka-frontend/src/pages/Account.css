@@ -61,6 +61,21 @@
   min-width: 0;
 }
 
+.account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+  display: block;
+}
+
+.account-avatar span {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #fbfef9;
+  letter-spacing: 0.02em;
+}
+
 .account-name {
   font-size: 1.35rem;
   font-weight: 760;

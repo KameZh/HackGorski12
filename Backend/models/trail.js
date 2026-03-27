@@ -24,6 +24,9 @@ const trailSchema = new mongoose.Schema(
     description: { type: String, default: '' },
     equipment: { type: String, default: '' },
     resources: { type: String, default: '' },
+    startPoint: { type: String, default: '' },
+    endPoint: { type: String, default: '' },
+    highestPoint: { type: String, default: '' },
     geojson: { type: Object, required: true },
     stats: {
       distance: Number,

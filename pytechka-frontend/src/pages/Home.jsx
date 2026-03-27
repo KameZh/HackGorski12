@@ -76,6 +76,9 @@ export default function Home() {
       description: trail.description || '',
       equipment: trail.equipment || '',
       resources: trail.resources || '',
+      startPoint: trail.startPoint || '',
+      endPoint: trail.endPoint || '',
+      highestPoint: trail.highestPoint || '',
     })
   }
 
@@ -366,6 +369,24 @@ export default function Home() {
                         value={editForm.resources}
                         onChange={(e) => setEditForm({ ...editForm, resources: e.target.value })}
                         placeholder="Resources"
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.startPoint}
+                        onChange={(e) => setEditForm({ ...editForm, startPoint: e.target.value })}
+                        placeholder="Starting point"
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.endPoint}
+                        onChange={(e) => setEditForm({ ...editForm, endPoint: e.target.value })}
+                        placeholder="End point"
+                      />
+                      <input
+                        className="rbf-input"
+                        value={editForm.highestPoint}
+                        onChange={(e) => setEditForm({ ...editForm, highestPoint: e.target.value })}
+                        placeholder="Highest point"
                       />
                       <div className="my-trail-edit-actions">
                         <button className="my-trail-save-btn" onClick={handleEditSave} disabled={editSaving}>

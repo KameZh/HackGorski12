@@ -128,6 +128,29 @@ export default function TrailDetailPopup({ trailId, onClose }) {
               </div>
             </div>
 
+            {(trail.startPoint || trail.endPoint || trail.highestPoint) && (
+              <div className="tdp-stats">
+                {trail.startPoint && (
+                  <div className="tdp-stat">
+                    <span className="tdp-stat-label">Start</span>
+                    <span className="tdp-stat-value">{trail.startPoint}</span>
+                  </div>
+                )}
+                {trail.endPoint && (
+                  <div className="tdp-stat">
+                    <span className="tdp-stat-label">End</span>
+                    <span className="tdp-stat-value">{trail.endPoint}</span>
+                  </div>
+                )}
+                {trail.highestPoint && (
+                  <div className="tdp-stat">
+                    <span className="tdp-stat-label">Highest</span>
+                    <span className="tdp-stat-value">{trail.highestPoint}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             {trail.equipment && (
               <div className="tdp-detail">
                 <span className="tdp-detail-label">Equipment</span>

@@ -79,7 +79,7 @@ app.get('/api/user/profile', requireAuth(), checkUser, async (req, res) => {
 // POST /api/trails — publish a trail (auth required)
 app.post('/api/trails', requireAuth(), checkUser, async (req, res) => {
   try {
-    const { geojson, name, region, difficulty, description, equipment, resources } = req.body
+    const { geojson, name, region, difficulty, description, equipment, resources, startPoint, endPoint, highestPoint } = req.body
     if (!geojson) return res.status(400).json({ error: 'geojson is required' })
     if (!name) return res.status(400).json({ error: 'name is required' })
 
@@ -95,6 +95,9 @@ app.post('/api/trails', requireAuth(), checkUser, async (req, res) => {
       description: description || '',
       equipment: equipment || '',
       resources: resources || '',
+      startPoint: startPoint || '',
+      endPoint: endPoint || '',
+      highestPoint: highestPoint || '',
       geojson,
       stats,
       ai: { status: 'pending' },
@@ -245,7 +248,7 @@ app.put('/api/trails/:id', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'Not authorized to edit this trail' })
     }
 
-    const allowed = ['name', 'region', 'difficulty', 'description', 'equipment', 'resources']
+    const allowed = ['name', 'region', 'difficulty', 'description', 'equipment', 'resources', 'startPoint', 'endPoint', 'highestPoint']
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
         trail[key] = req.body[key]

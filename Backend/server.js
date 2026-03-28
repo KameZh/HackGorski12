@@ -1,4 +1,4 @@
-import "dotenv/config"; // To read CLERK_SECRET_KEY and CLERK_PUBLISHABLE_KEY
+import "dotenv/config";
 import express from "express";
 import { clerkMiddleware, requireAuth, getAuth } from "@clerk/express";
 import cors from "cors";
@@ -120,7 +120,6 @@ function deriveTrailPointLabels(geojson) {
   const startPoint = fmt(coords[0]);
   const endPoint = fmt(coords[coords.length - 1]);
 
-  // Find highest elevation from 3rd element of coordinates (altitude)
   let maxElev = null;
   for (const c of coords) {
     if (
@@ -208,11 +207,6 @@ app.get("/api/user/profile", requireAuth(), checkUser, async (req, res) => {
   }
 });
 
-// =====================
-// TRAILS (community published routes)
-// =====================
-
-// POST /api/trails — publish a trail (auth required)
 app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
   try {
     const {
@@ -257,10 +251,8 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       ai: { status: "pending" },
     });
 
-    // Fire-and-forget async AI processing
     processRouteAI(trail._id);
 
-    // Contribution badge progress
     await updateBadgeProgress(userId, { createdTrails: 1 });
 
     res.status(201).json(trail);
@@ -270,7 +262,6 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
   }
 });
 
-// GET /api/trails/mine — get current user's trails (auth required)
 app.get("/api/trails/mine", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -284,7 +275,6 @@ app.get("/api/trails/mine", requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/badges/trailers/complete — mark a completed trail
 app.post("/api/badges/trailers/complete", requireAuth(), async (req, res) => {
   try {
     const { userId } = getAuth(req);
@@ -299,7 +289,6 @@ app.post("/api/badges/trailers/complete", requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/badges/campaign/participate — add participation point
 app.post(
   "/api/badges/campaign/participate",
   requireAuth(),
@@ -318,7 +307,6 @@ app.post(
   },
 );
 
-// GET /api/trails/geojson — public GeoJSON FeatureCollection for Mapbox
 app.get("/api/trails/geojson", async (req, res) => {
   try {
     const trails = await Trail.find({}).select(
@@ -369,7 +357,6 @@ app.get("/api/trails/geojson", async (req, res) => {
   }
 });
 
-// GET /api/trails — list all trails (public, no auth required)
 app.get("/api/trails", async (req, res) => {
   try {
     const { search, difficulty, activity, sort } = req.query;
@@ -455,7 +442,6 @@ app.get("/api/trails", async (req, res) => {
   }
 });
 
-// GET /api/trails/:id/start-readiness — validate start distance from user's live location
 app.get("/api/trails/:id/start-readiness", async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id).select(
@@ -514,7 +500,6 @@ app.get("/api/trails/:id/start-readiness", async (req, res) => {
   }
 });
 
-// POST /api/trails/:id/complete — mark a completed trail and optionally submit rating
 app.post(
   "/api/trails/:id/complete",
   requireAuth(),
@@ -560,7 +545,6 @@ app.post(
   },
 );
 
-// GET /api/trails/:id — get a single trail (public)
 app.get("/api/trails/:id", async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id);
@@ -572,7 +556,6 @@ app.get("/api/trails/:id", async (req, res) => {
   }
 });
 
-// PUT /api/trails/:id — update trail (owner only)
 app.put("/api/trails/:id", requireAuth(), async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id);
@@ -605,7 +588,6 @@ app.put("/api/trails/:id", requireAuth(), async (req, res) => {
   }
 });
 
-// DELETE /api/trails/:id — delete trail (owner only)
 app.delete("/api/trails/:id", requireAuth(), async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id);
@@ -624,7 +606,6 @@ app.delete("/api/trails/:id", requireAuth(), async (req, res) => {
   }
 });
 
-// POST /api/trails/:id/reviews — add a review (auth required)
 app.post(
   "/api/trails/:id/reviews",
   requireAuth(),
@@ -641,7 +622,6 @@ app.post(
       const trail = await Trail.findById(req.params.id);
       if (!trail) return res.status(404).json({ error: "Trail not found" });
 
-      // Prevent duplicate reviews from the same user
       const reviewUserId = getAuth(req).userId;
       const existing = trail.reviews.find((r) => r.userId === reviewUserId);
       if (existing) {
@@ -668,7 +648,6 @@ app.post(
   },
 );
 
-// GET /api/trails/:id/reviews — get reviews for a trail (public)
 app.get("/api/trails/:id/reviews", async (req, res) => {
   try {
     const trail = await Trail.findById(req.params.id).select(
@@ -685,11 +664,6 @@ app.get("/api/trails/:id/reviews", async (req, res) => {
   }
 });
 
-// =====================
-// PINGS (trail hazard markers)
-// =====================
-
-// Haversine distance between two [lng, lat] pairs in meters
 function haversineMeters([lon1, lat1], [lon2, lat2]) {
   const R = 6371000;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -701,34 +675,29 @@ function haversineMeters([lon1, lat1], [lon2, lat2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// After a junk ping is created, check for clusters within 300 m
 async function detectTrashClusters(newPing) {
   if (newPing.type !== "junk") return;
 
-  // Find all active junk pings (not resolved, not expired)
   const junkPings = await Ping.find({
     type: "junk",
     resolved: { $ne: true },
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   });
 
-  // Find pings within 300 m of the new one
   const nearby = junkPings.filter(
     (p) => haversineMeters(newPing.coordinates, p.coordinates) <= 300,
   );
 
-  if (nearby.length < 3) return; // not enough for a cluster
+  if (nearby.length < 3) return;
 
   const nearbyIds = nearby.map((p) => p._id);
 
-  // Check if there's already a cluster containing most of these pings
   const existing = await TrashCluster.findOne({
     resolved: { $ne: true },
     pingIds: { $in: nearbyIds },
   });
 
   if (existing) {
-    // Merge new pings into the existing cluster
     const mergedIds = [
       ...new Set([...existing.pingIds.map(String), ...nearbyIds.map(String)]),
     ];
@@ -747,7 +716,6 @@ async function detectTrashClusters(newPing) {
     }
     await existing.save();
   } else {
-    // Create a new cluster
     const avgLng =
       nearby.reduce((s, p) => s + p.coordinates[0], 0) / nearby.length;
     const avgLat =
@@ -767,7 +735,6 @@ async function detectTrashClusters(newPing) {
   }
 }
 
-// POST /api/pings — create a ping (auth required)
 app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
   try {
     const { trailId, type, description, coordinates } = req.body;
@@ -798,7 +765,6 @@ app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
       expiresAt: Ping.computeExpiresAt(type),
     });
 
-    // Fire-and-forget cluster detection for junk pings
     detectTrashClusters(ping).catch((err) =>
       console.error("Cluster detection error:", err),
     );
@@ -810,7 +776,6 @@ app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
   }
 });
 
-// GET /api/pings — list all pings (public)
 app.get("/api/pings", async (req, res) => {
   try {
     const filter = {
@@ -826,8 +791,6 @@ app.get("/api/pings", async (req, res) => {
   }
 });
 
-// POST /api/pings/:id/vote — vote "gone" on a single ping (auth required)
-// 1 vote needed to resolve a single ping
 app.post("/api/pings/:id/vote", requireAuth(), async (req, res) => {
   try {
     const ping = await Ping.findById(req.params.id);
@@ -841,7 +804,6 @@ app.post("/api/pings/:id/vote", requireAuth(), async (req, res) => {
     }
 
     ping.goneVotes.push(userId);
-    // Single ping needs 1 vote to be removed
     if (ping.goneVotes.length >= 1) {
       ping.resolved = true;
     }
@@ -853,7 +815,6 @@ app.post("/api/pings/:id/vote", requireAuth(), async (req, res) => {
   }
 });
 
-// DELETE /api/pings/:id — delete a ping (owner only)
 app.delete("/api/pings/:id", requireAuth(), async (req, res) => {
   try {
     const ping = await Ping.findById(req.params.id);
@@ -871,11 +832,6 @@ app.delete("/api/pings/:id", requireAuth(), async (req, res) => {
   }
 });
 
-// =====================
-// TRASH CLUSTERS & EVENTS
-// =====================
-
-// GET /api/clusters — list all active clusters/events (public)
 app.get("/api/clusters", async (req, res) => {
   try {
     const clusters = await TrashCluster.find({ resolved: { $ne: true } })
@@ -892,8 +848,6 @@ app.get("/api/clusters", async (req, res) => {
   }
 });
 
-// POST /api/clusters/:id/vote — vote "gone" on a cluster/event (auth required)
-// Clutter needs 3 votes, Event needs 5 votes
 app.post(
   "/api/clusters/:id/vote",
   requireAuth(),
@@ -914,7 +868,6 @@ app.post(
       const needed = cluster.level === "event" ? 5 : 3;
       if (cluster.goneVotes.length >= needed) {
         cluster.resolved = true;
-        // Also resolve all member pings
         await Ping.updateMany(
           { _id: { $in: cluster.pingIds } },
           { $set: { resolved: true } },

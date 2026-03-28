@@ -1,6 +1,5 @@
 import Trail from "../models/trail.js";
 
-// Local LLM (e.g., Ollama) config
 const LOCAL_LLM_MODEL = process.env.LOCAL_LLM_MODEL || "gpt-oss:20b-cloud";
 const LOCAL_LLM_URL =
   process.env.LOCAL_LLM_URL || "http://localhost:11434/v1/chat/completions";
@@ -33,7 +32,6 @@ export function calculateStats(geojson) {
     }
   }
 
-  // Rough estimate: 4 km/h base + elevation penalty
   const distanceKm = distance / 1000;
   const estimatedHours = distanceKm / 4 + elevationGain / 600;
   const duration = Math.round(estimatedHours * 3600);
@@ -68,9 +66,6 @@ export function calculateStats(geojson) {
   };
 }
 
-/**
- * Extract flat coordinate array from various GeoJSON shapes.
- */
 function extractCoordinates(geojson) {
   if (!geojson) return [];
   if (geojson.type === "LineString") return geojson.coordinates;
@@ -93,9 +88,6 @@ function haversine([lng1, lat1], [lng2, lat2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/**
- * Simplify points by taking every Nth point to keep prompt size reasonable.
- */
 function simplifyForAI(geojson, maxPoints = 80) {
   const coords = extractCoordinates(geojson);
   if (coords.length <= maxPoints) return coords;
@@ -104,16 +96,12 @@ function simplifyForAI(geojson, maxPoints = 80) {
   for (let i = 0; i < coords.length; i += step) {
     simplified.push(coords[i]);
   }
-  // Always include the last point
   if (simplified[simplified.length - 1] !== coords[coords.length - 1]) {
     simplified.push(coords[coords.length - 1]);
   }
   return simplified;
 }
 
-/**
- * Build the elevation profile summary for the AI prompt.
- */
 function buildElevationProfile(coords) {
   const elevations = coords.filter((c) => c[2] != null).map((c) => c[2]);
   if (elevations.length === 0) return "No elevation data available.";
@@ -125,9 +113,6 @@ function buildElevationProfile(coords) {
   return `Min: ${min}m, Max: ${max}m, Avg: ${avg}m, Samples: [${elevations.map((e) => Math.round(e)).join(", ")}]`;
 }
 
-/**
- * Async: called after route creation. Sends data to local LLM and stores the result.
- */
 export async function processRouteAI(routeId) {
   try {
     await Trail.updateOne({ _id: routeId }, { "ai.status": "processing" });
@@ -220,7 +205,6 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
       throw new Error("AI returned empty response");
     }
 
-    // Parse AI response — strip any accidental markdown fences and salvage inner JSON when needed
     const rawContent = typeof text === "string" ? text : JSON.stringify(text);
     const cleanJson = rawContent
       .replace(/```json\s*/gi, "")

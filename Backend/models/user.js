@@ -5,7 +5,7 @@ const userSchema = new mongoose.Schema(
         clerkId: { type: String, required: true, unique: true, index: true },
         email: { type: String, required: true, unique: true },
         username: { type: String, required: true, unique: true },
-        metadata: mongoose.Schema.Types.Mixed, // Flexible additional data
+        metadata: mongoose.Schema.Types.Mixed,
         badgeProgress: {
             trailCompletions: { type: Number, default: 0 },
             createdTrails: { type: Number, default: 0 },

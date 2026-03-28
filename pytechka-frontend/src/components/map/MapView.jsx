@@ -62,6 +62,8 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 )
 
 const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
+const USER_FOLLOW_BASE_ZOOM = 14.2
+const USER_FOLLOW_TRAIL_ZOOM = 17.8
 
 const SEGMENT_COLOR_EXPRESSION = [
   'match',
@@ -594,6 +596,7 @@ export default function MapView({
   const locationWatchRef = useRef(null)
   const hasAutoCenteredOnUserRef = useRef(false)
   const lastCenteredLocationRef = useRef(null)
+  const trailFollowModeRef = useRef(false)
   const lastActivityPointRef = useRef(null)
   const lastStartReadinessLocationRef = useRef(null)
   const promptedReportsRef = useRef(new Set())
@@ -877,6 +880,10 @@ export default function MapView({
     startPanelTrail && startSafety.unsafe && !startUnsafeAcknowledged
   )
 
+  useEffect(() => {
+    trailFollowModeRef.current = Boolean(activeTrailSession)
+  }, [activeTrailSession])
+
   const applyLiveUserLocation = useCallback((coords, options = {}) => {
     const longitude = Number(coords?.longitude)
     const latitude = Number(coords?.latitude)
@@ -889,20 +896,42 @@ export default function MapView({
     setActivityCurrentElevation(altitude)
 
     const forceZoom = options.forceZoom === true
+    const isTrailFollowMode =
+      options.trailMode === true || trailFollowModeRef.current
     const previousCenter = lastCenteredLocationRef.current
+    const movementThresholdMeters = isTrailFollowMode ? 0.6 : 4
     const movedEnough =
       !previousCenter ||
       haversineMeters(
         [previousCenter.longitude, previousCenter.latitude],
         [longitude, latitude]
-      ) >= 4
+      ) >= movementThresholdMeters
 
-    if (!forceZoom && hasAutoCenteredOnUserRef.current && !movedEnough) {
+    const map = mapRef.current?.getMap()
+    const mapCenter = map?.getCenter?.() || null
+    const mapCenterDistanceMeters = mapCenter
+      ? haversineMeters([mapCenter.lng, mapCenter.lat], [longitude, latitude])
+      : 0
+    const mapDriftThresholdMeters = isTrailFollowMode ? 1.5 : 12
+    const mapIsOffUser = mapCenterDistanceMeters > mapDriftThresholdMeters
+    const shouldRecenter =
+      forceZoom ||
+      !hasAutoCenteredOnUserRef.current ||
+      movedEnough ||
+      mapIsOffUser ||
+      isTrailFollowMode
+
+    if (!shouldRecenter) {
       return
     }
 
+    const minFollowZoom = isTrailFollowMode
+      ? USER_FOLLOW_TRAIL_ZOOM
+      : USER_FOLLOW_BASE_ZOOM
     const nextMinZoom =
-      forceZoom || !hasAutoCenteredOnUserRef.current ? 14.2 : null
+      forceZoom || !hasAutoCenteredOnUserRef.current || isTrailFollowMode
+        ? minFollowZoom
+        : null
 
     setViewState((prev) => ({
       ...prev,
@@ -911,7 +940,6 @@ export default function MapView({
       zoom: nextMinZoom ? Math.max(prev.zoom, nextMinZoom) : prev.zoom,
     }))
 
-    const map = mapRef.current?.getMap()
     if (map) {
       const targetZoom = nextMinZoom
         ? Math.max(map.getZoom(), nextMinZoom)
@@ -919,7 +947,12 @@ export default function MapView({
       map.easeTo({
         center: [longitude, latitude],
         zoom: targetZoom,
-        duration: forceZoom || !hasAutoCenteredOnUserRef.current ? 700 : 350,
+        duration:
+          forceZoom || !hasAutoCenteredOnUserRef.current
+            ? 700
+            : isTrailFollowMode
+              ? 180
+              : 350,
         essential: true,
       })
     }
@@ -1089,8 +1122,8 @@ export default function MapView({
       },
       {
         enableHighAccuracy: true,
-        maximumAge: 2000,
-        timeout: 15000,
+        maximumAge: 1000,
+        timeout: 10000,
       }
     )
 
@@ -1572,6 +1605,7 @@ export default function MapView({
     promptedReportsRef.current = new Set()
 
     if (userLocation) {
+      applyLiveUserLocation(userLocation, { forceZoom: true, trailMode: true })
       lastActivityPointRef.current = {
         longitude: userLocation.longitude,
         latitude: userLocation.latitude,
@@ -1588,6 +1622,7 @@ export default function MapView({
     startReadiness,
     startSafety,
     startUnsafeAcknowledged,
+    applyLiveUserLocation,
     userLocation,
   ])
 

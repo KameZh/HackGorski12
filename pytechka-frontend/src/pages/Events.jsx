@@ -112,7 +112,6 @@ export default function Events() {
   const [loading, setLoading] = useState(true)
   const [pendingSignupEventId, setPendingSignupEventId] = useState(null)
 
-  // Backend clusters (clutters & cleanup events)
   const [clusters, setClusters] = useState([])
   const [clusterVoting, setClusterVoting] = useState(null)
 
@@ -246,7 +245,6 @@ export default function Events() {
       })
       setEvents(synced)
     } catch {
-      // Keep already persisted events in local storage if live sync fails.
       setEvents(listCleanupEvents())
     } finally {
       setLoading(false)
@@ -260,7 +258,6 @@ export default function Events() {
     loadAndSync()
   }, [loadAndSync])
 
-  // Fetch backend clusters (clutters & events from trash pings)
   useEffect(() => {
     fetchClusters()
       .then((res) => setClusters(Array.isArray(res.data) ? res.data : []))
@@ -316,7 +313,6 @@ export default function Events() {
           prev.map((event) => (event.id === eventId ? updated : event))
         )
       } catch {
-        // Ignore optimistic signup errors in frontend-only mode.
       } finally {
         setPendingSignupEventId(null)
       }

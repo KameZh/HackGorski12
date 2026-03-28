@@ -174,7 +174,6 @@ export default function Home() {
       user?.username ||
       '?')[0]?.toUpperCase?.() || '?'
 
-  // Aggregate stats from user's trails
   const totalDistance = myTrails.reduce(
     (sum, t) => sum + (t.stats?.distance || 0),
     0
@@ -225,7 +224,6 @@ export default function Home() {
   return (
     <div className="account-page">
       <div className="account-scroll">
-        {/* Profile header */}
         <div className="account-profile">
           <div className="account-avatar">
             {avatarUrl ? (
@@ -314,7 +312,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Today stats placeholder */}
         <div className="account-section">
           <h3 className="account-section-title">Overall Activity</h3>
           <div className="account-stats-row">
@@ -335,7 +332,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* My Trails */}
         {myTrails.length > 0 && (
           <div className="account-section" style={{ marginTop: '1rem' }}>
             <h3 className="account-section-title">My Trails</h3>
@@ -461,7 +457,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Action buttons */}
         <div className="account-actions">
           <button className="account-btn-settings" onClick={handleOpenProfile}>
             <svg
@@ -525,7 +520,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Logout confirmation */}
       {showLogoutConfirm && (
         <div
           className="confirm-overlay"
@@ -548,7 +542,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Delete confirmation */}
       {showDeleteConfirm && (
         <div
           className="confirm-overlay"

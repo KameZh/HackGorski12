@@ -1,19 +1,14 @@
 import { create } from 'zustand'
 
 export const useMapStore = create((set) => ({
-  // 'explore' | 'draw'
   mode: 'explore',
 
-  // Trail object currently tapped — drives RoutePreviewCard
   selectedTrail: null,
 
-  // Mapbox style token suffix
   mapStyle: 'outdoors-v12',
 
-  // 3D terrain on/off
   terrain3D: false,
 
-  // Incremented to signal "re-fetch trails"
   trailsVersion: 0,
 
   // Actions

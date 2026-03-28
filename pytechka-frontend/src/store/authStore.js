@@ -8,7 +8,7 @@ const useAuthStore = create((set) => ({
     const user = {
       email: userData.email,
       userId: userData.userId,
-      role: userData.role || 'user', // default role, will be expanded with Clerk
+      role: userData.role || 'user',
     }
     localStorage.setItem('user', JSON.stringify(user))
     set({ user, isAuthenticated: true })
@@ -20,7 +20,6 @@ const useAuthStore = create((set) => ({
     set({ user: null, isAuthenticated: false })
   },
 
-  // Placeholder for future Clerk authority levels
   hasRole: (role) => {
     const state = useAuthStore.getState()
     return state.user?.role === role

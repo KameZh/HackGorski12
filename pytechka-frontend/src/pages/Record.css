@@ -3,7 +3,6 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  /* Use dvh (dynamic viewport height) for modern mobile browsers */
   height: 100dvh;
   background:
     radial-gradient(
@@ -20,7 +19,6 @@
   overflow: hidden;
 }
 
-/* Identical Maps Ambient Glows */
 .record-glow {
   position: absolute;
   pointer-events: none;
@@ -53,7 +51,6 @@
   height: 100%;
 }
 
-/* Fallback state styles remain untouched */
 .record-fallback {
   position: absolute;
   inset: 0;
@@ -72,9 +69,6 @@
   text-align: center;
 }
 
-/* -------------------------------------
-   TOP DASHBOARD (Stats Grid)
-   ------------------------------------- */
 .record-status-wrap {
   position: absolute;
   left: 50%;
@@ -92,7 +86,6 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
-  /* Brought over Maps.css panel styling */
   border: 1px solid rgba(66, 129, 164, 0.36);
   box-shadow: 0 18px 38px rgba(0, 1, 0, 0.38);
   background: linear-gradient(
@@ -111,7 +104,6 @@
   margin-bottom: 8px;
 }
 
-/* Brought over Maps.css Skewed Teal Title */
 .record-topbar-title {
   margin: 0;
   position: relative;
@@ -143,7 +135,6 @@
   transform: skewX(-14deg);
 }
 
-/* Clean 3x2 Grid */
 .record-stats-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -160,7 +151,7 @@
 .record-top-stat-value {
   font-size: 1.15rem;
   font-weight: 700;
-  color: #fbfef9; /* Matched to Maps text color */
+  color: #fbfef9;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
@@ -168,7 +159,6 @@
 .record-top-stat-label {
   margin-top: 4px;
   font-size: 0.65rem;
-  /* Teal accent matching Maps search icons/badges */
   color: rgba(72, 169, 166, 0.8);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -178,9 +168,6 @@
   animation: record-stats-in 460ms cubic-bezier(0.19, 1, 0.22, 1) both;
 }
 
-/* -------------------------------------
-   ERRORS & INFO ALERTS
-   ------------------------------------- */
 .record-info-wrap {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 156px);
@@ -209,17 +196,12 @@
   background: rgba(239, 68, 68, 0.15);
   color: #fca5a5;
 }
-
-/* -------------------------------------
-   BOTTOM ACTION BAR (Controls)
-   ------------------------------------- */
 .record-live-panel-wrap {
   position: absolute;
   left: 12px;
   right: 12px;
-  /* Increased from 78px to 100px to clear the BottomNav and safe areas */
   bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
-  z-index: 40; /* Higher than BottomNav (30) to ensure visibility */
+  z-index: 40;
 }
 
 .record-live-panel {
@@ -259,7 +241,7 @@
 .record-action-btn,
 .record-primary-btn {
   height: 48px;
-  border-radius: 12px; /* Adjusted to fit the maps 12px input styling */
+  border-radius: 12px;
   color: #fbfef9;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -277,7 +259,6 @@
   transform: scale(0.96);
 }
 
-/* Secondary Buttons */
 .record-reset-btn {
   background: rgba(66, 129, 164, 0.15);
   border: 1px solid rgba(66, 129, 164, 0.4);
@@ -291,7 +272,6 @@
 }
 
 .record-save-btn {
-  /* Using the maps gradient */
   background: linear-gradient(135deg, #4281a4 0%, #48a9a6 100%);
   box-shadow: 0 4px 16px rgba(72, 169, 166, 0.3);
 }
@@ -300,7 +280,6 @@
   box-shadow: 0 4px 20px rgba(72, 169, 166, 0.4);
 }
 
-/* Primary Big Buttons */
 .record-start-btn {
   background: linear-gradient(125deg, #2cb85f 0%, #22c55e 100%);
   box-shadow: 0 4px 16px rgba(34, 197, 94, 0.3);
@@ -325,9 +304,6 @@
   z-index: 30;
 }
 
-/* -------------------------------------
-   MAP MARKERS
-   ------------------------------------- */
 .record-marker {
   width: 14px;
   height: 14px;
@@ -353,7 +329,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #48a9a6; /* Matched to teal theme */
+  background: #48a9a6;
   border: 3px solid #8de0dc;
   animation: pulse-ring 2s infinite;
   position: relative;
@@ -392,7 +368,6 @@
   }
 }
 
-/* ─── AI Analysis Panel ─── */
 .record-ai-panel {
   position: absolute;
   bottom: 210px;

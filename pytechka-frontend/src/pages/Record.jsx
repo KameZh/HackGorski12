@@ -195,12 +195,11 @@ export default function Record() {
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
   const [mapReady, setMapReady] = useState(false)
   const [savedRoute, setSavedRoute] = useState(null)
-  const [aiStatus, setAiStatus] = useState(null) // 'pending' | 'processing' | 'done' | 'error'
+  const [aiStatus, setAiStatus] = useState(null) 
   const [aiResult, setAiResult] = useState(null)
   const [saving, setSaving] = useState(false)
   const [showPublishForm, setShowPublishForm] = useState(false)
 
-  // Ping state
   const [pings, setPings] = useState([])
   const [pingMode, setPingMode] = useState(false)
   const [pingType, setPingType] = useState('junk')
@@ -714,7 +713,6 @@ export default function Record() {
     return () => clearInterval(interval)
   }, [isTracking])
 
-  // Poll for AI analysis results after saving a route
   useEffect(() => {
     if (!savedRoute?._id) return
     if (aiStatus === 'done' || aiStatus === 'error') return
@@ -732,14 +730,12 @@ export default function Record() {
           clearInterval(interval)
         }
       } catch {
-        // keep polling
       }
     }, 2000)
 
     return () => clearInterval(interval)
   }, [savedRoute, aiStatus])
 
-  // Load existing pings
   useEffect(() => {
     let active = true
     fetchPings()
@@ -754,7 +750,6 @@ export default function Record() {
     }
   }, [])
 
-  // Submit a ping at current location
   const handlePingSubmit = useCallback(async () => {
     const activityActive =
       isTracking ||
@@ -766,7 +761,6 @@ export default function Record() {
     if (!activityActive || !currentLocation) return
     setPingSubmitting(true)
     try {
-      // Find the nearest trail to associate with (optional)
       let nearestTrailId = loadedTrailActivity?.trailId || null
       if (trails.length > 0) {
         let minDist = Infinity
@@ -786,7 +780,6 @@ export default function Record() {
             }
           }
         }
-        // Only associate if within 2km
         if (minDist > 2000) nearestTrailId = null
       }
 
@@ -919,7 +912,6 @@ export default function Record() {
             </Marker>
           )}
 
-          {/* Ping markers */}
           {viewState.zoom >= 12 &&
             pings.map((ping) => {
               const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
@@ -948,7 +940,6 @@ export default function Record() {
         </Map>
       </div>
 
-      {/* Add Ping button */}
       {isActivityActive ? (
         <button
           onClick={() => {
@@ -977,7 +968,6 @@ export default function Record() {
         </button>
       ) : null}
 
-      {/* Ping creation form */}
       {pingMode && isActivityActive && (
         <div style={pingPopupStyle}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
@@ -1073,7 +1063,6 @@ export default function Record() {
         </div>
       )}
 
-      {/* Selected ping detail popup */}
       {selectedPing && !pingMode && (
         <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
           <div
@@ -1190,7 +1179,6 @@ export default function Record() {
         <RoutePreviewCard onStartTrail={startLoadedTrailActivity} />
       )}
 
-      {/* AI Analysis Results */}
       {savedRoute && (
         <div className="record-ai-panel">
           {(aiStatus === 'pending' || aiStatus === 'processing') && (
@@ -1238,7 +1226,7 @@ export default function Record() {
                         </span>
                         {seg.estimatedTime && (
                           <span className="record-ai-seg-time">
-                            ⏱ {seg.estimatedTime}
+                             {seg.estimatedTime}
                           </span>
                         )}
                       </div>
@@ -1250,7 +1238,7 @@ export default function Record() {
 
               {aiResult.warnings?.length > 0 && (
                 <div className="record-ai-warnings">
-                  <h4>⚠️ Warnings</h4>
+                  <h4>Warnings</h4>
                   {aiResult.warnings.map((w, i) => (
                     <div
                       key={i}

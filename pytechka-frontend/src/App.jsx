@@ -14,12 +14,10 @@ import Events from './pages/Events'
 function App() {
   const { getToken, isSignedIn } = useAuth()
 
-  // Wire Clerk's getToken into the axios client so all API calls are authenticated
   useEffect(() => {
     setClerkTokenGetter(getToken)
   }, [getToken])
 
-  // Sync user to MongoDB whenever they sign in
   useEffect(() => {
     if (isSignedIn) {
       getUserProfile().catch((err) => console.error('User sync failed:', err))

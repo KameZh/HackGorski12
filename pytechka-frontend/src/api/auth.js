@@ -1,8 +1,5 @@
 import api from './client'
 
-// With Clerk handling authentication, these functions interact with the backend
-// using the automatically-attached Clerk token from the axios interceptor.
-
 export async function getUserProfile() {
   const { data } = await api.get('/user/profile')
   return data

@@ -153,7 +153,6 @@
   line-height: 1.45;
 }
 
-/* Stars */
 .tdp-stars {
   display: flex;
   gap: 2px;
@@ -182,7 +181,6 @@
   cursor: default;
 }
 
-/* Average rating */
 .tdp-avg-rating {
   display: flex;
   align-items: center;
@@ -233,7 +231,6 @@
   line-height: 1.4;
 }
 
-/* Review form */
 .tdp-review-form {
   display: flex;
   flex-direction: column;

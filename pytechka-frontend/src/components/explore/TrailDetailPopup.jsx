@@ -164,7 +164,6 @@ export default function TrailDetailPopup({ trailId, onClose }) {
               <p className="tdp-detail-text">{trail.username || 'Unknown'}</p>
             </div>
 
-            {/* Average rating */}
             <div className="tdp-avg-rating">
               <StarRating
                 value={Math.round(trail.averageAccuracy || 0)}
@@ -176,7 +175,6 @@ export default function TrailDetailPopup({ trailId, onClose }) {
               </span>
             </div>
 
-            {/* Existing reviews */}
             {trail.reviews?.length > 0 && (
               <div className="tdp-reviews-list">
                 <span className="tdp-detail-label">Reviews</span>

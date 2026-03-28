@@ -166,7 +166,6 @@ export default function TrailCard({ trail }) {
 
   return (
     <article id={`trail-card-${trailId}`} className="trail-card">
-      {/* Image */}
       {image && (
         <div
           id={`trail-card-image-wrapper-${trailId}`}
@@ -179,7 +178,6 @@ export default function TrailCard({ trail }) {
             className="trail-card-image"
           />
 
-          {/* Activity type badge */}
           {activityType && (
             <div
               id={`trail-activity-badge-${trailId}`}
@@ -194,9 +192,7 @@ export default function TrailCard({ trail }) {
         </div>
       )}
 
-      {/* Content */}
       <div id={`trail-card-content-${trailId}`} className="trail-card-content">
-        {/* Top row — name + difficulty */}
         <div id={`trail-card-header-${trailId}`} className="trail-card-header">
           <h3 id={`trail-card-name-${trailId}`} className="trail-card-name">
             {name}
@@ -209,7 +205,6 @@ export default function TrailCard({ trail }) {
           </span>
         </div>
 
-        {/* Region */}
         <div id={`trail-region-${trailId}`} className="trail-region">
           <svg
             width="12"
@@ -225,7 +220,6 @@ export default function TrailCard({ trail }) {
           <span className="trail-region-label">{region}</span>
         </div>
 
-        {/* Description */}
         <p
           id={`trail-card-description-${trailId}`}
           className="trail-card-description"
@@ -233,7 +227,6 @@ export default function TrailCard({ trail }) {
           {trailDescription}
         </p>
 
-        {/* Stats row */}
         <div id={`trail-stats-${trailId}`} className="trail-stats">
           <div className="trail-stat">
             <svg
@@ -280,7 +273,6 @@ export default function TrailCard({ trail }) {
           </div>
         </div>
 
-        {/* Highest point placeholder + tags */}
         <div id={`trail-card-footer-${trailId}`} className="trail-card-footer">
           <div
             id={`trail-highest-point-${trailId}`}
@@ -292,7 +284,6 @@ export default function TrailCard({ trail }) {
             </span>
           </div>
 
-          {/* Tags */}
           {trailTags.length > 0 && (
             <div id={`trail-tags-${trailId}`} className="trail-tags">
               {trailTags.slice(0, 2).map((tag) => (
@@ -314,7 +305,6 @@ export default function TrailCard({ trail }) {
           ) : null}
         </div>
 
-        {/* Author + photos */}
         <div id={`trail-author-row-${trailId}`} className="trail-author-row">
           <div className="trail-author">
             {authorAvatar && (

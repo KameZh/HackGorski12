@@ -11,7 +11,6 @@ export const useMapStore = create((set) => ({
 
   trailsVersion: 0,
 
-  // Actions
   setMode: (mode) => set({ mode }),
   setSelectedTrail: (trail) => set({ selectedTrail: trail }),
   setMapStyle: (style) => set({ mapStyle: style }),

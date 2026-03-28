@@ -20,6 +20,7 @@ export default function Maps() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchFocused, setSearchFocused] = useState(false)
   const [suggestionTrails, setSuggestionTrails] = useState([])
+  const [hideTopBar, setHideTopBar] = useState(false)
 
   const initialStartFocus = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -106,74 +107,77 @@ export default function Maps() {
         <MapView
           searchQuery={searchQuery}
           initialStartFocus={initialStartFocus}
+          onTrailFlowVisibilityChange={setHideTopBar}
         />
       </div>
 
-      <div id="maps-topbar" className="maps-topbar">
-        <div className="maps-panel">
-          <div className="maps-title-row">
-            <h1 className="maps-title">Maps</h1>
-            <span className="maps-badge">LIVE</span>
-          </div>
+      {!hideTopBar ? (
+        <div id="maps-topbar" className="maps-topbar">
+          <div className="maps-panel">
+            <div className="maps-title-row">
+              <h1 className="maps-title">Maps</h1>
+              <span className="maps-badge">LIVE</span>
+            </div>
 
-          <div className={`maps-search ${searchFocused ? 'focused' : ''}`}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="maps-search-icon"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <input
-              id="maps-search-input"
-              type="text"
-              placeholder="Search locations and routes..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              list="maps-search-suggestions"
-              autoComplete="off"
-              className="maps-search-input"
-            />
-            <datalist id="maps-search-suggestions">
-              {mapSearchSuggestions.map((suggestion) => (
-                <option
-                  key={`maps-suggestion-${suggestion.toLowerCase()}`}
-                  value={suggestion}
-                />
-              ))}
-            </datalist>
-            {searchQuery && (
-              <button
-                id="maps-search-clear"
-                onClick={() => setSearchQuery('')}
-                className="maps-clear-btn"
-                aria-label="Clear search"
+            <div className={`maps-search ${searchFocused ? 'focused' : ''}`}>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="maps-search-icon"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                id="maps-search-input"
+                type="text"
+                placeholder="Search locations and routes..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => setSearchFocused(true)}
+                onBlur={() => setSearchFocused(false)}
+                list="maps-search-suggestions"
+                autoComplete="off"
+                className="maps-search-input"
+              />
+              <datalist id="maps-search-suggestions">
+                {mapSearchSuggestions.map((suggestion) => (
+                  <option
+                    key={`maps-suggestion-${suggestion.toLowerCase()}`}
+                    value={suggestion}
+                  />
+                ))}
+              </datalist>
+              {searchQuery && (
+                <button
+                  id="maps-search-clear"
+                  onClick={() => setSearchQuery('')}
+                  className="maps-clear-btn"
+                  aria-label="Clear search"
                 >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
-              </button>
-            )}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                  >
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="maps-bottomnav-wrap">
         <BottomNav />

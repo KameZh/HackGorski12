@@ -6,6 +6,8 @@ import {
   nearestPointOnLine,
   point as turfPoint,
 } from '@turf/turf'
+import { useAuth } from '@clerk/clerk-react'
+import { useNavigate } from 'react-router-dom'
 
 import { useMapStore } from '../../store/mapStore'
 import {
@@ -61,6 +63,20 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 
 const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
 
+const SEGMENT_COLOR_EXPRESSION = [
+  'match',
+  ['get', 'difficulty'],
+  'easy',
+  DIFFICULTY_COLOR.easy,
+  'moderate',
+  DIFFICULTY_COLOR.moderate,
+  'hard',
+  DIFFICULTY_COLOR.hard,
+  'extreme',
+  DIFFICULTY_COLOR.extreme,
+  '#64748b',
+]
+
 const styles = {
   container: {
     position: 'relative',
@@ -89,17 +105,17 @@ const styles = {
     position: 'absolute',
     left: '50%',
     transform: 'translateX(-50%)',
-    bottom: MAPS_BOTTOM_CARD_OFFSET,
-    width: 'min(92vw, 420px)',
+    bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
+    width: 'min(92vw, 360px)',
     zIndex: 17,
-    border: '1px solid rgba(66, 129, 164, 0.42)',
+    border: '1px solid rgba(66, 129, 164, 0.36)',
     borderRadius: 14,
-    background: 'rgba(17, 26, 40, 0.92)',
-    boxShadow: '0 12px 28px rgba(0,1,0,0.32)',
+    background: 'rgba(12, 20, 32, 0.9)',
+    boxShadow: '0 10px 22px rgba(0,1,0,0.3)',
     backdropFilter: 'blur(8px)',
-    padding: '10px 12px',
+    padding: '9px 10px',
     display: 'grid',
-    gap: 8,
+    gap: 6,
   },
   radiusRow: {
     display: 'flex',
@@ -135,11 +151,11 @@ const styles = {
 }
 
 const PING_TYPES = {
-  junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
-  mud: { label: 'Mud', emoji: '💧', color: '#92400e' },
+  junk: { label: 'Junk / Rubbish', marker: 'J', color: '#f59e0b' },
+  mud: { label: 'Mud', marker: 'M', color: '#92400e' },
   environmental_danger: {
     label: 'Environmental Danger',
-    emoji: '🌳',
+    marker: 'D',
     color: '#dc2626',
   },
 }
@@ -147,13 +163,13 @@ const PING_TYPES = {
 const CLUSTER_CONFIG = {
   clutter: {
     label: 'Trash Clutter',
-    emoji: '⚠️',
+    marker: 'C',
     color: '#f97316',
     votesNeeded: 3,
   },
   event: {
     label: 'Cleanup Event',
-    emoji: '🚨',
+    marker: 'E',
     color: '#dc2626',
     votesNeeded: 5,
   },
@@ -291,6 +307,55 @@ function haversineMeters([lon1, lat1], [lon2, lat2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function pathLengthMeters(pathCoordinates) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return 0
+
+  let total = 0
+  for (let i = 1; i < pathCoordinates.length; i += 1) {
+    const prev = pathCoordinates[i - 1]
+    const current = pathCoordinates[i]
+    total += haversineMeters(
+      [Number(prev[0]), Number(prev[1])],
+      [Number(current[0]), Number(current[1])]
+    )
+  }
+  return total
+}
+
+function resolveTrailTotalDistanceMeters(trail, pathCoordinates) {
+  const statsDistance = Number(trail?.stats?.distance)
+  if (Number.isFinite(statsDistance) && statsDistance > 0) {
+    return statsDistance
+  }
+
+  const statsDistanceMeters = Number(trail?.stats?.distanceMeters)
+  if (Number.isFinite(statsDistanceMeters) && statsDistanceMeters > 0) {
+    return statsDistanceMeters
+  }
+
+  const directDistanceMeters = Number(trail?.distanceMeters)
+  if (Number.isFinite(directDistanceMeters) && directDistanceMeters > 0) {
+    return directDistanceMeters
+  }
+
+  const directDistanceKm = Number(trail?.distance)
+  if (Number.isFinite(directDistanceKm) && directDistanceKm > 0) {
+    return directDistanceKm * 1000
+  }
+
+  return pathLengthMeters(pathCoordinates)
+}
+
+function resolveTrailElevationMeters(trail) {
+  const statsElevation = Number(trail?.stats?.elevationGain)
+  if (Number.isFinite(statsElevation)) return statsElevation
+
+  const directElevation = Number(trail?.elevation)
+  if (Number.isFinite(directElevation)) return directElevation
+
+  return null
+}
+
 function formatDuration(seconds) {
   const total = Math.max(0, Number(seconds) || 0)
   const hh = Math.floor(total / 3600)
@@ -382,6 +447,56 @@ function buildSegmentModel(trail, pointCount) {
   ]
 }
 
+function buildSegmentFeatureCollection(pathCoordinates, segments) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
+  if (!Array.isArray(segments) || !segments.length) return null
+
+  const maxIndex = pathCoordinates.length - 1
+  const features = segments
+    .map((segment, index) => {
+      const startIndex = Math.max(
+        0,
+        Math.min(maxIndex, Number(segment?.startIndex || 0))
+      )
+      const endIndex = Math.max(
+        startIndex,
+        Math.min(maxIndex, Number(segment?.endIndex || maxIndex))
+      )
+
+      const coords = pathCoordinates
+        .slice(startIndex, endIndex + 1)
+        .map((point) => [Number(point[0]), Number(point[1])])
+        .filter(
+          (point) => Number.isFinite(point[0]) && Number.isFinite(point[1])
+        )
+
+      if (coords.length < 2) return null
+
+      return {
+        type: 'Feature',
+        properties: {
+          segmentIndex: index,
+          name: String(segment?.name || `Segment ${index + 1}`),
+          difficulty: String(segment?.difficulty || 'moderate').toLowerCase(),
+          estimatedTime: String(segment?.estimatedTime || ''),
+          description: String(segment?.description || ''),
+          pointCount: endIndex - startIndex + 1,
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: coords,
+        },
+      }
+    })
+    .filter(Boolean)
+
+  if (!features.length) return null
+  return {
+    type: 'FeatureCollection',
+    features,
+  }
+}
+
 function getNearestPathIndex(pathCoordinates, userLocation) {
   if (
     !Array.isArray(pathCoordinates) ||
@@ -471,9 +586,14 @@ function weatherIconUrl(icon) {
 export default function MapView({
   searchQuery = '',
   initialStartFocus = null,
+  onTrailFlowVisibilityChange = null,
 }) {
+  const navigate = useNavigate()
+  const { isSignedIn, userId } = useAuth()
   const mapRef = useRef(null)
   const locationWatchRef = useRef(null)
+  const hasAutoCenteredOnUserRef = useRef(false)
+  const lastCenteredLocationRef = useRef(null)
   const lastActivityPointRef = useRef(null)
   const lastStartReadinessLocationRef = useRef(null)
   const promptedReportsRef = useRef(new Set())
@@ -483,9 +603,9 @@ export default function MapView({
   const {
     mapStyle,
     terrain3D,
+    selectedTrail,
     setSelectedTrail,
     trailsVersion,
-    selectedTrail,
   } = useMapStore()
 
   const [trails, setTrails] = useState([])
@@ -517,6 +637,8 @@ export default function MapView({
   const [activeTrailSession, setActiveTrailSession] = useState(null)
   const [activityDistanceMeters, setActivityDistanceMeters] = useState(0)
   const [activityDurationSeconds, setActivityDurationSeconds] = useState(0)
+  const [activityCurrentElevation, setActivityCurrentElevation] = useState(null)
+  const [activityElevationGain, setActivityElevationGain] = useState(0)
   const [currentSectorIndex, setCurrentSectorIndex] = useState(0)
   const [showSectorSummary, setShowSectorSummary] = useState(false)
 
@@ -533,7 +655,6 @@ export default function MapView({
 
   const [userLocation, setUserLocation] = useState(null)
 
-  // Ping state
   const [pings, setPings] = useState([])
   const [pingMode, setPingMode] = useState(false)
   const [pendingPing, setPendingPing] = useState(null)
@@ -542,13 +663,22 @@ export default function MapView({
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
 
-  // Cluster state
   const [clusters, setClusters] = useState([])
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [voteSubmitting, setVoteSubmitting] = useState(false)
 
+  const isTrailFlowOverlayOpen = Boolean(
+    activeTrailSession || (finishModalTrail && finishStats)
+  )
+
   const showRadiusPanel =
-    areaInsightsEnabled && !selectedTrail && !startPanelTrail
+    areaInsightsEnabled && !startPanelTrail && !isTrailFlowOverlayOpen
+
+  useEffect(() => {
+    if (typeof onTrailFlowVisibilityChange === 'function') {
+      onTrailFlowVisibilityChange(isTrailFlowOverlayOpen)
+    }
+  }, [isTrailFlowOverlayOpen, onTrailFlowVisibilityChange])
 
   const defaultMapStyle = useMemo(
     () => `mapbox://styles/mapbox/${mapStyle}`,
@@ -584,6 +714,14 @@ export default function MapView({
       })
       .filter(Boolean)
   }, [trails])
+
+  const visibleTrailEntries = useMemo(() => {
+    if (!activeTrailSession?.trailId) return renderableTrails
+    const activeTrailId = String(activeTrailSession.trailId)
+    return renderableTrails.filter(
+      ({ trail }) => String(trail._id || trail.id) === activeTrailId
+    )
+  }, [renderableTrails, activeTrailSession])
 
   const selectedAreaFeature = useMemo(() => {
     if (!selectedAreaCenter) return null
@@ -632,11 +770,6 @@ export default function MapView({
     return buildSegmentModel(startPanelTrail, startPanelPathCoordinates.length)
   }, [startPanelTrail, startPanelPathCoordinates])
 
-  const activeStartSegment =
-    startPanelSegments[
-      Math.max(0, Math.min(startHoveredSegment, startPanelSegments.length - 1))
-    ]
-
   const startSafety = useMemo(() => {
     return getSafetyDecision({
       trail: startPanelTrail,
@@ -653,6 +786,147 @@ export default function MapView({
     )
     return activeTrailSession.segments[safeIndex]
   }, [activeTrailSession, currentSectorIndex])
+
+  const activitySteps = useMemo(
+    () => Math.max(0, Math.round(activityDistanceMeters / 0.78)),
+    [activityDistanceMeters]
+  )
+
+  const activityDistanceProgressText = useMemo(() => {
+    const coveredKm = (activityDistanceMeters / 1000).toFixed(2)
+    const totalMeters = Number(activeTrailSession?.totalDistanceMeters || 0)
+    const totalKm = totalMeters > 0 ? (totalMeters / 1000).toFixed(2) : '--'
+    return `${coveredKm} / ${totalKm} km`
+  }, [activityDistanceMeters, activeTrailSession])
+
+  const activityProgressPercent = useMemo(() => {
+    const total = Number(activeTrailSession?.totalDistanceMeters || 0)
+    if (total <= 0) return 0
+    return Math.max(0, Math.min(100, (activityDistanceMeters / total) * 100))
+  }, [activityDistanceMeters, activeTrailSession])
+
+  const activityPaceText = useMemo(() => {
+    if (activityDistanceMeters <= 0.1) return '--'
+    const km = activityDistanceMeters / 1000
+    const minPerKm = activityDurationSeconds / 60 / km
+    if (!Number.isFinite(minPerKm) || minPerKm <= 0) return '--'
+    const minutes = Math.floor(minPerKm)
+    const seconds = Math.round((minPerKm - minutes) * 60)
+    return `${minutes}:${String(seconds).padStart(2, '0')} min/km`
+  }, [activityDistanceMeters, activityDurationSeconds])
+
+  const startPanelSegmentFeatures = useMemo(
+    () =>
+      buildSegmentFeatureCollection(
+        startPanelPathCoordinates,
+        startPanelSegments
+      ),
+    [startPanelPathCoordinates, startPanelSegments]
+  )
+
+  const loadedRouteCoordinates = useMemo(() => {
+    if (Array.isArray(activeTrailSession?.pathCoordinates)) {
+      return activeTrailSession.pathCoordinates
+    }
+
+    if (
+      Array.isArray(startPanelPathCoordinates) &&
+      startPanelPathCoordinates.length
+    ) {
+      return startPanelPathCoordinates
+    }
+
+    return extractLineCoordinates(selectedTrail?.geojson)
+  }, [activeTrailSession, startPanelPathCoordinates, selectedTrail])
+
+  const loadedRouteEndpoints = useMemo(() => {
+    if (
+      !Array.isArray(loadedRouteCoordinates) ||
+      loadedRouteCoordinates.length < 2
+    ) {
+      return null
+    }
+
+    const start = loadedRouteCoordinates[0]
+    const finish = loadedRouteCoordinates[loadedRouteCoordinates.length - 1]
+    const startCoordinates = [Number(start[0]), Number(start[1])]
+    const endCoordinates = [Number(finish[0]), Number(finish[1])]
+
+    if (
+      !Number.isFinite(startCoordinates[0]) ||
+      !Number.isFinite(startCoordinates[1]) ||
+      !Number.isFinite(endCoordinates[0]) ||
+      !Number.isFinite(endCoordinates[1])
+    ) {
+      return null
+    }
+
+    return { startCoordinates, endCoordinates }
+  }, [loadedRouteCoordinates])
+
+  const activeTrailSegmentFeatures = useMemo(
+    () =>
+      buildSegmentFeatureCollection(
+        activeTrailSession?.pathCoordinates,
+        activeTrailSession?.segments
+      ),
+    [activeTrailSession]
+  )
+
+  const showUnsafeStartAlert = Boolean(
+    startPanelTrail && startSafety.unsafe && !startUnsafeAcknowledged
+  )
+
+  const applyLiveUserLocation = useCallback((coords, options = {}) => {
+    const longitude = Number(coords?.longitude)
+    const latitude = Number(coords?.latitude)
+    const altitude = Number.isFinite(coords?.altitude) ? coords.altitude : null
+
+    if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return
+
+    setGeoError('')
+    setUserLocation({ longitude, latitude, altitude })
+    setActivityCurrentElevation(altitude)
+
+    const forceZoom = options.forceZoom === true
+    const previousCenter = lastCenteredLocationRef.current
+    const movedEnough =
+      !previousCenter ||
+      haversineMeters(
+        [previousCenter.longitude, previousCenter.latitude],
+        [longitude, latitude]
+      ) >= 4
+
+    if (!forceZoom && hasAutoCenteredOnUserRef.current && !movedEnough) {
+      return
+    }
+
+    const nextMinZoom =
+      forceZoom || !hasAutoCenteredOnUserRef.current ? 14.2 : null
+
+    setViewState((prev) => ({
+      ...prev,
+      longitude,
+      latitude,
+      zoom: nextMinZoom ? Math.max(prev.zoom, nextMinZoom) : prev.zoom,
+    }))
+
+    const map = mapRef.current?.getMap()
+    if (map) {
+      const targetZoom = nextMinZoom
+        ? Math.max(map.getZoom(), nextMinZoom)
+        : map.getZoom()
+      map.easeTo({
+        center: [longitude, latitude],
+        zoom: targetZoom,
+        duration: forceZoom || !hasAutoCenteredOnUserRef.current ? 700 : 350,
+        essential: true,
+      })
+    }
+
+    hasAutoCenteredOnUserRef.current = true
+    lastCenteredLocationRef.current = { longitude, latitude }
+  }, [])
 
   const refreshPingsAndClusters = useCallback(() => {
     fetchPings()
@@ -808,16 +1082,10 @@ export default function MapView({
 
     const watchId = navigator.geolocation.watchPosition(
       ({ coords }) => {
-        setGeoError('')
-        setUserLocation({
-          longitude: coords.longitude,
-          latitude: coords.latitude,
-        })
+        applyLiveUserLocation(coords)
       },
       () => {
-        setGeoError(
-          'Location is unavailable. Allow location access and try again.'
-        )
+        setGeoError('')
       },
       {
         enableHighAccuracy: true,
@@ -832,7 +1100,7 @@ export default function MapView({
       navigator.geolocation.clearWatch(watchId)
       locationWatchRef.current = null
     }
-  }, [])
+  }, [applyLiveUserLocation])
 
   useEffect(() => {
     if (!startPanelTrail) return undefined
@@ -1062,28 +1330,16 @@ export default function MapView({
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        setGeoError('')
-        setUserLocation({
-          longitude: coords.longitude,
-          latitude: coords.latitude,
-        })
-        setViewState((v) => ({
-          ...v,
-          longitude: coords.longitude,
-          latitude: coords.latitude,
-          zoom: 14,
-        }))
+        applyLiveUserLocation(coords, { forceZoom: true })
         if (areaInsightsEnabled) {
           setSelectedAreaCenter([coords.longitude, coords.latitude])
         }
       },
       () => {
-        setGeoError(
-          'Location is unavailable. Allow location access and try again.'
-        )
+        setGeoError('')
       }
     )
-  }, [areaInsightsEnabled])
+  }, [areaInsightsEnabled, applyLiveUserLocation])
 
   const handleToggleAreaInsights = useCallback(() => {
     setAreaInsightsEnabled((value) => !value)
@@ -1132,9 +1388,7 @@ export default function MapView({
                 if (nearest?.geometry?.coordinates) {
                   snapped = nearest.geometry.coordinates
                 }
-              } catch {
-                // Keep raw click coordinate as fallback.
-              }
+              } catch {}
             }
           }
         }
@@ -1207,6 +1461,9 @@ export default function MapView({
             setUserLocation({
               longitude: coords.longitude,
               latitude: coords.latitude,
+              altitude: Number.isFinite(coords.altitude)
+                ? coords.altitude
+                : null,
             })
           },
           () => {}
@@ -1246,7 +1503,16 @@ export default function MapView({
   const handleBeginTrail = useCallback(() => {
     if (!startPanelTrail) return
 
-    if (!startReadiness?.withinRange) {
+    if (!isSignedIn || !userId) {
+      navigate('/login')
+      return
+    }
+
+    const hasVerifiedDistance = startReadiness?.hasUserLocation === true
+    const isOutOfStartRange =
+      hasVerifiedDistance && startReadiness?.withinRange === false
+
+    if (isOutOfStartRange) {
       setStartPanelError(
         startReadiness?.distanceToStartMeters
           ? `Move closer to the start point. You are ${Math.round(
@@ -1258,9 +1524,7 @@ export default function MapView({
     }
 
     if (startSafety.unsafe && !startUnsafeAcknowledged) {
-      setStartPanelError(
-        'High risk detected. Confirm that you want to start anyway.'
-      )
+      setStartPanelError('Review the risk popup and acknowledge to continue.')
       return
     }
 
@@ -1274,11 +1538,18 @@ export default function MapView({
 
     const trailId = startPanelTrail._id || startPanelTrail.id
     const segments = buildSegmentModel(startPanelTrail, pathCoordinates.length)
+    const totalDistanceMeters = resolveTrailTotalDistanceMeters(
+      startPanelTrail,
+      pathCoordinates
+    )
+    const totalElevationMeters = resolveTrailElevationMeters(startPanelTrail)
 
     setActiveTrailSession({
       trailId,
       trailName: startPanelTrail.name,
       trailDifficulty: startPanelTrail.difficulty,
+      totalDistanceMeters,
+      totalElevationMeters,
       pathCoordinates,
       segments,
       startedAt: Date.now(),
@@ -1286,6 +1557,10 @@ export default function MapView({
 
     setActivityDistanceMeters(0)
     setActivityDurationSeconds(0)
+    setActivityElevationGain(0)
+    setActivityCurrentElevation(
+      Number.isFinite(userLocation?.altitude) ? userLocation.altitude : null
+    )
     setCurrentSectorIndex(0)
     setShowSectorSummary(false)
     setStartPanelTrail(null)
@@ -1300,12 +1575,16 @@ export default function MapView({
       lastActivityPointRef.current = {
         longitude: userLocation.longitude,
         latitude: userLocation.latitude,
+        altitude: userLocation.altitude,
       }
     } else {
       lastActivityPointRef.current = null
     }
   }, [
     startPanelTrail,
+    isSignedIn,
+    userId,
+    navigate,
     startReadiness,
     startSafety,
     startUnsafeAcknowledged,
@@ -1332,11 +1611,21 @@ export default function MapView({
       if (d > 0.6 && d < 250) {
         setActivityDistanceMeters((old) => old + d)
       }
+
+      const prevAltitude = Number(prev.altitude)
+      const nextAltitude = Number(userLocation.altitude)
+      if (Number.isFinite(prevAltitude) && Number.isFinite(nextAltitude)) {
+        const positiveGain = nextAltitude - prevAltitude
+        if (positiveGain > 0) {
+          setActivityElevationGain((old) => old + positiveGain)
+        }
+      }
     }
 
     lastActivityPointRef.current = {
       longitude: userLocation.longitude,
       latitude: userLocation.latitude,
+      altitude: userLocation.altitude,
     }
 
     const nearestPathIndex = getNearestPathIndex(
@@ -1456,6 +1745,8 @@ export default function MapView({
     setCurrentSectorIndex(0)
     setActivityDistanceMeters(0)
     setActivityDurationSeconds(0)
+    setActivityElevationGain(0)
+    setActivityCurrentElevation(null)
     setShowSectorSummary(false)
     setPingMode(false)
     setPendingPing(null)
@@ -1548,7 +1839,7 @@ export default function MapView({
       >
         {mapReady ? (
           <>
-            {renderableTrails.map(({ trail, geometry }) => {
+            {visibleTrailEntries.map(({ trail, geometry }) => {
               const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
               const tid = trail._id || trail.id
               return (
@@ -1581,6 +1872,79 @@ export default function MapView({
               )
             })}
 
+            {loadedRouteEndpoints ? (
+              <>
+                <Marker
+                  longitude={loadedRouteEndpoints.startCoordinates[0]}
+                  latitude={loadedRouteEndpoints.startCoordinates[1]}
+                  anchor="bottom"
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                      color: '#f8fafc',
+                      fontSize: 12,
+                      fontWeight: 900,
+                      display: 'grid',
+                      placeItems: 'center',
+                      border: '2px solid #f8fafc',
+                      boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                    }}
+                    title="Route start"
+                  >
+                    S
+                  </div>
+                </Marker>
+                <Marker
+                  longitude={loadedRouteEndpoints.endCoordinates[0]}
+                  latitude={loadedRouteEndpoints.endCoordinates[1]}
+                  anchor="bottom"
+                >
+                  <div
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                      color: '#f8fafc',
+                      fontSize: 12,
+                      fontWeight: 900,
+                      display: 'grid',
+                      placeItems: 'center',
+                      border: '2px solid #f8fafc',
+                      boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+                    }}
+                    title="Route finish"
+                  >
+                    F
+                  </div>
+                </Marker>
+              </>
+            ) : null}
+
+            {userLocation ? (
+              <Marker
+                longitude={userLocation.longitude}
+                latitude={userLocation.latitude}
+                anchor="center"
+              >
+                <div
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: '50%',
+                    background: '#0ea5e9',
+                    border: '2px solid #f8fafc',
+                    boxShadow: '0 0 0 6px rgba(14,165,233,0.22)',
+                  }}
+                  title="Your current position"
+                />
+              </Marker>
+            ) : null}
+
             {hasVectorTileset ? (
               <Source
                 id="custom-tileset-source"
@@ -1610,6 +1974,44 @@ export default function MapView({
                   id="custom-tileset-raster-layer"
                   type="raster"
                   paint={{ 'raster-opacity': 0.9 }}
+                />
+              </Source>
+            ) : null}
+
+            {startPanelSegmentFeatures && !activeTrailSession ? (
+              <Source
+                id="map-start-segments"
+                type="geojson"
+                data={startPanelSegmentFeatures}
+              >
+                <Layer
+                  id="map-start-segment-line"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': SEGMENT_COLOR_EXPRESSION,
+                    'line-width': 5,
+                    'line-opacity': 0.95,
+                  }}
+                />
+              </Source>
+            ) : null}
+
+            {activeTrailSegmentFeatures ? (
+              <Source
+                id="map-active-segments"
+                type="geojson"
+                data={activeTrailSegmentFeatures}
+              >
+                <Layer
+                  id="map-active-segment-line"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': SEGMENT_COLOR_EXPRESSION,
+                    'line-width': 6,
+                    'line-opacity': 0.98,
+                  }}
                 />
               </Source>
             ) : null}
@@ -1678,7 +2080,7 @@ export default function MapView({
                       style={{ ...pingMarkerStyle, background: cfg.color }}
                       title={`${cfg.label}: ${ping.description || 'No description'}`}
                     >
-                      {cfg.emoji}
+                      {cfg.marker}
                     </div>
                   </Marker>
                 )
@@ -1709,7 +2111,7 @@ export default function MapView({
                     }}
                     title={`${cfg.label}: ${cluster.description || ''}`}
                   >
-                    {cfg.emoji}
+                    {cfg.marker}
                   </div>
                 </Marker>
               )
@@ -1737,38 +2139,11 @@ export default function MapView({
         ) : null}
       </Map>
 
-      {activeTrailSession ? (
-        <button
-          onClick={() => {
-            setPingMode((v) => !v)
-            setPendingPing(null)
-            setSelectedPing(null)
-          }}
-          style={{
-            position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 128px)',
-            right: 12,
-            zIndex: 20,
-            ...pingBtnBase,
-            minWidth: 118,
-            background: pingMode
-              ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
-              : 'linear-gradient(135deg, #0f766e, #0e7490)',
-            color: '#fff',
-            border: '1px solid rgba(255,255,255,0.22)',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.32)',
-            letterSpacing: '0.02em',
-          }}
-        >
-          {pingMode ? 'Cancel Ping' : 'Add Ping'}
-        </button>
-      ) : null}
-
       {pingMode && !pendingPing && (
         <div
           style={{
             position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 172px)',
+            top: 'calc(env(safe-area-inset-top, 0px) + 268px)',
             left: '50%',
             transform: 'translateX(-50%)',
             zIndex: 20,
@@ -1788,16 +2163,65 @@ export default function MapView({
         </div>
       )}
 
+      {showUnsafeStartAlert ? (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 72,
+            background: 'rgba(2, 6, 23, 0.62)',
+            display: 'grid',
+            placeItems: 'center',
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              ...overlayCard,
+              width: 'min(92vw, 430px)',
+              border: '1px solid rgba(239,68,68,0.6)',
+              background: 'rgba(63, 14, 14, 0.95)',
+              boxShadow: '0 18px 36px rgba(0,0,0,0.42)',
+              padding: '12px 14px',
+              color: '#fecaca',
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 800 }}>
+              Unsafe start conditions detected
+            </div>
+            <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+              {startSafety.summary}
+            </div>
+            <button
+              type="button"
+              onClick={() => setStartUnsafeAcknowledged(true)}
+              style={{
+                ...pingBtnBase,
+                padding: '8px 10px',
+                fontSize: 12,
+                background: 'rgba(239,68,68,0.22)',
+                border: '1px solid rgba(239,68,68,0.6)',
+                color: '#ffe4e6',
+              }}
+            >
+              Acknowledge and allow start
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {activeTrailSession ? (
         <div
           style={{
             ...overlayCard,
             position: 'absolute',
-            top: 'calc(env(safe-area-inset-top, 0px) + 124px)',
-            left: 12,
-            right: 12,
-            margin: '0 auto',
-            padding: 12,
+            top: 'calc(env(safe-area-inset-top, 0px) + 10px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: 'min(92vw, 380px)',
+            padding: 10,
             zIndex: 18,
           }}
         >
@@ -1805,18 +2229,19 @@ export default function MapView({
             style={{
               display: 'flex',
               justifyContent: 'space-between',
-              gap: 10,
+              alignItems: 'flex-start',
+              gap: 8,
             }}
           >
             <div>
               <div style={{ fontSize: 11, color: '#89afc2', fontWeight: 700 }}>
                 ACTIVE TRAIL
               </div>
-              <div style={{ fontSize: 15, fontWeight: 800 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, marginTop: 1 }}>
                 {activeTrailSession.trailName}
               </div>
               <div style={{ fontSize: 12, color: '#9cb7c8', marginTop: 2 }}>
-                Sector: {activeSector?.name || 'N/A'} (
+                Current: {activeSector?.name || 'N/A'} (
                 {DIFFICULTY_LABEL[activeSector?.difficulty] ||
                   activeSector?.difficulty ||
                   'Moderate'}
@@ -1824,14 +2249,94 @@ export default function MapView({
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 12, color: '#89afc2' }}>Distance</div>
-              <div style={{ fontWeight: 800 }}>
-                {(activityDistanceMeters / 1000).toFixed(2)} km
+              <div style={{ fontSize: 11, color: '#89afc2' }}>Distance</div>
+              <div style={{ fontWeight: 800, fontSize: 14 }}>
+                {activityDistanceProgressText}
               </div>
-              <div style={{ fontSize: 12, color: '#89afc2', marginTop: 2 }}>
+              <div style={{ fontSize: 11, color: '#89afc2', marginTop: 2 }}>
                 Time {formatDuration(activityDurationSeconds)}
               </div>
             </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: 6,
+              marginTop: 8,
+            }}
+          >
+            <div
+              style={{
+                ...styles.infoBox,
+                fontSize: 11,
+                padding: '6px 8px',
+                borderColor: 'rgba(148,163,184,0.24)',
+                background: 'rgba(12,19,30,0.72)',
+              }}
+            >
+              <div style={{ color: '#8eaac0' }}>Steps</div>
+              <div style={{ fontWeight: 800 }}>
+                {activitySteps.toLocaleString()}
+              </div>
+            </div>
+            <div
+              style={{
+                ...styles.infoBox,
+                fontSize: 11,
+                padding: '6px 8px',
+                borderColor: 'rgba(148,163,184,0.24)',
+                background: 'rgba(12,19,30,0.72)',
+              }}
+            >
+              <div style={{ color: '#8eaac0' }}>Altitude</div>
+              <div style={{ fontWeight: 800 }}>
+                {Number.isFinite(activityCurrentElevation)
+                  ? `${Math.round(activityCurrentElevation)} m`
+                  : '--'}
+              </div>
+            </div>
+            <div
+              style={{
+                ...styles.infoBox,
+                fontSize: 11,
+                padding: '6px 8px',
+                borderColor: 'rgba(148,163,184,0.24)',
+                background: 'rgba(12,19,30,0.72)',
+              }}
+            >
+              <div style={{ color: '#8eaac0' }}>Progress</div>
+              <div style={{ fontWeight: 800 }}>
+                {activityProgressPercent.toFixed(0)}%
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${Math.max(1, activeTrailSession.segments.length)}, minmax(0, 1fr))`,
+              gap: 4,
+              marginTop: 8,
+            }}
+          >
+            {activeTrailSession.segments.map((segment, index) => (
+              <div
+                key={`${segment.name}-chip-${index}`}
+                style={{
+                  minHeight: 7,
+                  borderRadius: 999,
+                  background: DIFFICULTY_COLOR[segment.difficulty] || '#64748b',
+                  opacity: index === currentSectorIndex ? 1 : 0.45,
+                  border:
+                    index === currentSectorIndex
+                      ? '1px solid rgba(241,245,249,0.7)'
+                      : '1px solid transparent',
+                }}
+                title={`${segment.name} (${DIFFICULTY_LABEL[segment.difficulty] || segment.difficulty})`}
+              />
+            ))}
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -1849,39 +2354,94 @@ export default function MapView({
                 : 'Show Sector Summary'}
             </button>
             <button
-              onClick={handleFinishTrail}
+              onClick={() => {
+                setPingMode((v) => !v)
+                setPendingPing(null)
+                setSelectedPing(null)
+              }}
               style={{
                 ...pingBtnBase,
-                flex: 1,
-                background: 'linear-gradient(135deg, #22c55e, #16a34a)',
+                flex: '0 0 40%',
+                background: pingMode
+                  ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
+                  : 'linear-gradient(135deg, #0f766e, #0e7490)',
                 color: '#fff',
+                border: '1px solid rgba(255,255,255,0.2)',
               }}
             >
-              Finish Trail
+              {pingMode ? 'Cancel Ping' : 'Add Ping'}
             </button>
           </div>
 
           {showSectorSummary ? (
             <div style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+              <div
+                style={{
+                  ...styles.infoBox,
+                  fontSize: 11,
+                  padding: '7px 9px',
+                  display: 'grid',
+                  gap: 4,
+                }}
+              >
+                <div>Average pace: {activityPaceText}</div>
+                <div>
+                  Elevation gain: +{Math.round(activityElevationGain)} m
+                </div>
+                <div>
+                  Total route elevation:{' '}
+                  {Number.isFinite(activeTrailSession?.totalElevationMeters)
+                    ? `${Math.round(activeTrailSession.totalElevationMeters)} m`
+                    : '--'}
+                </div>
+              </div>
               {activeTrailSession.segments.map((segment, index) => (
                 <div
                   key={`${segment.name}-${index}`}
                   style={{
-                    border: `1px solid ${index === currentSectorIndex ? 'rgba(72,169,166,0.9)' : 'rgba(107,114,128,0.4)'}`,
+                    border: `1px solid ${index === currentSectorIndex ? 'rgba(203,213,225,0.85)' : 'rgba(107,114,128,0.4)'}`,
                     background:
                       index === currentSectorIndex
-                        ? 'rgba(72,169,166,0.16)'
+                        ? 'rgba(30,41,59,0.9)'
                         : 'rgba(15,23,35,0.58)',
                     borderRadius: 10,
                     padding: '8px 10px',
                   }}
                 >
-                  <div style={{ fontWeight: 700, fontSize: 12 }}>
-                    {segment.name} -{' '}
-                    {DIFFICULTY_LABEL[segment.difficulty] || segment.difficulty}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 8,
+                      fontWeight: 700,
+                      fontSize: 12,
+                    }}
+                  >
+                    <span>{segment.name}</span>
+                    <span
+                      style={{
+                        padding: '2px 7px',
+                        borderRadius: 999,
+                        background:
+                          DIFFICULTY_COLOR[segment.difficulty] || '#64748b',
+                        color: '#f8fafc',
+                        fontSize: 10,
+                      }}
+                    >
+                      {DIFFICULTY_LABEL[segment.difficulty] ||
+                        segment.difficulty}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 3, fontSize: 11, color: '#96afc1' }}>
+                    Points:{' '}
+                    {Math.max(1, segment.endIndex - segment.startIndex + 1)}
+                    {segment.estimatedTime ? ` · ${segment.estimatedTime}` : ''}
                   </div>
                   {segment.description ? (
-                    <div style={{ fontSize: 12, color: '#b7c9d6' }}>
+                    <div
+                      style={{ marginTop: 3, fontSize: 12, color: '#b7c9d6' }}
+                    >
                       {segment.description}
                     </div>
                   ) : null}
@@ -1890,6 +2450,33 @@ export default function MapView({
             </div>
           ) : null}
         </div>
+      ) : null}
+
+      {activeTrailSession ? (
+        <button
+          onClick={handleFinishTrail}
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 108px)',
+            zIndex: 23,
+            width: 'min(92vw, 320px)',
+            ...pingBtnBase,
+            padding: '14px 20px',
+            fontSize: 16,
+            fontWeight: 800,
+            letterSpacing: 0.2,
+            border: '1px solid rgba(187,247,208,0.6)',
+            background:
+              'linear-gradient(135deg, #22c55e, #16a34a 58%, #15803d)',
+            color: '#fff',
+            boxShadow:
+              '0 14px 30px rgba(8,32,18,0.42), inset 0 1px 0 rgba(255,255,255,0.22)',
+          }}
+        >
+          Finish Trail
+        </button>
       ) : null}
 
       {pendingPing ? (
@@ -1921,8 +2508,8 @@ export default function MapView({
                   lineHeight: 1.3,
                 }}
               >
-                <span style={{ fontSize: 20, display: 'block' }}>
-                  {cfg.emoji}
+                <span style={{ fontSize: 14, display: 'block' }}>
+                  {cfg.marker}
                 </span>
                 {cfg.label}
               </button>
@@ -1992,7 +2579,7 @@ export default function MapView({
             }}
           >
             <span style={{ fontSize: 22 }}>
-              {PING_TYPES[selectedPing.type]?.emoji || '📌'}
+              {PING_TYPES[selectedPing.type]?.marker || 'P'}
             </span>
             <span style={{ fontWeight: 800, fontSize: 14 }}>
               {PING_TYPES[selectedPing.type]?.label || selectedPing.type}
@@ -2018,7 +2605,7 @@ export default function MapView({
                 color: '#4ade80',
               }}
             >
-              {voteSubmitting ? '...' : '✅ Not there anymore'}
+              {voteSubmitting ? '...' : 'Not there anymore'}
             </button>
             <button
               onClick={() => setSelectedPing(null)}
@@ -2046,7 +2633,7 @@ export default function MapView({
             }}
           >
             <span style={{ fontSize: 22 }}>
-              {CLUSTER_CONFIG[selectedCluster.level]?.emoji || '⚠️'}
+              {CLUSTER_CONFIG[selectedCluster.level]?.marker || 'C'}
             </span>
             <span style={{ fontWeight: 800, fontSize: 14 }}>
               {CLUSTER_CONFIG[selectedCluster.level]?.label ||
@@ -2077,7 +2664,7 @@ export default function MapView({
                 color: '#4ade80',
               }}
             >
-              {voteSubmitting ? '...' : '✅ Cleaned up'}
+              {voteSubmitting ? '...' : 'Cleaned up'}
             </button>
             <button
               onClick={() => setSelectedCluster(null)}
@@ -2220,7 +2807,8 @@ export default function MapView({
                   </div>
                 ) : (
                   <div style={{ marginTop: 4 }}>
-                    Waiting for GPS position to verify the 1 km start rule.
+                    GPS distance check is unavailable. You can still start, but
+                    distance-to-start cannot be verified.
                   </div>
                 )}
               </div>
@@ -2282,62 +2870,88 @@ export default function MapView({
                 <div
                   style={{ fontWeight: 700, color: '#8de0dc', marginBottom: 6 }}
                 >
-                  Trail Sectors (hover for details)
+                  Trail Sectors
                 </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 4,
-                    alignItems: 'stretch',
-                    minHeight: 34,
-                  }}
-                >
+                <div style={{ display: 'grid', gap: 6 }}>
                   {startPanelSegments.map((segment, index) => {
-                    const span = Math.max(
+                    const pointCount = Math.max(
                       1,
                       segment.endIndex - segment.startIndex + 1
                     )
                     return (
-                      <button
+                      <div
                         key={`${segment.name}-${index}`}
                         onMouseEnter={() => setStartHoveredSegment(index)}
                         onFocus={() => setStartHoveredSegment(index)}
                         style={{
-                          border: 'none',
+                          border:
+                            index === startHoveredSegment
+                              ? '1px solid rgba(203,213,225,0.8)'
+                              : '1px solid rgba(148,163,184,0.24)',
                           borderRadius: 8,
-                          flex: span,
-                          cursor: 'pointer',
-                          color: '#f8fafc',
-                          fontSize: 11,
-                          fontWeight: 700,
+                          padding: '7px 8px',
                           background:
-                            DIFFICULTY_COLOR[segment.difficulty] || '#6b7280',
-                          opacity: index === startHoveredSegment ? 1 : 0.72,
+                            index === startHoveredSegment
+                              ? 'rgba(30,41,59,0.92)'
+                              : 'rgba(15,23,35,0.62)',
+                          cursor: 'pointer',
                         }}
                         title={segment.description || segment.name}
                       >
-                        {segment.name}
-                      </button>
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: 8,
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>
+                            {segment.name}
+                          </span>
+                          <span
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: 999,
+                              background:
+                                DIFFICULTY_COLOR[segment.difficulty] ||
+                                '#64748b',
+                              color: '#f8fafc',
+                              fontSize: 10,
+                              fontWeight: 700,
+                            }}
+                          >
+                            {DIFFICULTY_LABEL[segment.difficulty] ||
+                              segment.difficulty}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            marginTop: 3,
+                            fontSize: 11,
+                            color: '#94aab9',
+                          }}
+                        >
+                          Points: {pointCount}
+                          {segment.estimatedTime
+                            ? ` · ${segment.estimatedTime}`
+                            : ''}
+                        </div>
+                        {segment.description ? (
+                          <div
+                            style={{
+                              marginTop: 3,
+                              fontSize: 11,
+                              color: '#bfd4de',
+                            }}
+                          >
+                            {segment.description}
+                          </div>
+                        ) : null}
+                      </div>
                     )
                   })}
                 </div>
-
-                {activeStartSegment ? (
-                  <div style={{ marginTop: 8, fontSize: 12, color: '#bed0de' }}>
-                    <strong style={{ color: '#e2e8f0' }}>
-                      {activeStartSegment.name}
-                    </strong>
-                    {' · '}
-                    {DIFFICULTY_LABEL[activeStartSegment.difficulty] ||
-                      activeStartSegment.difficulty}
-                    {activeStartSegment.estimatedTime
-                      ? ` · ${activeStartSegment.estimatedTime}`
-                      : ''}
-                    {activeStartSegment.description
-                      ? ` - ${activeStartSegment.description}`
-                      : ''}
-                  </div>
-                ) : null}
               </div>
             ) : null}
 
@@ -2375,28 +2989,6 @@ export default function MapView({
                   ))}
                 </div>
               </div>
-            ) : null}
-
-            {startSafety.unsafe ? (
-              <label
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  fontSize: 12,
-                  marginTop: 12,
-                  color: '#fecaca',
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={startUnsafeAcknowledged}
-                  onChange={(event) =>
-                    setStartUnsafeAcknowledged(event.target.checked)
-                  }
-                />
-                I understand the risk and still want to start.
-              </label>
             ) : null}
 
             {startPanelError ? (
@@ -2628,7 +3220,14 @@ export default function MapView({
       />
 
       {showRadiusPanel ? (
-        <div style={styles.radiusWrap}>
+        <div
+          style={{
+            ...styles.radiusWrap,
+            bottom: activeTrailSession
+              ? 'calc(env(safe-area-inset-bottom, 0px) + 188px)'
+              : styles.radiusWrap.bottom,
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -2657,7 +3256,7 @@ export default function MapView({
 
           {areaInsightsMinimized ? (
             <div
-              style={{ ...styles.infoBox, fontSize: 11, padding: '6px 9px' }}
+              style={{ ...styles.infoBox, fontSize: 11, padding: '7px 9px' }}
             >
               Area panel minimized.
             </div>
@@ -2774,7 +3373,7 @@ export default function MapView({
               style={{ ...styles.infoBox, fontSize: 11, padding: '8px 9px' }}
             >
               {areaWeatherLoading ? (
-                <div>Loading area weather...</div>
+                <div>Loading region weather...</div>
               ) : areaWeatherError ? (
                 <div style={{ color: '#fca5a5' }}>{areaWeatherError}</div>
               ) : areaWeather ? (
@@ -2844,11 +3443,13 @@ export default function MapView({
         </div>
       ) : null}
 
-      <RoutePreviewCard
-        onStartTrail={handleOpenStartPlanner}
-        bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
-        showScheduleButton={false}
-      />
+      {!isTrailFlowOverlayOpen ? (
+        <RoutePreviewCard
+          onStartTrail={handleOpenStartPlanner}
+          bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
+          showScheduleButton={false}
+        />
+      ) : null}
     </div>
   )
 }

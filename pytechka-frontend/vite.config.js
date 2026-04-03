@@ -27,7 +27,7 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
-    allowedHosts: ['fba0-213-130-77-41.ngrok-free.app', 'all'],
+    allowedHosts: ['6ab45-46-10-148-44.ngrok-free.app', 'all'],
     hmr: {
       port: 5173,
     },

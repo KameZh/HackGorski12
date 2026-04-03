@@ -46,7 +46,7 @@
   z-index: 1;
   width: min(100%, 1040px);
   margin: 0 auto;
-  padding: 18px 14px 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 18px) 14px 0;
 }
 
 .explore-header {
@@ -74,30 +74,14 @@
   font-weight: 820;
   line-height: 1.02;
   text-align: center;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 48%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 8px 26px rgba(72, 169, 166, 0.28);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
 }
 
 .explore-title::after {
-  content: '';
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: -8px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(66, 129, 164, 0.55),
-    rgba(72, 169, 166, 0.9),
-    rgba(66, 129, 164, 0.55)
-  );
-  transform: skewX(-16deg);
-  opacity: 0.92;
-  box-shadow: 0 3px 12px rgba(72, 169, 166, 0.24);
+  content: none;
 }
 
 .explore-subtitle {

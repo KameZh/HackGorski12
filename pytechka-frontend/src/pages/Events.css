@@ -91,28 +91,14 @@
   line-height: 1.04;
   letter-spacing: -0.03em;
   font-weight: 820;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 52%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 8px 26px rgba(72, 169, 166, 0.26);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
 }
 
 .events-title::after {
-  content: '';
-  position: absolute;
-  left: 12%;
-  right: 12%;
-  bottom: -7px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(66, 129, 164, 0.6),
-    rgba(72, 169, 166, 0.9),
-    rgba(66, 129, 164, 0.6)
-  );
-  transform: skewX(-14deg);
+  content: none;
 }
 
 .events-main {

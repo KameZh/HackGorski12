@@ -1,4 +1,3 @@
-import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
@@ -6,6 +5,14 @@ import './index.css'
 import App from './App.jsx'
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+const AUTH_REDIRECT_URL = '/'
+const ALLOWED_REDIRECT_ORIGINS = [
+  'https://localhost',
+  'http://localhost:5173',
+  'http://localhost:4173',
+  'http://localhost',
+  'capacitor://localhost',
+]
 
 function MissingEnv() {
   return (
@@ -46,15 +53,22 @@ function MissingEnv() {
 const root = document.getElementById('root')
 
 createRoot(root).render(
-  <StrictMode>
-    {PUBLISHABLE_KEY ? (
-      <ClerkProvider publishableKey={PUBLISHABLE_KEY}>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
-      </ClerkProvider>
-    ) : (
-      <MissingEnv />
-    )}
-  </StrictMode>
+  PUBLISHABLE_KEY ? (
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      afterSignInUrl={AUTH_REDIRECT_URL}
+      afterSignUpUrl={AUTH_REDIRECT_URL}
+      signInFallbackRedirectUrl={AUTH_REDIRECT_URL}
+      signInForceRedirectUrl={AUTH_REDIRECT_URL}
+      signUpFallbackRedirectUrl={AUTH_REDIRECT_URL}
+      signUpForceRedirectUrl={AUTH_REDIRECT_URL}
+      allowedRedirectOrigins={ALLOWED_REDIRECT_ORIGINS}
+    >
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
+    </ClerkProvider>
+  ) : (
+    <MissingEnv />
+  )
 )

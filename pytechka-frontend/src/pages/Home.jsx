@@ -2,23 +2,23 @@ import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
 import api from '../api/client'
-import { fetchMyTrails, updateTrail, deleteTrail } from '../api/trails'
+import { updateTrail, deleteTrail } from '../api/trails'
 import BottomNav from '../components/layout/Bottomnav'
 import './Account.css'
 
 const BADGE_TIERS = {
   trailers: [
-    { min: 20, name: 'Senior', color: '#48a9a6' },
+    { min: 20, name: 'Senior', color: '#dfc94c' },
     { min: 10, name: 'Junior', color: '#74aed0' },
     { min: 3, name: 'Rookie', color: '#82c0de' },
   ],
   contribution: [
-    { min: 20, name: 'Country guide', color: '#48a9a6' },
+    { min: 20, name: 'Country guide', color: '#dfc94c' },
     { min: 10, name: 'Local guide', color: '#74aed0' },
     { min: 3, name: 'New guide', color: '#82c0de' },
   ],
   campaign: [
-    { min: 20, name: 'Basically organizer', color: '#48a9a6' },
+    { min: 20, name: 'Basically organizer', color: '#dfc94c' },
     { min: 10, name: 'Helper', color: '#74aed0' },
     { min: 3, name: 'Volunteer', color: '#82c0de' },
   ],
@@ -39,7 +39,7 @@ function getNextGoal(category, value = 0) {
 }
 
 export default function Home() {
-  const { isSignedIn } = useAuth()
+  const { isSignedIn, getToken } = useAuth()
   const { user } = useUser()
   const { signOut, openUserProfile } = useClerk()
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
@@ -48,32 +48,71 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [badgeProgress, setBadgeProgress] = useState(null)
   const [myTrails, setMyTrails] = useState([])
+  const [loadError, setLoadError] = useState('')
+  const [profileError, setProfileError] = useState('')
+  const [trailsError, setTrailsError] = useState('')
   const [editingTrail, setEditingTrail] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [editSaving, setEditSaving] = useState(false)
   const navigate = useNavigate()
+
+  const describeApiError = (err) => {
+    const status = err?.response?.status ? `HTTP ${err.response.status}` : ''
+    const code = err?.code ? String(err.code) : ''
+    const message =
+      err?.response?.data?.error || err?.message || 'Unknown backend error'
+
+    return [status, code, message].filter(Boolean).join(' - ')
+  }
 
   useEffect(() => {
     if (!isSignedIn) {
       setLoading(false)
       return
     }
-    api
-      .get('/user/profile')
-      .then((res) => {
-        setDbUser(res.data)
-        setBadgeProgress(res.data?.badgeProgress || null)
-      })
-      .catch((err) => console.error('Failed to fetch profile:', err))
-      .finally(() => setLoading(false))
-  }, [isSignedIn])
 
-  useEffect(() => {
-    if (!isSignedIn) return
-    fetchMyTrails()
-      .then((res) => setMyTrails(Array.isArray(res.data) ? res.data : []))
-      .catch(() => setMyTrails([]))
-  }, [isSignedIn])
+    let canceled = false
+
+    ;(async () => {
+      try {
+        setLoadError('')
+        setProfileError('')
+        setTrailsError('')
+        const token = await getToken()
+        const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+        const [profileResult, trailsResult] = await Promise.allSettled([
+          api.get('/user/profile', { headers }),
+          api.get('/trails/mine', { headers }),
+        ])
+
+        if (!canceled && profileResult.status === 'fulfilled') {
+          setDbUser(profileResult.value.data)
+          setBadgeProgress(profileResult.value.data?.badgeProgress || null)
+        } else if (!canceled) {
+          setProfileError(describeApiError(profileResult.reason))
+        }
+
+        if (!canceled && trailsResult.status === 'fulfilled') {
+          setMyTrails(Array.isArray(trailsResult.value.data) ? trailsResult.value.data : [])
+        } else if (!canceled) {
+          setTrailsError(describeApiError(trailsResult.reason))
+        }
+
+        if (!canceled && (profileResult.status === 'rejected' || trailsResult.status === 'rejected')) {
+          setLoadError('Could not load backend data from ngrok.')
+        }
+      } catch (err) {
+        console.error('Failed to fetch profile:', err)
+        setLoadError(describeApiError(err))
+      } finally {
+        if (!canceled) setLoading(false)
+      }
+    })()
+
+    return () => {
+      canceled = true
+    }
+  }, [isSignedIn, getToken])
 
   const handleEditOpen = (trail) => {
     setEditingTrail(trail._id)
@@ -164,8 +203,16 @@ export default function Home() {
     )
   }
 
-  const displayName = dbUser?.username || '—'
-  const email = dbUser?.email || ''
+  const displayName =
+    dbUser?.username ||
+    user?.username ||
+    user?.firstName ||
+    user?.fullName ||
+    '—'
+  const email =
+    dbUser?.email ||
+    user?.primaryEmailAddress?.emailAddress ||
+    ''
   const avatarUrl =
     dbUser?.avatarUrl || dbUser?.photoUrl || dbUser?.imageUrl || user?.imageUrl
   const avatarInitial =
@@ -208,9 +255,9 @@ export default function Home() {
     {
       key: 'contribution',
       title: 'Contribution',
-      progress: badgeProgress?.createdTrails || 0,
-      tier: pickTier('contribution', badgeProgress?.createdTrails || 0),
-      nextGoal: getNextGoal('contribution', badgeProgress?.createdTrails || 0),
+      progress: Math.max(badgeProgress?.createdTrails || 0, myTrails.length),
+      tier: pickTier('contribution', Math.max(badgeProgress?.createdTrails || 0, myTrails.length)),
+      nextGoal: getNextGoal('contribution', Math.max(badgeProgress?.createdTrails || 0, myTrails.length)),
     },
     {
       key: 'campaign',
@@ -224,6 +271,30 @@ export default function Home() {
   return (
     <div className="account-page">
       <div className="account-scroll">
+          {loadError ? (
+            <div className="account-section">
+              <div className="account-badges-box" style={{ color: '#fca5a5' }}>
+                {loadError}
+              </div>
+            </div>
+          ) : null}
+
+          {profileError ? (
+            <div className="account-section">
+              <div className="account-badges-box" style={{ color: '#fca5a5' }}>
+                Profile: {profileError}
+              </div>
+            </div>
+          ) : null}
+
+          {trailsError ? (
+            <div className="account-section">
+              <div className="account-badges-box" style={{ color: '#fca5a5' }}>
+                Trails: {trailsError}
+              </div>
+            </div>
+          ) : null}
+
         <div className="account-profile">
           <div className="account-avatar">
             {avatarUrl ? (
@@ -332,11 +403,11 @@ export default function Home() {
           </div>
         </div>
 
-        {myTrails.length > 0 && (
-          <div className="account-section" style={{ marginTop: '1rem' }}>
-            <h3 className="account-section-title">My Trails</h3>
-            <div className="my-trails-list">
-              {myTrails.map((trail) => (
+        <div className="account-section" style={{ marginTop: '1rem' }}>
+          <h3 className="account-section-title">My Trails</h3>
+          <div className="my-trails-list">
+            {myTrails.length > 0 ? (
+              myTrails.map((trail) => (
                 <div key={trail._id} className="my-trail-item">
                   {editingTrail === trail._id ? (
                     <div className="my-trail-edit-form">
@@ -452,10 +523,14 @@ export default function Home() {
                     </>
                   )}
                 </div>
-              ))}
-            </div>
+              ))
+            ) : (
+              <div className="account-badges-box">
+                No trails loaded from the backend yet.
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         <div className="account-actions">
           <button className="account-btn-settings" onClick={handleOpenProfile}>

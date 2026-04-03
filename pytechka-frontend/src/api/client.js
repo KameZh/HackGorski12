@@ -1,8 +1,77 @@
 import axios from 'axios'
+import { Capacitor } from '@capacitor/core'
+import { CapacitorHttp } from '@capacitor/core'
+
+const nativeApiBaseUrl = 'http://10.0.2.2:5174/api'
+const androidApiBaseUrl = import.meta.env.VITE_ANDROID_API_BASE_URL
+const isLocalWebDev =
+  !Capacitor.isNativePlatform() &&
+  typeof window !== 'undefined' &&
+  ['localhost', '127.0.0.1'].includes(window.location.hostname)
+
+const apiBaseUrl = Capacitor.isNativePlatform()
+  ? import.meta.env.VITE_API_BASE_URL || androidApiBaseUrl || nativeApiBaseUrl
+  : isLocalWebDev
+    ? '/api'
+    : import.meta.env.VITE_API_BASE_URL || '/api'
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseUrl,
 })
+
+const shouldBypassNgrokWarning = String(apiBaseUrl).includes('ngrok-free.app')
+
+function buildRequestUrl(url) {
+  if (!url) return apiBaseUrl
+  if (/^https?:\/\//i.test(url)) return url
+  return `${apiBaseUrl.replace(/\/$/, '')}/${String(url).replace(/^\//, '')}`
+}
+
+function normalizeHeaders(headers = {}) {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([, value]) => value != null),
+  )
+}
+
+function createHttpError(response, config) {
+  const error = new Error(
+    response?.data?.error || `Request failed with status ${response?.status}`,
+  )
+  error.response = response
+  error.config = config
+  error.isAxiosError = true
+  error.code = response?.status ? `HTTP_${response.status}` : 'ERR_NETWORK'
+  return error
+}
+
+async function nativeRequest(method, url, { params, data, headers } = {}) {
+  const response = await CapacitorHttp.request({
+    method,
+    url: buildRequestUrl(url),
+    params,
+    data,
+    headers: normalizeHeaders(headers),
+  })
+
+  if (response.status >= 400) {
+    throw createHttpError(response, { method, url, params, data, headers })
+  }
+
+  return {
+    data: response.data,
+    status: response.status,
+    headers: response.headers || {},
+    config: { method, url, params, data, headers },
+  }
+}
+
+const nativeApi = {
+  get: (url, config = {}) => nativeRequest('GET', url, config),
+  post: (url, data, config = {}) => nativeRequest('POST', url, { ...config, data }),
+  put: (url, data, config = {}) => nativeRequest('PUT', url, { ...config, data }),
+  patch: (url, data, config = {}) => nativeRequest('PATCH', url, { ...config, data }),
+  delete: (url, config = {}) => nativeRequest('DELETE', url, config),
+}
 
 let clerkTokenGetter = null
 
@@ -11,6 +80,13 @@ export function setClerkTokenGetter(fn) {
 }
 
 api.interceptors.request.use(async (config) => {
+  if (!Capacitor.isNativePlatform() && shouldBypassNgrokWarning) {
+    config.params = {
+      ...(config.params || {}),
+      'ngrok-skip-browser-warning': 'true',
+    }
+  }
+
   if (clerkTokenGetter) {
     try {
       const token = await clerkTokenGetter()
@@ -21,4 +97,4 @@ api.interceptors.request.use(async (config) => {
   return config
 })
 
-export default api
+export default Capacitor.isNativePlatform() ? nativeApi : api

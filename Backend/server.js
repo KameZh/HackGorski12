@@ -13,7 +13,13 @@ import { calculateStats, processRouteAI } from "./services/aiAnalysis.js";
 const port = process.env.PORT || 5174;
 
 const app = express();
-app.use(cors());
+const corsOptions = {
+  origin: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
+}
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(clerkMiddleware());
 
@@ -894,6 +900,6 @@ app.get("/", function (req, res) {
   res.send("Hello World!");
 });
 
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
   console.log(`Example app listening at http://localhost:${port}`);
 });

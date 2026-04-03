@@ -90,10 +90,9 @@
   line-height: 1.05;
   letter-spacing: -0.03em;
   font-weight: 820;
-  color: transparent;
-  background: linear-gradient(140deg, #7fb7d6 0%, #4281a4 52%, #48a9a6 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
 }
 
 .auth-title-inline {
@@ -125,6 +124,30 @@
   width: 100%;
   max-width: 460px;
   justify-self: center;
+}
+
+.auth-google-direct-btn {
+  width: 100%;
+  margin: 0 0 10px;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(66, 129, 164, 0.42);
+  background: rgba(22, 33, 50, 0.92);
+  color: #fbfef9;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.auth-google-direct-btn:hover {
+  border-color: rgba(72, 169, 166, 0.68);
+  background: rgba(30, 44, 65, 0.98);
+}
+
+.auth-google-direct-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .auth-clerk-root {

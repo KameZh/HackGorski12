@@ -111,28 +111,14 @@
   line-height: 1.05;
   font-weight: 820;
   letter-spacing: -0.02em;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 52%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 8px 22px rgba(72, 169, 166, 0.24);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
 }
 
 .record-topbar-title::after {
-  content: '';
-  position: absolute;
-  left: 10%;
-  right: 10%;
-  bottom: -6px;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(66, 129, 164, 0.6),
-    rgba(72, 169, 166, 0.9),
-    rgba(66, 129, 164, 0.6)
-  );
-  transform: skewX(-14deg);
+  content: none;
 }
 
 .record-stats-grid {

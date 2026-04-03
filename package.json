@@ -1,0 +1,13 @@
+{
+  "name": "hackgorski12",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node run-dev.mjs",
+    "start:backend": "npm --prefix Backend start",
+    "start:frontend": "npm --prefix pytechka-frontend run dev -- --host 0.0.0.0",
+    "android:build": "npm --prefix pytechka-frontend run build",
+    "android:sync": "npm --prefix pytechka-frontend run cap:sync",
+    "android:open": "npm --prefix pytechka-frontend run cap:open"
+  }
+}

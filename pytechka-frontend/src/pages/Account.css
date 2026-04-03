@@ -21,11 +21,22 @@
 
 .account-scroll {
   flex: 1;
-  padding: 20px 14px 14px;
+  padding: 14px 14px 14px;
+  padding-top: max(132px, calc(env(safe-area-inset-top, 0px) + 76px));
   max-width: 520px;
   margin: 0 auto;
   width: 100%;
   box-sizing: border-box;
+}
+
+@media (max-width: 700px) {
+  .account-scroll {
+    padding-top: max(148px, calc(env(safe-area-inset-top, 0px) + 84px));
+  }
+
+  .account-profile {
+    margin-top: 4px;
+  }
 }
 
 .account-profile {
@@ -79,11 +90,10 @@
 .account-name {
   font-size: 1.35rem;
   font-weight: 760;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 52%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 6px 18px rgba(72, 169, 166, 0.24);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
   margin: 0 0 0.15rem;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -119,11 +129,10 @@
   font-weight: 820;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 52%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 6px 18px rgba(72, 169, 166, 0.2);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
   margin: 0 0 0.62rem;
 }
 
@@ -378,30 +387,14 @@
   font-weight: 820;
   line-height: 1.02;
   text-align: center;
-  color: transparent;
-  background: linear-gradient(135deg, #74aed0 0%, #4281a4 48%, #48a9a6 100%);
-  -webkit-background-clip: text;
-  background-clip: text;
-  text-shadow: 0 8px 26px rgba(72, 169, 166, 0.28);
+  color: #fbfef9;
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  text-shadow: none;
 }
 
 .explore-title::after {
-  content: '';
-  position: absolute;
-  left: 18%;
-  right: 18%;
-  bottom: -8px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(
-    90deg,
-    rgba(66, 129, 164, 0.55),
-    rgba(72, 169, 166, 0.9),
-    rgba(66, 129, 164, 0.55)
-  );
-  transform: skewX(-16deg);
-  opacity: 0.92;
-  box-shadow: 0 3px 12px rgba(72, 169, 166, 0.24);
+  content: none;
 }
 
 .account-login-prompt p {

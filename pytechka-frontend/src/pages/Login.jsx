@@ -1,4 +1,5 @@
-import { SignIn } from '@clerk/clerk-react'
+import { SignIn, useSignIn } from '@clerk/clerk-react'
+import { Capacitor } from '@capacitor/core'
 import './Auth.css'
 
 const clerkAppearance = {
@@ -18,7 +19,27 @@ const clerkAppearance = {
   },
 }
 
+const AUTH_REDIRECT_URL = '/'
+
 export default function Login() {
+  const { isLoaded, signIn } = useSignIn()
+
+  const handleGoogleSignIn = async () => {
+    if (!isLoaded || !signIn) return
+
+    try {
+      await signIn.authenticateWithRedirect({
+        strategy: 'oauth_google',
+        redirectUrl: 'https://localhost/',
+        redirectCallbackUrl: 'https://localhost/sso-callback',
+      })
+    } catch (error) {
+      console.error('Google sign-in redirect failed:', error)
+    }
+  }
+
+  const showNativeGoogleShortcut = Capacitor.isNativePlatform()
+
   return (
     <div className="auth-page">
       <div className="auth-glow auth-glow-top" />
@@ -37,10 +58,26 @@ export default function Login() {
         </section>
 
         <section className="auth-panel">
+          {showNativeGoogleShortcut ? (
+            <button
+              type="button"
+              className="auth-google-direct-btn"
+              onClick={handleGoogleSignIn}
+              disabled={!isLoaded}
+            >
+              Continue with Google
+            </button>
+          ) : null}
+
           <SignIn
             routing="path"
             path="/login"
             signUpUrl="/signup"
+            oauthFlow="redirect"
+            fallbackRedirectUrl={AUTH_REDIRECT_URL}
+            forceRedirectUrl={AUTH_REDIRECT_URL}
+            signUpFallbackRedirectUrl="/signup"
+            signUpForceRedirectUrl="/signup"
             appearance={clerkAppearance}
           />
         </section>

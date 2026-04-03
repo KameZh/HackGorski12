@@ -18,6 +18,8 @@ const clerkAppearance = {
   },
 }
 
+const AUTH_REDIRECT_URL = '/'
+
 export default function Signup() {
   return (
     <div className="auth-page">
@@ -41,6 +43,11 @@ export default function Signup() {
             routing="path"
             path="/signup"
             signInUrl="/login"
+            oauthFlow="redirect"
+            fallbackRedirectUrl={AUTH_REDIRECT_URL}
+            forceRedirectUrl={AUTH_REDIRECT_URL}
+            signInFallbackRedirectUrl="/login"
+            signInForceRedirectUrl="/login"
             appearance={clerkAppearance}
           />
         </section>

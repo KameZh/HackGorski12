@@ -6,11 +6,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.4",
+    "@capacitor/android": "^7.4.2",
+    "@capacitor/core": "^7.4.2",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@tailwindcss/vite": "^4.2.2",
     "@tmcw/togeojson": "^7.1.2",
@@ -26,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "@capacitor/cli": "^7.4.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",

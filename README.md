@@ -41,17 +41,32 @@ npm start
 ```bash
 ngrok http 5174
 ```
-2. В app-а използвайте получената HTTPS ngrok URL в `pytechka-frontend/.env`.
-3. `OPTIONS /api/trails` със `204 No Content` е нормален CORS preflight и не означава, че request-ът е счупен.
+2. В app-а използвайте получената HTTPS ngrok URL в `pytechka-frontend/.env` за `VITE_API_BASE_URL` и `VITE_ANDROID_API_BASE_URL`.
+3. Ако ngrok URL-а се промени, направете пълен restart:
+```bash
+# 1. Stop the old backend and ngrok processes
+# 2. Start the backend again
+npm start
+
+# 3. Start ngrok again against port 5174
+ngrok http 5174
+
+# 4. Update pytechka-frontend/.env with the new HTTPS ngrok URL
+
+# 5. Rebuild and resync Android
+npm run android:build
+npm run android:sync
+
+# 6. Relaunch the Android app
+```
 4. За картата да използва локация на Android, устройството трябва да има разрешение за location и включена GPS/location услуга.
-5. Ако смените ngrok URL-а, обновете `VITE_API_BASE_URL` и `VITE_ANDROID_API_BASE_URL` в `pytechka-frontend/.env`, после пуснете build/sync отново.
-6. За Android билд изпълнете от корена:
+5. За Android билд изпълнете от корена:
 ```bash
 npm run android:build
 npm run android:sync
 npm run android:open
 ```
-7. За debug от Android Studio отворете `pytechka-frontend/android` и стартирайте приложението.
+6. За debug от Android Studio отворете `pytechka-frontend/android` и стартирайте приложението.
 
 ## Създатели 
 Отбор *Gorski* с помощта на ментора *Александър Йорданов*

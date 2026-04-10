@@ -45,12 +45,39 @@ function createHttpError(response, config) {
 }
 
 async function nativeRequest(method, url, { params, data, headers } = {}) {
+  const mergedHeaders = {
+    ...normalizeHeaders(headers),
+  }
+
+  const hasBody = data !== undefined && data !== null
+  if (hasBody && !mergedHeaders['Content-Type'] && !mergedHeaders['content-type']) {
+    mergedHeaders['Content-Type'] = 'application/json'
+  }
+  if (!mergedHeaders.Accept && !mergedHeaders.accept) {
+    mergedHeaders.Accept = 'application/json'
+  }
+
+  if (clerkTokenGetter) {
+    try {
+      const token = await clerkTokenGetter()
+      if (token) mergedHeaders.Authorization = `Bearer ${token}`
+    } catch {
+    }
+  }
+
+  const mergedParams = {
+    ...(params || {}),
+    ...(shouldBypassNgrokWarning
+      ? { 'ngrok-skip-browser-warning': 'true' }
+      : {}),
+  }
+
   const response = await CapacitorHttp.request({
     method,
     url: buildRequestUrl(url),
-    params,
+    params: mergedParams,
     data,
-    headers: normalizeHeaders(headers),
+    headers: mergedHeaders,
   })
 
   if (response.status >= 400) {

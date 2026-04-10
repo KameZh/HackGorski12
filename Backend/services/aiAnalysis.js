@@ -7,6 +7,17 @@ const THINK_LEVEL_LLM = String(process.env.THINK_LEVEL_LLM || "low")
   .trim()
   .toLowerCase();
 
+function buildOllamaChatUrl(baseUrl) {
+  try {
+    const url = new URL(baseUrl);
+    url.pathname = "/api/chat";
+    url.search = "";
+    return url.toString();
+  } catch {
+    return "http://localhost:11434/api/chat";
+  }
+}
+
 export function calculateStats(geojson) {
   const coords = extractCoordinates(geojson);
   if (!coords || coords.length < 2) {
@@ -172,7 +183,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
       ? THINK_LEVEL_LLM
       : "low";
 
-    const response = await fetch(LOCAL_LLM_URL, {
+    let response = await fetch(LOCAL_LLM_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -191,6 +202,30 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
       }),
     });
 
+    if (response.status === 405) {
+      const ollamaUrl = buildOllamaChatUrl(LOCAL_LLM_URL);
+      response = await fetch(ollamaUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: LOCAL_LLM_MODEL,
+          messages: [
+            {
+              role: "system",
+              content: `You are an expert hiking trail analyst. Reasoning depth preference: ${normalizedThinkLevel}. Respond with JSON only, no markdown, no code fences.`,
+            },
+            { role: "user", content: prompt },
+          ],
+          stream: false,
+          options: {
+            temperature: 0.8,
+          },
+        }),
+      });
+    }
+
     if (!response.ok) {
       const errText = await response.text();
       throw new Error(
@@ -199,7 +234,7 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
     }
 
     const data = await response.json();
-    const text = data?.choices?.[0]?.message?.content;
+    const text = data?.choices?.[0]?.message?.content || data?.message?.content;
 
     if (!text || (typeof text === "string" && !text.trim())) {
       throw new Error("AI returned empty response");

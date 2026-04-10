@@ -215,6 +215,10 @@ app.get("/api/user/profile", requireAuth(), checkUser, async (req, res) => {
 
 app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== "object") {
+      return res.status(400).json({ error: "Invalid JSON body" });
+    }
+
     const {
       geojson,
       name,

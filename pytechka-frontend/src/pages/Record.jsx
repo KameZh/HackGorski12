@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
+import { Capacitor } from '@capacitor/core'
+import { LocalNotifications } from '@capacitor/local-notifications'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
@@ -83,6 +85,9 @@ const pingPopupStyle = {
   padding: '14px 16px',
   color: '#e2e8f0',
 }
+
+const LIVE_RECORDING_NOTIFICATION_ID = 50001
+const LIVE_RECORDING_CHANNEL_ID = 'recording-live'
 
 function formatDuration(totalSeconds) {
   const hours = Math.floor(totalSeconds / 3600)
@@ -171,6 +176,9 @@ export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
   const pendingCenterRef = useRef(null)
+  const liveNotificationReadyRef = useRef(false)
+  const liveNotificationLastBodyRef = useRef('')
+  const liveNotificationTickRef = useRef(-1)
   const {
     mapStyle,
     terrain3D,
@@ -816,10 +824,124 @@ export default function Record() {
     isTracking || hasRecordingData || Boolean(loadedTrailActivity)
   const showControls = hasRecordingData || isTracking
 
+  const liveNotificationBody = useMemo(() => {
+    return [
+      `${steps.toLocaleString()} STEPS   ${formatDuration(elapsedSeconds)} TIME   ${(distance / 1000).toFixed(2)} KM`,
+      `${Math.round(currentElevation)} M ELEV   +${Math.round(elevationGain)} GAIN   ${currentSpeedKmh.toFixed(1)} KM/H`,
+    ].join('\n')
+  }, [
+    steps,
+    elapsedSeconds,
+    distance,
+    currentElevation,
+    elevationGain,
+    currentSpeedKmh,
+  ])
+
   useEffect(() => {
     if (isActivityActive) return
     setPingMode(false)
   }, [isActivityActive])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let cancelled = false
+    ;(async () => {
+      try {
+        const permissions = await LocalNotifications.checkPermissions()
+        if (permissions.display !== 'granted') {
+          await LocalNotifications.requestPermissions()
+        }
+
+        if (Capacitor.getPlatform() === 'android') {
+          await LocalNotifications.createChannel({
+            id: LIVE_RECORDING_CHANNEL_ID,
+            name: 'Live recording',
+            description: 'Live stats while recording a trail',
+            importance: 2,
+            visibility: 1,
+            sound: undefined,
+          })
+        }
+
+        await LocalNotifications.cancel({
+          notifications: [{ id: 1101 }],
+        })
+
+        if (!cancelled) {
+          liveNotificationReadyRef.current = true
+        }
+      } catch {
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+    if (!liveNotificationReadyRef.current) return
+
+    const syncNotification = async () => {
+      if (!isTracking) {
+        liveNotificationLastBodyRef.current = ''
+        liveNotificationTickRef.current = -1
+        try {
+          await LocalNotifications.cancel({
+            notifications: [{ id: LIVE_RECORDING_NOTIFICATION_ID }],
+          })
+        } catch {
+        }
+        return
+      }
+
+      const tick = Math.floor(elapsedSeconds / 5)
+      const shouldUpdate =
+        elapsedSeconds === 0 ||
+        tick !== liveNotificationTickRef.current ||
+        liveNotificationBody !== liveNotificationLastBodyRef.current
+
+      if (!shouldUpdate) return
+
+      liveNotificationTickRef.current = tick
+      liveNotificationLastBodyRef.current = liveNotificationBody
+
+      try {
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: LIVE_RECORDING_NOTIFICATION_ID,
+              channelId:
+                Capacitor.getPlatform() === 'android'
+                  ? LIVE_RECORDING_CHANNEL_ID
+                  : undefined,
+              title: 'Trail recording in progress',
+              body: liveNotificationBody,
+              ongoing: true,
+              autoCancel: false,
+              schedule: { at: new Date(Date.now() + 100) },
+            },
+          ],
+        })
+      } catch {
+      }
+    }
+
+    syncNotification()
+  }, [isTracking, elapsedSeconds, liveNotificationBody])
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    return () => {
+      LocalNotifications.cancel({
+        notifications: [{ id: LIVE_RECORDING_NOTIFICATION_ID }],
+      }).catch(() => {})
+    }
+  }, [])
 
   if (!MAPBOX_TOKEN) {
     return (

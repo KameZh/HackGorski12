@@ -174,7 +174,18 @@ export default function Home() {
   }
 
   if (!isSignedIn || loading) {
-    if (loading) return null
+    if (loading) {
+      return (
+        <div className="account-page">
+          <div className="account-scroll">
+            <div className="account-badges-box" style={{ color: '#9fb9d0' }}>
+              Loading account...
+            </div>
+          </div>
+          <BottomNav />
+        </div>
+      )
+    }
     return (
       <div className="account-page">
         <div className="account-login-prompt">

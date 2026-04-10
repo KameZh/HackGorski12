@@ -22,7 +22,7 @@
 .account-scroll {
   flex: 1;
   padding: 14px 14px 14px;
-  padding-top: max(132px, calc(env(safe-area-inset-top, 0px) + 76px));
+  padding-top: max(168px, calc(env(safe-area-inset-top, 0px) + 108px));
   max-width: 520px;
   margin: 0 auto;
   width: 100%;
@@ -31,7 +31,7 @@
 
 @media (max-width: 700px) {
   .account-scroll {
-    padding-top: max(148px, calc(env(safe-area-inset-top, 0px) + 84px));
+    padding-top: max(186px, calc(env(safe-area-inset-top, 0px) + 118px));
   }
 
   .account-profile {

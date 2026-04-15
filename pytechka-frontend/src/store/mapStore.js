@@ -22,5 +22,8 @@ export const useMapStore = create((set) => ({
           ? 'satellite-streets-v12'
           : 'outdoors-v12',
     })),
-  refreshTrails: () => set((s) => ({ trailsVersion: s.trailsVersion + 1 })),
+  huts: [],
+  setHuts: (huts) => set({ huts }),
+  selectedHut: null,
+  setSelectedHut: (hut) => set({ selectedHut: hut }),
 }))

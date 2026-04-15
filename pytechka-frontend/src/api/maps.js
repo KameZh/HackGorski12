@@ -32,3 +32,7 @@ export const fetchTrailStartReadiness = (trailId, params = {}) => {
 export const completeTrailFromMap = (trailId, payload = {}) => {
   return api.post(`/trails/${trailId}/complete`, payload)
 }
+
+export const fetchHuts = () => {
+  return api.get('/huts')
+}

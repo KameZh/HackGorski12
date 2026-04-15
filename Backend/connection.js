@@ -13,3 +13,13 @@ export async function connectDB() {
     process.exit(1)
   }
 }
+
+export function isDatabaseReady() {
+  return mongoose.connection.readyState === 1;
+}
+
+export async function disconnectDB() {
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect();
+  }
+}

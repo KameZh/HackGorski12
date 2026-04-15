@@ -14,6 +14,7 @@ import {
   fetchMapTrails,
   fetchTrailStartReadiness,
   completeTrailFromMap,
+  fetchHuts,
 } from '../../api/maps'
 import {
   fetchPings,
@@ -30,6 +31,7 @@ import {
 import { buildCenteredView } from '../../utils/mapDefaults'
 import MapControls from './MapControls'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
+import HutPreviewCard from '../layout/HutPreviewCard'
 
 const INITIAL_VIEW = buildCenteredView(7)
 
@@ -609,7 +611,23 @@ export default function MapView({
     selectedTrail,
     setSelectedTrail,
     trailsVersion,
+    huts,
+    setHuts,
+    selectedHut,
+    setSelectedHut,
   } = useMapStore()
+
+  useEffect(() => {
+    let active = true
+    fetchHuts()
+      .then((res) => {
+        if (active && Array.isArray(res.data)) {
+          setHuts(res.data)
+        }
+      })
+      .catch((err) => console.error('Failed to fetch huts', err))
+    return () => { active = false }
+  }, [setHuts])
 
   const [trails, setTrails] = useState([])
   const [loadingTrails, setLoadingTrails] = useState(true)
@@ -1906,6 +1924,37 @@ export default function MapView({
                 </Source>
               )
             })}
+
+            {viewState.zoom >= 9 && huts.map((hut) => (
+               <Marker
+                 key={hut._id || hut.name}
+                 longitude={hut.location[0]}
+                 latitude={hut.location[1]}
+                 anchor="bottom"
+                 onClick={(e) => {
+                   e.originalEvent.stopPropagation();
+                   setSelectedHut(hut);
+                 }}
+                 style={{ cursor: 'pointer', zIndex: selectedHut?._id === hut._id ? 10 : 1 }}
+               >
+                 <div
+                   style={{
+                     width: 32,
+                     height: 32,
+                     borderRadius: '50%',
+                     background: '#166534',
+                     color: '#f8fafc',
+                     display: 'grid',
+                     placeItems: 'center',
+                     border: '2px solid #bbf7d0',
+                     boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                   }}
+                   title={hut.name}
+                 >
+                   ⌂
+                 </div>
+               </Marker>
+            ))}
 
             {loadedRouteEndpoints ? (
               <>
@@ -3479,11 +3528,18 @@ export default function MapView({
       ) : null}
 
       {!isTrailFlowOverlayOpen ? (
-        <RoutePreviewCard
-          onStartTrail={handleOpenStartPlanner}
-          bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
-          showScheduleButton={false}
-        />
+        <>
+          <RoutePreviewCard
+            onStartTrail={handleOpenStartPlanner}
+            bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
+            showScheduleButton={false}
+          />
+          <HutPreviewCard
+            hut={selectedHut}
+            onClose={() => setSelectedHut(null)}
+            bottomOffset={selectedHut ? MAPS_BOTTOM_CARD_OFFSET : undefined}
+          />
+        </>
       ) : null}
     </div>
   )

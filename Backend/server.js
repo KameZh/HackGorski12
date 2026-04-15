@@ -3,27 +3,97 @@ import express from "express";
 import { clerkMiddleware, requireAuth, getAuth } from "@clerk/express";
 import cors from "cors";
 import checkUser from "./middleware.js";
-import { connectDB } from "./connection.js";
+import { connectDB, disconnectDB, isDatabaseReady } from "./connection.js";
 import Trail from "./models/trail.js";
 import Ping from "./models/ping.js";
 import TrashCluster from "./models/trashCluster.js";
 import User from "./models/user.js";
+import Hut from "./models/hut.js";
 import { calculateStats, processRouteAI } from "./services/aiAnalysis.js";
 
 const port = process.env.PORT || 5174;
+const nodeEnv = String(process.env.NODE_ENV || "development").toLowerCase();
+const configuredOrigins = String(process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((entry) => entry.trim())
+  .filter(Boolean);
+const allowAllOrigins =
+  nodeEnv !== "production" && configuredOrigins.length === 0;
+const enableAIAnalysis =
+  String(
+    process.env.ENABLE_AI_ANALYSIS ||
+      (nodeEnv === "production" ? "false" : "true"),
+  ).toLowerCase() === "true";
+const isVercelRuntime = Boolean(process.env.VERCEL);
 
 const app = express();
 const corsOptions = {
-  origin: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'],
-}
+  origin(origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowAllOrigins || configuredOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "ngrok-skip-browser-warning",
+  ],
+  optionsSuccessStatus: 204,
+};
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.options(/.*/, cors(corsOptions));
+app.disable("x-powered-by");
+app.use(express.json({ limit: "1mb" }));
 app.use(clerkMiddleware());
 
-connectDB();
+app.get("/healthz", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    env: nodeEnv,
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/api/healthz", (req, res) => {
+  res.status(200).json({
+    status: "ok",
+    env: nodeEnv,
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/readyz", (req, res) => {
+  if (!isDatabaseReady()) {
+    return res.status(503).json({
+      status: "not_ready",
+      database: "disconnected",
+    });
+  }
+
+  return res.status(200).json({
+    status: "ready",
+    database: "connected",
+  });
+});
+
+app.get("/api/readyz", (req, res) => {
+  if (!isDatabaseReady()) {
+    return res.status(503).json({
+      status: "not_ready",
+      database: "disconnected",
+    });
+  }
+
+  return res.status(200).json({
+    status: "ready",
+    database: "connected",
+  });
+});
 
 const BADGE_TIERS = {
   trailers: [
@@ -261,7 +331,9 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       ai: { status: "pending" },
     });
 
-    processRouteAI(trail._id);
+    if (enableAIAnalysis) {
+      processRouteAI(trail._id);
+    }
 
     await updateBadgeProgress(userId, { createdTrails: 1 });
 
@@ -563,6 +635,16 @@ app.get("/api/trails/:id", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch trail" });
+  }
+});
+
+app.get("/api/huts", async (req, res) => {
+  try {
+    const huts = await Hut.find({}).lean();
+    res.json(huts);
+  } catch (err) {
+    console.error("Huts list error:", err);
+    res.status(500).json({ error: "Failed to fetch huts" });
   }
 });
 
@@ -896,14 +978,60 @@ app.post(
 );
 
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(401).send("Unauthenticated!");
+  if (err?.message === "Not allowed by CORS") {
+    return res.status(403).json({ error: "Origin not allowed" });
+  }
+
+  if (err?.status === 401) {
+    return res.status(401).send("Unauthenticated!");
+  }
+
+  console.error(err?.stack || err);
+  return res.status(500).json({ error: "Internal Server Error" });
 });
 
 app.get("/", function (req, res) {
-  res.send("Hello World!");
+  res.send("Pytechka backend is running.");
 });
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`Example app listening at http://localhost:${port}`);
-});
+let server;
+
+async function startServer() {
+  try {
+    await connectDB();
+    server = app.listen(port, "0.0.0.0", () => {
+      console.log(`Backend listening at http://localhost:${port}`);
+    });
+  } catch (err) {
+    console.error("Failed to start backend:", err.message);
+    process.exit(1);
+  }
+}
+
+async function shutdown(signal) {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+
+  if (!server) {
+    await disconnectDB().catch(() => {});
+    process.exit(0);
+  }
+
+  server.close(async () => {
+    await disconnectDB().catch(() => {});
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error("Graceful shutdown timed out. Forcing exit.");
+    process.exit(1);
+  }, 10000).unref();
+}
+
+export default app;
+export { startServer, shutdown };
+
+if (!isVercelRuntime) {
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  startServer();
+}

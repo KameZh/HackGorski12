@@ -162,7 +162,7 @@ export default function HutPreviewCard({
                 fontSize: 13, 
                 marginTop: 12, 
                 lineHeight: 1.5, 
-                maxHeight: '45vh', 
+                maxHeight: '38vh', 
                 overflowY: 'auto', 
                 paddingRight: 10,
                 paddingBottom: 4

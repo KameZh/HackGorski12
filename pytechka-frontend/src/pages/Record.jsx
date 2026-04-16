@@ -6,9 +6,10 @@ import { LocalNotifications } from '@capacitor/local-notifications'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
+import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
-import { fetchMapTrails } from '../api/maps'
+import { fetchMapTrails, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
 import { createPing, fetchPings } from '../api/pings'
@@ -215,6 +216,9 @@ export default function Record() {
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
   const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
+
+  const [huts, setHuts] = useState([])
+  const [selectedHut, setSelectedHut] = useState(null)
 
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [finishRating, setFinishRating] = useState(0)
@@ -628,6 +632,7 @@ export default function Record() {
 
       if (!layerIds.length) {
         setSelectedTrail(null)
+        setSelectedHut(null)
         return
       }
 
@@ -636,6 +641,7 @@ export default function Record() {
       })
       if (!features.length) {
         setSelectedTrail(null)
+        setSelectedHut(null)
         return
       }
 
@@ -645,6 +651,7 @@ export default function Record() {
       )
       if (selected) {
         setSelectedTrail(selected)
+        setSelectedHut(null)
       }
     },
     [renderableTrails, setSelectedTrail, trails]
@@ -752,6 +759,20 @@ export default function Record() {
       })
       .catch(() => {
         if (active) setPings([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    fetchHuts()
+      .then((res) => {
+        if (active) setHuts(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (active) setHuts([])
       })
     return () => {
       active = false
@@ -1034,6 +1055,44 @@ export default function Record() {
             </Marker>
           )}
 
+          {viewState.zoom >= 10 &&
+            huts.map((hut) => {
+              if (!Array.isArray(hut.location) || hut.location.length < 2)
+                return null
+              const [lng, lat] = hut.location
+              const isSelected = selectedHut?._id === hut._id
+              return (
+                <Marker
+                  key={hut._id}
+                  longitude={lng}
+                  latitude={lat}
+                  anchor="bottom"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation()
+                    setSelectedHut(isSelected ? null : hut)
+                    setSelectedPing(null)
+                  }}
+                >
+                  <div
+                    title={hut.name}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: '#166534',
+                      color: '#f8fafc',
+                      display: 'grid',
+                      placeItems: 'center',
+                      border: '2px solid #bbf7d0',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    }}
+                  >
+                    ⌂
+                  </div>
+                </Marker>
+              )
+            })}
+
           {viewState.zoom >= 12 &&
             pings.map((ping) => {
               const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
@@ -1228,16 +1287,6 @@ export default function Record() {
 
       <div className="record-status-wrap">
         <div className="record-topbar">
-          <div className="record-title-row">
-            <h1 className="record-topbar-title">
-              {isTracking
-                ? 'Recording...'
-                : hasRecordingData
-                  ? 'Paused'
-                  : 'Record Active'}
-            </h1>
-          </div>
-
           {showControls && (
             <div className="record-stats-grid record-top-stats-enter">
               <div className="record-top-stat">
@@ -1297,8 +1346,16 @@ export default function Record() {
         showResetViewButton={false}
       />
 
-      {selectedTrail && (
+      {selectedTrail && !selectedHut && (
         <RoutePreviewCard onStartTrail={startLoadedTrailActivity} />
+      )}
+
+      {selectedHut && (
+        <HutPreviewCard
+          hut={selectedHut}
+          onClose={() => setSelectedHut(null)}
+          bottomOffset="calc(env(safe-area-inset-bottom, 0px) + 228px)"
+        />
       )}
 
       {savedRoute && (
@@ -1381,6 +1438,16 @@ export default function Record() {
 
       <div className="record-live-panel-wrap">
         <div className="record-live-panel">
+          <div className="record-title-row">
+            <h1 className="record-topbar-title">
+              {isTracking
+                ? 'Recording...'
+                : hasRecordingData
+                  ? 'Paused'
+                  : 'Record Active'}
+            </h1>
+          </div>
+
           {!hasRecordingData && !isTracking ? (
             <div className="record-start-only-row">
               <button

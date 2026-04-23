@@ -56,8 +56,6 @@ createRoot(root).render(
   PUBLISHABLE_KEY ? (
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
-      afterSignInUrl={AUTH_REDIRECT_URL}
-      afterSignUpUrl={AUTH_REDIRECT_URL}
       signInFallbackRedirectUrl={AUTH_REDIRECT_URL}
       signInForceRedirectUrl={AUTH_REDIRECT_URL}
       signUpFallbackRedirectUrl={AUTH_REDIRECT_URL}

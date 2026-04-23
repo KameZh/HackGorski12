@@ -5,6 +5,7 @@ import cors from "cors";
 import checkUser from "./middleware.js";
 import { connectDB, disconnectDB, isDatabaseReady } from "./connection.js";
 import Trail from "./models/trail.js";
+import OfficialTrail from "./models/officialTrail.js";
 import Ping from "./models/ping.js";
 import TrashCluster from "./models/trashCluster.js";
 import User from "./models/user.js";
@@ -211,6 +212,141 @@ function deriveTrailPointLabels(geojson) {
   return { startPoint, endPoint, highestPoint };
 }
 
+const FEATURED_REFS = new Set(["E3", "E4", "E8"]);
+
+function normalizeStringValue(value) {
+  return String(value || "").trim();
+}
+
+function normalizeRefValue(value) {
+  return normalizeStringValue(value).toUpperCase();
+}
+
+function inferColourTypeFromValues({
+  colourType,
+  osmColour,
+  osmMarking,
+  trailVisibility,
+}) {
+  const normalizedColourType = normalizeStringValue(colourType).toLowerCase();
+  if (
+    ["red", "blue", "green", "yellow", "white", "black", "unmarked"].includes(
+      normalizedColourType,
+    )
+  ) {
+    return normalizedColourType;
+  }
+
+  const marking = normalizeStringValue(osmMarking).toLowerCase();
+  const visibility = normalizeStringValue(trailVisibility).toLowerCase();
+  if (
+    ["no", "false", "bad", "none", "unmarked"].includes(marking) ||
+    ["no", "bad", "horrible", "none"].includes(visibility)
+  ) {
+    return "unmarked";
+  }
+
+  const colour = normalizeStringValue(osmColour).toLowerCase();
+  if (!colour) return "unmarked";
+
+  if (
+    colour.includes("red") ||
+    /#(?:e00|d00|dc2626|ff0000|c00)\b/i.test(colour)
+  ) {
+    return "red";
+  }
+  if (colour.includes("blue") || /#(?:00f|2563eb|1d4ed8)\b/i.test(colour)) {
+    return "blue";
+  }
+  if (
+    colour.includes("green") ||
+    /#(?:0f0|22c55e|16a34a|008000)\b/i.test(colour)
+  ) {
+    return "green";
+  }
+  if (
+    colour.includes("yellow") ||
+    /#(?:ff0|ffd700|facc15|eab308)\b/i.test(colour)
+  ) {
+    return "yellow";
+  }
+  if (colour.includes("white") || /#(?:fff|ffffff|f8fafc)\b/i.test(colour)) {
+    return "white";
+  }
+  if (colour.includes("black") || /#(?:000|000000|111827)\b/i.test(colour)) {
+    return "black";
+  }
+
+  return "unmarked";
+}
+
+function extractLineGeometries(geojson) {
+  if (!geojson || typeof geojson !== "object") return [];
+
+  if (geojson.type === "LineString" || geojson.type === "MultiLineString") {
+    return [geojson];
+  }
+
+  if (geojson.type === "Feature") {
+    return extractLineGeometries(geojson.geometry);
+  }
+
+  if (geojson.type === "FeatureCollection") {
+    return Array.isArray(geojson.features)
+      ? geojson.features.flatMap((feature) =>
+          extractLineGeometries(feature?.geometry),
+        )
+      : [];
+  }
+
+  return [];
+}
+
+function buildTrailSearchFilter(search) {
+  if (!search) return null;
+
+  return [
+    { name: { $regex: search, $options: "i" } },
+    { name_bg: { $regex: search, $options: "i" } },
+    { name_en: { $regex: search, $options: "i" } },
+    { ref: { $regex: search, $options: "i" } },
+    { region: { $regex: search, $options: "i" } },
+    { description: { $regex: search, $options: "i" } },
+  ];
+}
+
+function normalizeTrailDocument(trailDoc) {
+  const trail =
+    trailDoc && typeof trailDoc.toObject === "function"
+      ? trailDoc.toObject()
+      : { ...(trailDoc || {}) };
+
+  const derived = deriveTrailStartEndCenter(trail.geojson);
+
+  if (
+    !Array.isArray(trail.startCoordinates) ||
+    trail.startCoordinates.length !== 2
+  ) {
+    trail.startCoordinates = derived.startCoordinates;
+  }
+  if (!Array.isArray(trail.endCoordinates) || trail.endCoordinates.length !== 2) {
+    trail.endCoordinates = derived.endCoordinates;
+  }
+
+  trail.stats = trail.stats || {};
+  if (
+    !Array.isArray(trail.stats.centerCoordinates) ||
+    trail.stats.centerCoordinates.length !== 2
+  ) {
+    trail.stats.centerCoordinates = derived.centerCoordinates;
+  }
+
+  trail.source = normalizeStringValue(trail.source) || "user";
+  trail.averageAccuracy = Number(trail.averageAccuracy || 0);
+
+  return trail;
+}
+
 async function attachClusterVoterProfiles(clusterPayload) {
   const clusters = Array.isArray(clusterPayload)
     ? clusterPayload.filter(Boolean)
@@ -315,6 +451,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
         : derivedCoords.endCoordinates;
 
     const trail = await Trail.create({
+      source: "user",
       userId,
       username: req.dbUser?.username || "",
       name,
@@ -391,46 +528,64 @@ app.post(
 
 app.get("/api/trails/geojson", async (req, res) => {
   try {
-    const trails = await Trail.find({}).select(
-      "geojson name difficulty region stats",
-    );
+    const selectFields =
+      "geojson geom name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
 
-    const features = trails
-      .map((trail) => {
-        let geometry = null;
+    const [userTrails, officialTrails] = await Promise.all([
+      Trail.find({}).select(selectFields),
+      OfficialTrail.find({}).select(selectFields),
+    ]);
 
-        if (
-          trail.geojson?.type === "FeatureCollection" &&
-          trail.geojson.features?.length
-        ) {
-          geometry = trail.geojson.features[0].geometry;
-        } else if (trail.geojson?.type === "Feature") {
-          geometry = trail.geojson.geometry;
-        } else if (
-          trail.geojson?.type === "LineString" ||
-          trail.geojson?.type === "MultiLineString"
-        ) {
-          geometry = trail.geojson;
-        }
+    const trails = [...userTrails, ...officialTrails];
 
-        if (!geometry) return null;
+    const features = trails.flatMap((trail) => {
+      const fallbackGeometry =
+        trail.geom && typeof trail.geom === "object" ? [trail.geom] : [];
+      const geometries = extractLineGeometries(trail.geojson);
+      const geometryCandidates = geometries.length ? geometries : fallbackGeometry;
 
-        return {
-          type: "Feature",
-          geometry,
-          properties: {
-            id: trail._id.toString(),
-            name: trail.name,
-            difficulty: trail.difficulty,
-            distance: trail.stats?.distance
-              ? (trail.stats.distance / 1000).toFixed(2)
-              : "0",
-            elevationGain: trail.stats?.elevationGain || 0,
-            region: trail.region || "",
-          },
-        };
-      })
-      .filter(Boolean);
+      if (!geometryCandidates.length) return [];
+
+      const inferredColourType = inferColourTypeFromValues({
+        colourType: trail.colour_type,
+        osmColour: trail.osm_colour,
+        osmMarking: trail.osm_marking,
+      });
+
+      const normalizedRef = normalizeRefValue(trail.ref);
+      const normalizedSource = normalizeStringValue(trail.source) || "user";
+      const source =
+        FEATURED_REFS.has(normalizedRef) && normalizedSource !== "user"
+          ? "osm_featured"
+          : normalizedSource;
+
+      return geometryCandidates.map((geometry) => ({
+        type: "Feature",
+        geometry,
+        properties: {
+          id: trail._id.toString(),
+          name:
+            normalizeStringValue(trail.name) ||
+            normalizeStringValue(trail.name_bg) ||
+            normalizeStringValue(trail.name_en) ||
+            normalizeStringValue(trail.ref) ||
+            "Unnamed trail",
+          name_bg: normalizeStringValue(trail.name_bg),
+          name_en: normalizeStringValue(trail.name_en),
+          ref: normalizeStringValue(trail.ref),
+          source,
+          difficulty: normalizeStringValue(trail.difficulty) || "moderate",
+          colour_type: inferredColourType,
+          osm_colour: normalizeStringValue(trail.osm_colour),
+          osm_marking: normalizeStringValue(trail.osm_marking),
+          network: normalizeStringValue(trail.network),
+          distance: trail.stats?.distance
+            ? Number((trail.stats.distance / 1000).toFixed(2))
+            : 0,
+          elevation_gain: Number(trail.stats?.elevationGain || 0),
+        },
+      }));
+    });
 
     res.json({ type: "FeatureCollection", features });
   } catch (err) {
@@ -442,58 +597,65 @@ app.get("/api/trails/geojson", async (req, res) => {
 app.get("/api/trails", async (req, res) => {
   try {
     const { search, difficulty, activity, sort } = req.query;
+    const officialOnly =
+      String(req.query.officialOnly || "").toLowerCase() === "true";
+    const unmarkedOnly =
+      String(req.query.unmarkedOnly || "").toLowerCase() === "true";
     const centerLng = Number(req.query.centerLng);
     const centerLat = Number(req.query.centerLat);
     const radiusKm = Number(req.query.radiusKm);
     const proximityMode = String(
       req.query.proximityMode || "start",
     ).toLowerCase();
-    const filter = {};
+    const userFilter = {};
+    const officialFilter = {};
 
     if (difficulty && difficulty !== "all") {
-      filter.difficulty = difficulty;
+      userFilter.difficulty = difficulty;
+      officialFilter.difficulty = difficulty;
     }
-    if (search) {
-      filter.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { region: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-      ];
+    if (unmarkedOnly) {
+      userFilter.colour_type = "unmarked";
+      officialFilter.colour_type = "unmarked";
+    }
+
+    const searchFilter = buildTrailSearchFilter(search);
+    if (searchFilter) {
+      userFilter.$or = searchFilter;
+      officialFilter.$or = searchFilter;
     }
 
     let sortOption = { createdAt: -1 };
     if (sort === "popular") sortOption = { averageAccuracy: -1 };
     if (sort === "newest" || sort === "new") sortOption = { createdAt: -1 };
 
-    const trails = await Trail.find(filter).sort(sortOption).select("-reviews");
+    const userTrailsPromise = officialOnly
+      ? Promise.resolve([])
+      : Trail.find(userFilter).sort(sortOption).select("-reviews");
+    const officialTrailsPromise = OfficialTrail.find(officialFilter).sort(
+      sortOption,
+    );
 
-    const normalized = trails.map((trailDoc) => {
-      const trail = trailDoc.toObject();
-      const derived = deriveTrailStartEndCenter(trail.geojson);
+    const [userTrails, officialTrails] = await Promise.all([
+      userTrailsPromise,
+      officialTrailsPromise,
+    ]);
 
-      if (
-        !Array.isArray(trail.startCoordinates) ||
-        trail.startCoordinates.length !== 2
-      ) {
-        trail.startCoordinates = derived.startCoordinates;
-      }
-      if (
-        !Array.isArray(trail.endCoordinates) ||
-        trail.endCoordinates.length !== 2
-      ) {
-        trail.endCoordinates = derived.endCoordinates;
-      }
+    const normalized = [...userTrails, ...officialTrails].map(
+      normalizeTrailDocument,
+    );
 
-      trail.stats = trail.stats || {};
-      if (
-        !Array.isArray(trail.stats.centerCoordinates) ||
-        trail.stats.centerCoordinates.length !== 2
-      ) {
-        trail.stats.centerCoordinates = derived.centerCoordinates;
-      }
-
-      return trail;
-    });
+    if (sort === "popular") {
+      normalized.sort(
+        (a, b) => Number(b.averageAccuracy || 0) - Number(a.averageAccuracy || 0),
+      );
+    } else {
+      normalized.sort(
+        (a, b) =>
+          new Date(b.createdAt || 0).getTime() -
+          new Date(a.createdAt || 0).getTime(),
+      );
+    }
 
     const hasAreaFilter =
       Number.isFinite(centerLng) &&
@@ -526,9 +688,10 @@ app.get("/api/trails", async (req, res) => {
 
 app.get("/api/trails/:id/start-readiness", async (req, res) => {
   try {
-    const trail = await Trail.findById(req.params.id).select(
-      "name startCoordinates geojson stats ai difficulty region",
-    );
+    const selectFields = "name startCoordinates geojson stats ai difficulty region";
+    const trail =
+      (await Trail.findById(req.params.id).select(selectFields)) ||
+      (await OfficialTrail.findById(req.params.id).select(selectFields));
     if (!trail) return res.status(404).json({ error: "Trail not found" });
 
     const derived = deriveTrailStartEndCenter(trail.geojson);
@@ -588,10 +751,28 @@ app.post(
   checkUser,
   async (req, res) => {
     try {
-      const trail = await Trail.findById(req.params.id);
-      if (!trail) return res.status(404).json({ error: "Trail not found" });
+      let trail = await Trail.findById(req.params.id);
+      const officialTrail = trail
+        ? null
+        : await OfficialTrail.findById(req.params.id).select("_id name");
+      if (!trail && !officialTrail) {
+        return res.status(404).json({ error: "Trail not found" });
+      }
 
       const { userId } = getAuth(req);
+
+      if (officialTrail) {
+        await updateBadgeProgress(userId, { trailCompletions: 1 });
+        return res.json({
+          success: true,
+          reviewAdded: false,
+          alreadyReviewed: false,
+          averageAccuracy: 0,
+          reviewsCount: 0,
+          officialTrail: true,
+        });
+      }
+
       const accuracy = Number(req.body?.accuracy);
       const comment = String(req.body?.comment || "").trim();
       const hasRating =
@@ -629,7 +810,9 @@ app.post(
 
 app.get("/api/trails/:id", async (req, res) => {
   try {
-    const trail = await Trail.findById(req.params.id);
+    const trail =
+      (await Trail.findById(req.params.id)) ||
+      (await OfficialTrail.findById(req.params.id));
     if (!trail) return res.status(404).json({ error: "Trail not found" });
     res.json(trail);
   } catch (err) {
@@ -712,7 +895,15 @@ app.post(
       }
 
       const trail = await Trail.findById(req.params.id);
-      if (!trail) return res.status(404).json({ error: "Trail not found" });
+      if (!trail) {
+        const isOfficialTrail = await OfficialTrail.exists({ _id: req.params.id });
+        if (isOfficialTrail) {
+          return res.status(400).json({
+            error: "Official routes do not support user reviews",
+          });
+        }
+        return res.status(404).json({ error: "Trail not found" });
+      }
 
       const reviewUserId = getAuth(req).userId;
       const existing = trail.reviews.find((r) => r.userId === reviewUserId);
@@ -745,7 +936,13 @@ app.get("/api/trails/:id/reviews", async (req, res) => {
     const trail = await Trail.findById(req.params.id).select(
       "reviews averageAccuracy",
     );
-    if (!trail) return res.status(404).json({ error: "Trail not found" });
+    if (!trail) {
+      const isOfficialTrail = await OfficialTrail.exists({ _id: req.params.id });
+      if (isOfficialTrail) {
+        return res.json({ reviews: [], averageAccuracy: 0 });
+      }
+      return res.status(404).json({ error: "Trail not found" });
+    }
     res.json({
       reviews: trail.reviews,
       averageAccuracy: trail.averageAccuracy,

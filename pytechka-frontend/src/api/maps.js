@@ -4,6 +4,10 @@ export const fetchMapTrails = (params = {}) => {
   return api.get('/trails', { params })
 }
 
+export const fetchMapTrailsGeojson = () => {
+  return api.get('/trails/geojson')
+}
+
 export const fetchMapTrailsByArea = ({
   search = '',
   center = null,

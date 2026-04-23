@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMapStore } from '../../store/mapStore'
 import {
   fetchMapTrails,
+  fetchMapTrailsGeojson,
   fetchTrailStartReadiness,
   completeTrailFromMap,
   fetchHuts,
@@ -32,6 +33,7 @@ import { buildCenteredView } from '../../utils/mapDefaults'
 import MapControls from './MapControls'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
 import HutPreviewCard from '../layout/HutPreviewCard'
+import OfficialTrailCard from '../layout/OfficialTrailCard'
 
 const INITIAL_VIEW = buildCenteredView(7)
 
@@ -79,6 +81,31 @@ const SEGMENT_COLOR_EXPRESSION = [
   'extreme',
   DIFFICULTY_COLOR.extreme,
   '#64748b',
+]
+
+const TRAIL_SOURCE_ID = 'pytechka-trails'
+const TRAIL_LAYER_IDS = {
+  unmarked: 'pytechka-trails-unmarked',
+  yellow: 'pytechka-trails-yellow',
+  green: 'pytechka-trails-green',
+  blue: 'pytechka-trails-blue',
+  whiteCasing: 'pytechka-trails-white-casing',
+  whiteMain: 'pytechka-trails-white-main',
+  red: 'pytechka-trails-red',
+  featuredCasing: 'pytechka-trails-featured-casing',
+  featuredMain: 'pytechka-trails-featured-main',
+  user: 'pytechka-trails-user',
+}
+
+const INTERACTIVE_TRAIL_LAYER_IDS = [
+  TRAIL_LAYER_IDS.unmarked,
+  TRAIL_LAYER_IDS.yellow,
+  TRAIL_LAYER_IDS.green,
+  TRAIL_LAYER_IDS.blue,
+  TRAIL_LAYER_IDS.whiteMain,
+  TRAIL_LAYER_IDS.red,
+  TRAIL_LAYER_IDS.featuredMain,
+  TRAIL_LAYER_IDS.user,
 ]
 
 const styles = {
@@ -251,6 +278,167 @@ function parseTrailGeojson(geojson) {
     return null
   } catch {
     return null
+  }
+}
+
+function inferColourType({ colourType, osmColour, osmMarking }) {
+  const normalized = String(colourType || '')
+    .trim()
+    .toLowerCase()
+  if (
+    ['red', 'blue', 'green', 'yellow', 'white', 'black', 'unmarked'].includes(
+      normalized
+    )
+  ) {
+    return normalized
+  }
+
+  const marking = String(osmMarking || '')
+    .trim()
+    .toLowerCase()
+  if (['no', 'false', 'bad', 'none', 'unmarked'].includes(marking)) {
+    return 'unmarked'
+  }
+
+  const colour = String(osmColour || '')
+    .trim()
+    .toLowerCase()
+  if (!colour) return 'unmarked'
+
+  if (colour.includes('red') || /#(?:e00|d00|dc2626|ff0000|c00)\b/i.test(colour)) {
+    return 'red'
+  }
+  if (colour.includes('blue') || /#(?:00f|2563eb|1d4ed8)\b/i.test(colour)) {
+    return 'blue'
+  }
+  if (
+    colour.includes('green') ||
+    /#(?:0f0|22c55e|16a34a|008000)\b/i.test(colour)
+  ) {
+    return 'green'
+  }
+  if (
+    colour.includes('yellow') ||
+    /#(?:ff0|ffd700|facc15|eab308)\b/i.test(colour)
+  ) {
+    return 'yellow'
+  }
+  if (colour.includes('white') || /#(?:fff|ffffff|f8fafc)\b/i.test(colour)) {
+    return 'white'
+  }
+  if (colour.includes('black') || /#(?:000|000000|111827)\b/i.test(colour)) {
+    return 'black'
+  }
+
+  return 'unmarked'
+}
+
+function extractLineGeometries(geojson) {
+  const parsed = parseTrailGeojson(geojson)
+  if (!parsed) return []
+
+  if (parsed.type === 'LineString' || parsed.type === 'MultiLineString') {
+    return [parsed]
+  }
+
+  if (parsed.type === 'Feature') {
+    return extractLineGeometries(parsed.geometry)
+  }
+
+  if (parsed.type === 'FeatureCollection') {
+    return Array.isArray(parsed.features)
+      ? parsed.features.flatMap((feature) => extractLineGeometries(feature))
+      : []
+  }
+
+  return []
+}
+
+function normalizeTrailFeatureProperties(properties = {}) {
+  const source = String(properties.source || 'user').toLowerCase()
+  const ref = String(properties.ref || '').trim()
+
+  return {
+    id: String(properties.id || properties.trailId || ''),
+    name: String(properties.name || '').trim(),
+    name_bg: String(properties.name_bg || '').trim(),
+    name_en: String(properties.name_en || '').trim(),
+    ref,
+    source:
+      ['user', 'osm', 'osm_featured'].includes(source) ? source : 'user',
+    difficulty: String(properties.difficulty || 'moderate').toLowerCase(),
+    colour_type: inferColourType({
+      colourType: properties.colour_type,
+      osmColour: properties.osm_colour,
+      osmMarking: properties.osm_marking,
+    }),
+    osm_colour: String(properties.osm_colour || '').trim(),
+    osm_marking: String(properties.osm_marking || '').trim(),
+    network: String(properties.network || '').trim().toLowerCase(),
+    distance: Number(properties.distance || 0),
+    elevation_gain: Number(properties.elevation_gain || 0),
+    description: String(properties.description || '').trim(),
+  }
+}
+
+function normalizeTrailGeojsonCollection(collection) {
+  if (!collection || collection.type !== 'FeatureCollection') {
+    return { type: 'FeatureCollection', features: [] }
+  }
+
+  const features = (Array.isArray(collection.features) ? collection.features : [])
+    .map((feature) => {
+      if (!feature || feature.type !== 'Feature') return null
+      const geometry = feature.geometry
+      if (!geometry) return null
+      if (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString') {
+        return null
+      }
+
+      return {
+        type: 'Feature',
+        geometry,
+        properties: normalizeTrailFeatureProperties(feature.properties || {}),
+      }
+    })
+    .filter(Boolean)
+
+  return { type: 'FeatureCollection', features }
+}
+
+function buildTrailGeojsonFromTrails(trails = []) {
+  const features = trails.flatMap((trail) => {
+    const geometries = extractLineGeometries(trail.geojson)
+    if (!geometries.length) return []
+
+    const source = String(trail.source || 'user').toLowerCase()
+    const trailRef = String(trail.ref || '').trim()
+
+    return geometries.map((geometry) => ({
+      type: 'Feature',
+      geometry,
+      properties: normalizeTrailFeatureProperties({
+        id: String(trail._id || trail.id || ''),
+        name: trail.name,
+        name_bg: trail.name_bg,
+        name_en: trail.name_en,
+        ref: trailRef,
+        source,
+        difficulty: trail.difficulty,
+        colour_type: trail.colour_type,
+        osm_colour: trail.osm_colour,
+        osm_marking: trail.osm_marking,
+        network: trail.network,
+        distance: Number(trail.stats?.distance || 0) / 1000,
+        elevation_gain: Number(trail.stats?.elevationGain || 0),
+        description: trail.description,
+      }),
+    }))
+  })
+
+  return {
+    type: 'FeatureCollection',
+    features,
   }
 }
 
@@ -604,6 +792,7 @@ export default function MapView({
   const promptedReportsRef = useRef(new Set())
   const initialStartFocusAppliedRef = useRef('')
   const initialTrailSelectionRef = useRef('')
+  const skipNextMapClickSelectionRef = useRef(false)
 
   const {
     mapStyle,
@@ -630,12 +819,19 @@ export default function MapView({
   }, [setHuts])
 
   const [trails, setTrails] = useState([])
+  const [trailsGeojson, setTrailsGeojson] = useState({
+    type: 'FeatureCollection',
+    features: [],
+  })
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
   const [geoError, setGeoError] = useState('')
   const [mapError, setMapError] = useState('')
   const [styleFailed, setStyleFailed] = useState(false)
   const [mapReady, setMapReady] = useState(false)
+  const [selectedOfficialTrail, setSelectedOfficialTrail] = useState(null)
+  const [unmarkedWarning, setUnmarkedWarning] = useState('')
+  const [isLegendVisible, setIsLegendVisible] = useState(true)
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
@@ -726,23 +922,19 @@ export default function MapView({
       ? 'Tileset source-layer is missing. Set VITE_MAPBOX_TILESET_SOURCE_LAYER.'
       : ''
 
-  const renderableTrails = useMemo(() => {
-    return trails
-      .map((trail) => {
-        const geometry = parseTrailGeojson(trail.geojson)
-        if (!geometry) return null
-        return { trail, geometry }
-      })
-      .filter(Boolean)
-  }, [trails])
+  const trailSourceCollection = useMemo(
+    () => normalizeTrailGeojsonCollection(trailsGeojson),
+    [trailsGeojson]
+  )
 
-  const visibleTrailEntries = useMemo(() => {
-    if (!activeTrailSession?.trailId) return renderableTrails
-    const activeTrailId = String(activeTrailSession.trailId)
-    return renderableTrails.filter(
-      ({ trail }) => String(trail._id || trail.id) === activeTrailId
-    )
-  }, [renderableTrails, activeTrailSession])
+  const trailsById = useMemo(() => {
+    const map = new globalThis.Map()
+    trails.forEach((trail) => {
+      const id = String(trail._id || trail.id || '')
+      if (id) map.set(id, trail)
+    })
+    return map
+  }, [trails])
 
   const selectedAreaFeature = useMemo(() => {
     if (!selectedAreaCenter) return null
@@ -996,21 +1188,47 @@ export default function MapView({
     setLoadingTrails(true)
     setTrailsError('')
     setSelectedTrail(null)
+    setSelectedOfficialTrail(null)
+    setUnmarkedWarning('')
 
     const fetchTimeout = setTimeout(() => {
-      const request = fetchMapTrails(
-        normalizedSearch ? { search: normalizedSearch } : {}
-      )
+      const request = Promise.allSettled([
+        fetchMapTrails(normalizedSearch ? { search: normalizedSearch } : {}),
+        fetchMapTrailsGeojson(),
+      ])
 
       request
-        .then((res) => {
+        .then(([trailsResult, geojsonResult]) => {
           if (!active) return
-          const next = Array.isArray(res.data) ? res.data : []
-          setTrails(next)
+
+          const trailsOk = trailsResult.status === 'fulfilled'
+          const nextTrails = trailsOk
+            ? Array.isArray(trailsResult.value?.data)
+              ? trailsResult.value.data
+              : []
+            : []
+
+          setTrails(nextTrails)
+
+          const geojsonOk = geojsonResult.status === 'fulfilled'
+          if (geojsonOk) {
+            setTrailsGeojson(
+              normalizeTrailGeojsonCollection(geojsonResult.value?.data)
+            )
+          } else {
+            setTrailsGeojson(buildTrailGeojsonFromTrails(nextTrails))
+          }
+
+          if (!trailsOk) {
+            setTrailsError(
+              'Could not load trails from the API. The base map is still available.'
+            )
+          }
         })
         .catch(() => {
           if (!active) return
           setTrails([])
+          setTrailsGeojson({ type: 'FeatureCollection', features: [] })
           setTrailsError(
             'Could not load trails from the API. The base map is still available.'
           )
@@ -1396,6 +1614,100 @@ export default function MapView({
     setAreaInsightsEnabled((value) => !value)
   }, [])
 
+  const handleTrailLayerFeatureClick = useCallback(
+    (event) => {
+      const feature = event?.features?.[0]
+      if (!feature) return
+
+      skipNextMapClickSelectionRef.current = true
+
+      const normalized = normalizeTrailFeatureProperties(feature.properties || {})
+      const trailId = String(normalized.id || '')
+      const matchedTrail = trailId ? trailsById.get(trailId) : null
+
+      const fallbackTrail = {
+        _id: trailId,
+        id: trailId,
+        source: normalized.source,
+        name: normalized.name || normalized.name_bg || normalized.name_en || 'Unnamed trail',
+        name_bg: normalized.name_bg,
+        name_en: normalized.name_en,
+        ref: normalized.ref,
+        difficulty: normalized.difficulty,
+        colour_type: normalized.colour_type,
+        osm_colour: normalized.osm_colour,
+        osm_marking: normalized.osm_marking,
+        network: normalized.network,
+        description: normalized.description,
+        distance: normalized.distance,
+        elevation_gain: normalized.elevation_gain,
+        geojson: {
+          type: 'Feature',
+          geometry: feature.geometry,
+          properties: normalized,
+        },
+        stats: {
+          distance: Number(normalized.distance || 0) * 1000,
+          elevationGain: Number(normalized.elevation_gain || 0),
+        },
+      }
+
+      if (normalized.colour_type === 'unmarked') {
+        setUnmarkedWarning(
+          'Warning: this section is unmarked. Advanced navigation skills are required.'
+        )
+      } else {
+        setUnmarkedWarning('')
+      }
+
+      if (normalized.source === 'user') {
+        setSelectedOfficialTrail(null)
+        setSelectedTrail(matchedTrail || fallbackTrail)
+        return
+      }
+
+      setSelectedTrail(null)
+      setSelectedOfficialTrail(matchedTrail || fallbackTrail)
+    },
+    [setSelectedTrail, trailsById]
+  )
+
+  useEffect(() => {
+    if (!mapReady) return undefined
+
+    const map = mapRef.current?.getMap()
+    if (!map) return undefined
+
+    const existingLayers = INTERACTIVE_TRAIL_LAYER_IDS.filter((id) =>
+      map.getLayer(id)
+    )
+    if (!existingLayers.length) return undefined
+
+    const handleMouseEnter = () => {
+      map.getCanvas().style.cursor = 'pointer'
+    }
+    const handleMouseLeave = () => {
+      map.getCanvas().style.cursor = ''
+    }
+
+    existingLayers.forEach((layerId) => {
+      map.on('click', layerId, handleTrailLayerFeatureClick)
+      map.on('mouseenter', layerId, handleMouseEnter)
+      map.on('mouseleave', layerId, handleMouseLeave)
+    })
+
+    return () => {
+      existingLayers.forEach((layerId) => {
+        map.off('click', layerId, handleTrailLayerFeatureClick)
+        map.off('mouseenter', layerId, handleMouseEnter)
+        map.off('mouseleave', layerId, handleMouseLeave)
+      })
+      if (map.getCanvas()) {
+        map.getCanvas().style.cursor = ''
+      }
+    }
+  }, [mapReady, handleTrailLayerFeatureClick, trailSourceCollection])
+
   const handleMapClick = useCallback(
     (e) => {
       const map = mapRef.current?.getMap()
@@ -1411,37 +1723,26 @@ export default function MapView({
         }
 
         let snapped = [lng, lat]
-        let trailId = activeTrailSession.trailId
+        const trailId = activeTrailSession.trailId
 
-        const layerIds = renderableTrails
-          .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
-          .filter((id) => map.getLayer(id))
-
-        if (layerIds.length) {
-          const features = map.queryRenderedFeatures(e.point, {
-            layers: layerIds,
-          })
-          if (features.length) {
-            trailId = features[0].layer.id.replace('trail-hit-', '')
-            const match = renderableTrails.find(
-              ({ trail }) => String(trail._id || trail.id) === String(trailId)
-            )
-            if (match) {
-              const clickPt = turfPoint([lng, lat])
-              let geom = match.geometry
-              if (geom.type === 'FeatureCollection') {
-                geom = geom.features?.[0]?.geometry || geom
-              } else if (geom.type === 'Feature') {
-                geom = geom.geometry
+        const activeTrail = trailsById.get(String(trailId))
+        const activeGeometry =
+          parseTrailGeojson(activeTrail?.geojson) ||
+          parseTrailGeojson(activeTrailSession?.pathCoordinates?.length
+            ? {
+                type: 'LineString',
+                coordinates: activeTrailSession.pathCoordinates,
               }
-              try {
-                const nearest = nearestPointOnLine(geom, clickPt)
-                if (nearest?.geometry?.coordinates) {
-                  snapped = nearest.geometry.coordinates
-                }
-              } catch {}
+            : null)
+
+        if (activeGeometry) {
+          const clickPt = turfPoint([lng, lat])
+          try {
+            const nearest = nearestPointOnLine(activeGeometry, clickPt)
+            if (nearest?.geometry?.coordinates) {
+              snapped = nearest.geometry.coordinates
             }
-          }
+          } catch {}
         }
 
         setPendingPing({ coordinates: snapped, trailId })
@@ -1452,34 +1753,30 @@ export default function MapView({
         setSelectedAreaCenter([lng, lat])
       }
 
-      const layerIds = renderableTrails
-        .map(({ trail }) => `trail-hit-${trail._id || trail.id}`)
-        .filter((id) => map.getLayer(id))
-
-      if (!layerIds.length) {
-        setSelectedTrail(null)
+      if (skipNextMapClickSelectionRef.current) {
+        skipNextMapClickSelectionRef.current = false
         return
       }
 
-      const features = map.queryRenderedFeatures(e.point, { layers: layerIds })
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: INTERACTIVE_TRAIL_LAYER_IDS.filter((id) => map.getLayer(id)),
+      })
       if (!features.length) {
         setSelectedTrail(null)
+        setSelectedOfficialTrail(null)
+        setUnmarkedWarning('')
         return
       }
 
-      const trailId = features[0].layer.id.replace('trail-hit-', '')
-      const trail = trails.find(
-        (entry) => String(entry._id || entry.id) === String(trailId)
-      )
-      if (trail) setSelectedTrail(trail)
+      handleTrailLayerFeatureClick({ features })
     },
     [
       pingMode,
       activeTrailSession,
-      renderableTrails,
-      trails,
+      trailsById,
       setSelectedTrail,
       areaInsightsEnabled,
+      handleTrailLayerFeatureClick,
     ]
   )
 
@@ -1489,6 +1786,8 @@ export default function MapView({
     setSelectedAreaCenter(null)
     setSelectedAreaRadiusKm(8)
     setSelectedTrail(null)
+    setSelectedOfficialTrail(null)
+    setUnmarkedWarning('')
     setGeoError('')
 
     map?.flyTo({
@@ -1502,6 +1801,7 @@ export default function MapView({
   const handleOpenStartPlanner = useCallback(
     (trail) => {
       if (!trail) return
+      setSelectedOfficialTrail(null)
       setStartPanelTrail(trail)
       setStartHoveredSegment(0)
       setStartPanelError('')
@@ -1806,6 +2106,7 @@ export default function MapView({
     setStillTherePrompt(null)
     lastActivityPointRef.current = null
     setSelectedTrail(null)
+    setSelectedOfficialTrail(null)
   }, [
     activeTrailSession,
     trails,
@@ -1892,38 +2193,178 @@ export default function MapView({
       >
         {mapReady ? (
           <>
-            {visibleTrailEntries.map(({ trail, geometry }) => {
-              const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
-              const tid = trail._id || trail.id
-              return (
-                <Source
-                  key={tid}
-                  id={`trail-source-${tid}`}
-                  type="geojson"
-                  data={geometry}
-                >
-                  <Layer
-                    id={`trail-hit-${tid}`}
-                    type="line"
-                    paint={{
-                      'line-color': color,
-                      'line-width': 16,
-                      'line-opacity': 0,
-                    }}
-                  />
-                  <Layer
-                    id={`trail-line-${tid}`}
-                    type="line"
-                    layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                    paint={{
-                      'line-color': color,
-                      'line-width': 4,
-                      'line-opacity': 0.85,
-                    }}
-                  />
-                </Source>
-              )
-            })}
+            <Source id={TRAIL_SOURCE_ID} type="geojson" data={trailSourceCollection}>
+              <Layer
+                id={TRAIL_LAYER_IDS.unmarked}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'unmarked'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#000000',
+                  'line-width': 2,
+                  'line-opacity': 0.7,
+                  'line-dasharray': [2, 2],
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.yellow}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'yellow'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#FFD700',
+                  'line-width': 2.5,
+                  'line-opacity': 0.9,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.green}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'green'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#22c55e',
+                  'line-width': 2.5,
+                  'line-opacity': 0.9,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.blue}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'blue'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#2563eb',
+                  'line-width': 2.5,
+                  'line-opacity': 0.9,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.whiteCasing}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'white'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#0f172a',
+                  'line-width': 4,
+                  'line-opacity': 0.95,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.whiteMain}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'white'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#ffffff',
+                  'line-width': 2.5,
+                  'line-opacity': 0.95,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.red}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'red'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#dc2626',
+                  'line-width': 3,
+                  'line-opacity': 0.92,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.featuredCasing}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={['==', ['get', 'source'], 'osm_featured']}
+                paint={{
+                  'line-color': '#0f172a',
+                  'line-width': 6,
+                  'line-opacity': 0.95,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.featuredMain}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={['==', ['get', 'source'], 'osm_featured']}
+                paint={{
+                  'line-color': [
+                    'match',
+                    ['upcase', ['get', 'ref']],
+                    'E3',
+                    '#dc2626',
+                    'E4',
+                    '#2563eb',
+                    'E8',
+                    '#7c3aed',
+                    '#dc2626',
+                  ],
+                  'line-width': 4.5,
+                  'line-opacity': 0.98,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.user}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={['==', ['get', 'source'], 'user']}
+                paint={{
+                  'line-color': [
+                    'match',
+                    ['get', 'difficulty'],
+                    'easy',
+                    '#22c55e',
+                    'moderate',
+                    '#f97316',
+                    'hard',
+                    '#ef4444',
+                    'extreme',
+                    '#7f1d1d',
+                    '#64748b',
+                  ],
+                  'line-width': 3,
+                  'line-opacity': 0.94,
+                }}
+              />
+            </Source>
 
             {viewState.zoom >= 9 && huts.map((hut) => (
                <Marker
@@ -2222,6 +2663,138 @@ export default function MapView({
           </>
         ) : null}
       </Map>
+
+      {unmarkedWarning ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 108px)',
+            width: 'min(92vw, 440px)',
+            zIndex: 32,
+            borderRadius: 12,
+            border: '1px solid rgba(250, 204, 21, 0.5)',
+            background: 'rgba(30, 20, 5, 0.92)',
+            color: '#fde68a',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.35)',
+            padding: '10px 12px',
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
+            Safety warning
+          </div>
+          <div style={{ fontSize: 12, lineHeight: 1.45 }}>{unmarkedWarning}</div>
+          <button
+            type="button"
+            onClick={() => setUnmarkedWarning('')}
+            style={{
+              ...pingBtnBase,
+              marginTop: 8,
+              width: '100%',
+              background: 'rgba(250, 204, 21, 0.16)',
+              color: '#fde68a',
+            }}
+          >
+            Understood
+          </button>
+        </div>
+      ) : null}
+
+      {isLegendVisible ? (
+        <div
+          style={{
+            position: 'absolute',
+            left: 12,
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 86px)',
+            width: 'min(84vw, 256px)',
+            zIndex: 21,
+            borderRadius: 14,
+            border: '1px solid rgba(148,163,184,0.3)',
+            background: 'rgba(15, 23, 35, 0.9)',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.32)',
+            padding: 10,
+            display: 'grid',
+            gap: 7,
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 800, color: '#e2e8f0' }}>
+              Legend
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsLegendVisible(false)}
+              style={{
+                ...pingBtnBase,
+                padding: '3px 8px',
+                fontSize: 11,
+                background: 'rgba(148,163,184,0.16)',
+                color: '#cbd5e1',
+              }}
+            >
+              Hide
+            </button>
+          </div>
+
+          {[
+            ['Red marking', '#dc2626', false, 3],
+            ['Blue marking', '#2563eb', false, 3],
+            ['Green marking', '#22c55e', false, 3],
+            ['Yellow marking', '#FFD700', false, 3],
+            ['Unmarked section', '#000000', true, 2],
+            ['E3 Kom-Emine', '#dc2626', false, 5],
+            ['E4', '#2563eb', false, 5],
+            ['E8', '#7c3aed', false, 5],
+          ].map(([label, color, dashed, width]) => (
+            <div
+              key={label}
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '44px 1fr',
+                alignItems: 'center',
+                gap: 8,
+                fontSize: 12,
+                color: '#cbd5e1',
+              }}
+            >
+              <span
+                style={{
+                  height: 0,
+                  borderTop: `${width}px ${dashed ? 'dashed' : 'solid'} ${color}`,
+                }}
+              />
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setIsLegendVisible(true)}
+          style={{
+            ...pingBtnBase,
+            position: 'absolute',
+            left: 12,
+            bottom: 'calc(env(safe-area-inset-bottom, 0px) + 86px)',
+            zIndex: 21,
+            padding: '7px 11px',
+            fontSize: 12,
+            background: 'rgba(15, 23, 35, 0.9)',
+            border: '1px solid rgba(148,163,184,0.3)',
+            color: '#e2e8f0',
+          }}
+        >
+          Show legend
+        </button>
+      )}
 
       {pingMode && !pendingPing && (
         <div
@@ -3533,6 +4106,14 @@ export default function MapView({
             onStartTrail={handleOpenStartPlanner}
             bottomOffset={MAPS_BOTTOM_CARD_OFFSET}
             showScheduleButton={false}
+          />
+          <OfficialTrailCard
+            trail={selectedOfficialTrail}
+            onClose={() => setSelectedOfficialTrail(null)}
+            onStartNavigation={handleOpenStartPlanner}
+            bottomOffset={
+              selectedOfficialTrail ? MAPS_BOTTOM_CARD_OFFSET : undefined
+            }
           />
           <HutPreviewCard
             hut={selectedHut}

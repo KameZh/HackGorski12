@@ -224,6 +224,40 @@
   gap: 8px;
 }
 
+.explore-chip-toggle-row {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.explore-filter-chip-btn {
+  border: 1px solid rgba(72, 169, 166, 0.36);
+  border-radius: 999px;
+  padding: 6px 12px;
+  background: rgba(15, 23, 35, 0.78);
+  color: #9ecbde;
+  font-size: 0.76rem;
+  font-weight: 760;
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.explore-filter-chip-btn:hover {
+  border-color: rgba(72, 169, 166, 0.72);
+  color: #d7f4ff;
+}
+
+.explore-filter-chip-btn.active {
+  border-color: rgba(72, 169, 166, 0.92);
+  background: rgba(72, 169, 166, 0.24);
+  color: #8de0dc;
+}
+
 .explore-filter-field {
   display: flex;
   flex-direction: column;

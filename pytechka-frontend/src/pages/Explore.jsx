@@ -111,6 +111,8 @@ export default function Explore() {
     FILTER_DEFAULTS.difficulty
   )
   const [activeSort, setActiveSort] = useState(FILTER_DEFAULTS.sort)
+  const [officialOnly, setOfficialOnly] = useState(false)
+  const [unmarkedOnly, setUnmarkedOnly] = useState(false)
   const [regionMapView, setRegionMapView] = useState(INITIAL_REGION_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
@@ -151,6 +153,8 @@ export default function Explore() {
         ...(activeDifficulty !== FILTER_DEFAULTS.difficulty && {
           difficulty: activeDifficulty.toLowerCase(),
         }),
+        ...(officialOnly ? { officialOnly: true } : {}),
+        ...(unmarkedOnly ? { unmarkedOnly: true } : {}),
         sort: activeSort.toLowerCase().replace(' ', '_'),
       }
 
@@ -162,7 +166,14 @@ export default function Explore() {
     } finally {
       setLoadingTrails(false)
     }
-  }, [searchQuery, activeActivity, activeDifficulty, activeSort])
+  }, [
+    searchQuery,
+    activeActivity,
+    activeDifficulty,
+    activeSort,
+    officialOnly,
+    unmarkedOnly,
+  ])
 
   useEffect(() => {
     loadTrails()
@@ -173,6 +184,8 @@ export default function Explore() {
     setActiveActivity(FILTER_DEFAULTS.activity)
     setActiveDifficulty(FILTER_DEFAULTS.difficulty)
     setActiveSort(FILTER_DEFAULTS.sort)
+    setOfficialOnly(false)
+    setUnmarkedOnly(false)
     setSelectedAreaCenter(null)
   }, [])
 
@@ -182,12 +195,16 @@ export default function Explore() {
       activeActivity !== FILTER_DEFAULTS.activity ||
       activeDifficulty !== FILTER_DEFAULTS.difficulty ||
       activeSort !== FILTER_DEFAULTS.sort ||
+      officialOnly ||
+      unmarkedOnly ||
       Boolean(selectedAreaCenter),
     [
       searchQuery,
       activeActivity,
       activeDifficulty,
       activeSort,
+      officialOnly,
+      unmarkedOnly,
       selectedAreaCenter,
     ]
   )
@@ -312,6 +329,23 @@ export default function Explore() {
                   </label>
                 </div>
 
+                <div className="explore-chip-toggle-row">
+                  <button
+                    type="button"
+                    onClick={() => setOfficialOnly((value) => !value)}
+                    className={`explore-filter-chip-btn ${officialOnly ? 'active' : ''}`}
+                  >
+                    Official Routes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnmarkedOnly((value) => !value)}
+                    className={`explore-filter-chip-btn ${unmarkedOnly ? 'active' : ''}`}
+                  >
+                    Unmarked
+                  </button>
+                </div>
+
                 {hasActiveFilters ? (
                   <div className="explore-active-summary">
                     {searchQuery ? (
@@ -331,6 +365,12 @@ export default function Explore() {
                     ) : null}
                     {activeSort !== FILTER_DEFAULTS.sort ? (
                       <span className="explore-chip">Sort: {activeSort}</span>
+                    ) : null}
+                    {officialOnly ? (
+                      <span className="explore-chip">Official routes</span>
+                    ) : null}
+                    {unmarkedOnly ? (
+                      <span className="explore-chip">Unmarked sections</span>
                     ) : null}
                     {selectedAreaCenter ? (
                       <span className="explore-chip">

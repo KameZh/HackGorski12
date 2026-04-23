@@ -329,7 +329,10 @@ function normalizeTrailDocument(trailDoc) {
   ) {
     trail.startCoordinates = derived.startCoordinates;
   }
-  if (!Array.isArray(trail.endCoordinates) || trail.endCoordinates.length !== 2) {
+  if (
+    !Array.isArray(trail.endCoordinates) ||
+    trail.endCoordinates.length !== 2
+  ) {
     trail.endCoordinates = derived.endCoordinates;
   }
 
@@ -542,7 +545,9 @@ app.get("/api/trails/geojson", async (req, res) => {
       const fallbackGeometry =
         trail.geom && typeof trail.geom === "object" ? [trail.geom] : [];
       const geometries = extractLineGeometries(trail.geojson);
-      const geometryCandidates = geometries.length ? geometries : fallbackGeometry;
+      const geometryCandidates = geometries.length
+        ? geometries
+        : fallbackGeometry;
 
       if (!geometryCandidates.length) return [];
 
@@ -632,9 +637,8 @@ app.get("/api/trails", async (req, res) => {
     const userTrailsPromise = officialOnly
       ? Promise.resolve([])
       : Trail.find(userFilter).sort(sortOption).select("-reviews");
-    const officialTrailsPromise = OfficialTrail.find(officialFilter).sort(
-      sortOption,
-    );
+    const officialTrailsPromise =
+      OfficialTrail.find(officialFilter).sort(sortOption);
 
     const [userTrails, officialTrails] = await Promise.all([
       userTrailsPromise,
@@ -647,7 +651,8 @@ app.get("/api/trails", async (req, res) => {
 
     if (sort === "popular") {
       normalized.sort(
-        (a, b) => Number(b.averageAccuracy || 0) - Number(a.averageAccuracy || 0),
+        (a, b) =>
+          Number(b.averageAccuracy || 0) - Number(a.averageAccuracy || 0),
       );
     } else {
       normalized.sort(
@@ -688,7 +693,8 @@ app.get("/api/trails", async (req, res) => {
 
 app.get("/api/trails/:id/start-readiness", async (req, res) => {
   try {
-    const selectFields = "name startCoordinates geojson stats ai difficulty region";
+    const selectFields =
+      "name startCoordinates geojson stats ai difficulty region";
     const trail =
       (await Trail.findById(req.params.id).select(selectFields)) ||
       (await OfficialTrail.findById(req.params.id).select(selectFields));
@@ -896,7 +902,9 @@ app.post(
 
       const trail = await Trail.findById(req.params.id);
       if (!trail) {
-        const isOfficialTrail = await OfficialTrail.exists({ _id: req.params.id });
+        const isOfficialTrail = await OfficialTrail.exists({
+          _id: req.params.id,
+        });
         if (isOfficialTrail) {
           return res.status(400).json({
             error: "Official routes do not support user reviews",
@@ -937,7 +945,9 @@ app.get("/api/trails/:id/reviews", async (req, res) => {
       "reviews averageAccuracy",
     );
     if (!trail) {
-      const isOfficialTrail = await OfficialTrail.exists({ _id: req.params.id });
+      const isOfficialTrail = await OfficialTrail.exists({
+        _id: req.params.id,
+      });
       if (isOfficialTrail) {
         return res.json({ reviews: [], averageAccuracy: 0 });
       }

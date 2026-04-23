@@ -6,7 +6,9 @@ import OfficialTrail from "../models/officialTrail.js";
 import { calculateStats } from "../services/aiAnalysis.js";
 
 const OVERPASS_ENDPOINTS = [
-  String(process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter").trim(),
+  String(
+    process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter",
+  ).trim(),
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ].filter(Boolean);
@@ -75,8 +77,8 @@ function readTag(feature, keys = []) {
 
 function isHikingFeature(feature) {
   const tagSources = buildTagSources(feature);
-  return tagSources.some(
-    (tags) => SUPPORTED_ROUTE_TAGS.has(normalizeString(tags?.route).toLowerCase()),
+  return tagSources.some((tags) =>
+    SUPPORTED_ROUTE_TAGS.has(normalizeString(tags?.route).toLowerCase()),
   );
 }
 
@@ -207,7 +209,8 @@ function toFeatureTrailDoc(feature, index) {
     colour_type: colourType,
     network: normalizeString(readTag(feature, ["network"])),
     startCoordinates:
-      Array.isArray(stats?.startCoordinates) && stats.startCoordinates.length === 2
+      Array.isArray(stats?.startCoordinates) &&
+      stats.startCoordinates.length === 2
         ? stats.startCoordinates
         : null,
     endCoordinates:
@@ -227,7 +230,11 @@ function toWayCoordinates(way, nodeCoordinatesById = new Map()) {
         .filter(([lon, lat]) => Number.isFinite(lon) && Number.isFinite(lat))
     : [];
 
-  if (coordinates.length < 2 && Array.isArray(way?.nodes) && way.nodes.length >= 2) {
+  if (
+    coordinates.length < 2 &&
+    Array.isArray(way?.nodes) &&
+    way.nodes.length >= 2
+  ) {
     coordinates = way.nodes
       .map((nodeId) => nodeCoordinatesById.get(Number(nodeId)) || null)
       .filter((coords) => Array.isArray(coords) && coords.length === 2);
@@ -276,7 +283,8 @@ function buildDocsFromRawRelations(elements = []) {
     for (const member of members) {
       if (member?.type !== "way") continue;
       const memberCoordinates =
-        toMemberCoordinates(member) || wayCoordinatesById.get(Number(member.ref));
+        toMemberCoordinates(member) ||
+        wayCoordinatesById.get(Number(member.ref));
       if (memberCoordinates?.length >= 2) {
         segments.push(memberCoordinates);
       }
@@ -289,7 +297,8 @@ function buildDocsFromRawRelations(elements = []) {
         ? { type: "LineString", coordinates: segments[0] }
         : { type: "MultiLineString", coordinates: segments };
 
-    const tags = element?.tags && typeof element.tags === "object" ? element.tags : {};
+    const tags =
+      element?.tags && typeof element.tags === "object" ? element.tags : {};
     const ref = normalizeString(tags.ref);
     const nameBg = normalizeString(tags["name:bg"]);
     const nameEn = normalizeString(tags["name:en"]);
@@ -299,7 +308,10 @@ function buildDocsFromRawRelations(elements = []) {
       nameBg || fallbackName || nameEn || ref || `OSM trail ${osmId}`;
 
     const osmColour = normalizeString(
-      tags.colour || tags.color || tags["osm:relation:colour"] || tags["osmc:colour"],
+      tags.colour ||
+        tags.color ||
+        tags["osm:relation:colour"] ||
+        tags["osmc:colour"],
     );
     const marked = normalizeString(tags.marked);
     const trailVisibility = normalizeString(tags.trail_visibility);
@@ -345,11 +357,13 @@ function buildDocsFromRawRelations(elements = []) {
       colour_type: colourType,
       network: normalizeString(tags.network),
       startCoordinates:
-        Array.isArray(stats?.startCoordinates) && stats.startCoordinates.length === 2
+        Array.isArray(stats?.startCoordinates) &&
+        stats.startCoordinates.length === 2
           ? stats.startCoordinates
           : null,
       endCoordinates:
-        Array.isArray(stats?.endCoordinates) && stats.endCoordinates.length === 2
+        Array.isArray(stats?.endCoordinates) &&
+        stats.endCoordinates.length === 2
           ? stats.endCoordinates
           : null,
       geojson: geojsonFeature,
@@ -454,7 +468,9 @@ async function fetchOverpassData() {
     }
   }
 
-  throw new Error(`Overpass request failed on all endpoints. Attempts: ${attempts.join(" | ")}`);
+  throw new Error(
+    `Overpass request failed on all endpoints. Attempts: ${attempts.join(" | ")}`,
+  );
 }
 
 async function runImport() {
@@ -468,7 +484,9 @@ async function runImport() {
     const routeRelations = elements.filter(
       (entry) =>
         entry?.type === "relation" &&
-        SUPPORTED_ROUTE_TAGS.has(normalizeString(entry?.tags?.route).toLowerCase()),
+        SUPPORTED_ROUTE_TAGS.has(
+          normalizeString(entry?.tags?.route).toLowerCase(),
+        ),
     );
     console.log(
       `Overpass returned ${elements.length} elements (${routeRelations.length} hiking/foot relations).`,
@@ -478,13 +496,17 @@ async function runImport() {
         ? routeRelations[0].members
         : [];
       const memberTypeCounts = sampleMembers.reduce((acc, member) => {
-        const memberType = normalizeString(member?.type || "unknown").toLowerCase();
+        const memberType = normalizeString(
+          member?.type || "unknown",
+        ).toLowerCase();
         acc[memberType] = (acc[memberType] || 0) + 1;
         return acc;
       }, {});
       const relationsWithWayMembers = routeRelations.filter((relation) =>
         Array.isArray(relation?.members)
-          ? relation.members.some((member) => normalizeString(member?.type).toLowerCase() === "way")
+          ? relation.members.some(
+              (member) => normalizeString(member?.type).toLowerCase() === "way",
+            )
           : false,
       ).length;
       console.log(
@@ -501,7 +523,8 @@ async function runImport() {
         feature?.geometry?.type === "MultiLineString",
     ).length;
     const relationFeatures = features.filter(
-      (feature) => normalizeString(feature?.properties?.type).toLowerCase() === "relation",
+      (feature) =>
+        normalizeString(feature?.properties?.type).toLowerCase() === "relation",
     );
     const relationLineFeatures = relationFeatures.filter(
       (feature) =>
@@ -531,9 +554,13 @@ async function runImport() {
       );
       docs = buildDocsFromRawRelations(elements);
     }
-    const featuredCount = docs.filter((doc) => doc.source === "osm_featured").length;
+    const featuredCount = docs.filter(
+      (doc) => doc.source === "osm_featured",
+    ).length;
 
-    console.log(`Prepared ${docs.length} OSM trail sections (${featuredCount} featured).`);
+    console.log(
+      `Prepared ${docs.length} OSM trail sections (${featuredCount} featured).`,
+    );
 
     console.log("Replacing official trail collection...");
     await OfficialTrail.deleteMany({});

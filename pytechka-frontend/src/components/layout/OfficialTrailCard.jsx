@@ -98,7 +98,8 @@ function formatElevation(trail) {
   if (Number.isFinite(value) && value > 0) return Math.round(value)
 
   const statsValue = Number(trail?.stats?.elevationGain)
-  if (Number.isFinite(statsValue) && statsValue > 0) return Math.round(statsValue)
+  if (Number.isFinite(statsValue) && statsValue > 0)
+    return Math.round(statsValue)
 
   return 0
 }
@@ -207,11 +208,15 @@ export default function OfficialTrailCard({
             <div style={styles.statGrid}>
               <div style={styles.statBox}>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>Distance</div>
-                <div style={{ fontWeight: 700 }}>{formatDistanceKm(trail)} km</div>
+                <div style={{ fontWeight: 700 }}>
+                  {formatDistanceKm(trail)} km
+                </div>
               </div>
               <div style={styles.statBox}>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>Elevation</div>
-                <div style={{ fontWeight: 700 }}>+{formatElevation(trail)} m</div>
+                <div style={{ fontWeight: 700 }}>
+                  +{formatElevation(trail)} m
+                </div>
               </div>
               <div style={styles.statBox}>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>Marking</div>

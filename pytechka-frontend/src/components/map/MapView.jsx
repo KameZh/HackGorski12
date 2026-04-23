@@ -305,7 +305,10 @@ function inferColourType({ colourType, osmColour, osmMarking }) {
     .toLowerCase()
   if (!colour) return 'unmarked'
 
-  if (colour.includes('red') || /#(?:e00|d00|dc2626|ff0000|c00)\b/i.test(colour)) {
+  if (
+    colour.includes('red') ||
+    /#(?:e00|d00|dc2626|ff0000|c00)\b/i.test(colour)
+  ) {
     return 'red'
   }
   if (colour.includes('blue') || /#(?:00f|2563eb|1d4ed8)\b/i.test(colour)) {
@@ -364,8 +367,7 @@ function normalizeTrailFeatureProperties(properties = {}) {
     name_bg: String(properties.name_bg || '').trim(),
     name_en: String(properties.name_en || '').trim(),
     ref,
-    source:
-      ['user', 'osm', 'osm_featured'].includes(source) ? source : 'user',
+    source: ['user', 'osm', 'osm_featured'].includes(source) ? source : 'user',
     difficulty: String(properties.difficulty || 'moderate').toLowerCase(),
     colour_type: inferColourType({
       colourType: properties.colour_type,
@@ -374,7 +376,9 @@ function normalizeTrailFeatureProperties(properties = {}) {
     }),
     osm_colour: String(properties.osm_colour || '').trim(),
     osm_marking: String(properties.osm_marking || '').trim(),
-    network: String(properties.network || '').trim().toLowerCase(),
+    network: String(properties.network || '')
+      .trim()
+      .toLowerCase(),
     distance: Number(properties.distance || 0),
     elevation_gain: Number(properties.elevation_gain || 0),
     description: String(properties.description || '').trim(),
@@ -386,12 +390,17 @@ function normalizeTrailGeojsonCollection(collection) {
     return { type: 'FeatureCollection', features: [] }
   }
 
-  const features = (Array.isArray(collection.features) ? collection.features : [])
+  const features = (
+    Array.isArray(collection.features) ? collection.features : []
+  )
     .map((feature) => {
       if (!feature || feature.type !== 'Feature') return null
       const geometry = feature.geometry
       if (!geometry) return null
-      if (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString') {
+      if (
+        geometry.type !== 'LineString' &&
+        geometry.type !== 'MultiLineString'
+      ) {
         return null
       }
 
@@ -815,7 +824,9 @@ export default function MapView({
         }
       })
       .catch((err) => console.error('Failed to fetch huts', err))
-    return () => { active = false }
+    return () => {
+      active = false
+    }
   }, [setHuts])
 
   const [trails, setTrails] = useState([])
@@ -1621,7 +1632,9 @@ export default function MapView({
 
       skipNextMapClickSelectionRef.current = true
 
-      const normalized = normalizeTrailFeatureProperties(feature.properties || {})
+      const normalized = normalizeTrailFeatureProperties(
+        feature.properties || {}
+      )
       const trailId = String(normalized.id || '')
       const matchedTrail = trailId ? trailsById.get(trailId) : null
 
@@ -1629,7 +1642,11 @@ export default function MapView({
         _id: trailId,
         id: trailId,
         source: normalized.source,
-        name: normalized.name || normalized.name_bg || normalized.name_en || 'Unnamed trail',
+        name:
+          normalized.name ||
+          normalized.name_bg ||
+          normalized.name_en ||
+          'Unnamed trail',
         name_bg: normalized.name_bg,
         name_en: normalized.name_en,
         ref: normalized.ref,
@@ -1728,12 +1745,14 @@ export default function MapView({
         const activeTrail = trailsById.get(String(trailId))
         const activeGeometry =
           parseTrailGeojson(activeTrail?.geojson) ||
-          parseTrailGeojson(activeTrailSession?.pathCoordinates?.length
-            ? {
-                type: 'LineString',
-                coordinates: activeTrailSession.pathCoordinates,
-              }
-            : null)
+          parseTrailGeojson(
+            activeTrailSession?.pathCoordinates?.length
+              ? {
+                  type: 'LineString',
+                  coordinates: activeTrailSession.pathCoordinates,
+                }
+              : null
+          )
 
         if (activeGeometry) {
           const clickPt = turfPoint([lng, lat])
@@ -2193,7 +2212,11 @@ export default function MapView({
       >
         {mapReady ? (
           <>
-            <Source id={TRAIL_SOURCE_ID} type="geojson" data={trailSourceCollection}>
+            <Source
+              id={TRAIL_SOURCE_ID}
+              type="geojson"
+              data={trailSourceCollection}
+            >
               <Layer
                 id={TRAIL_LAYER_IDS.unmarked}
                 type="line"
@@ -2366,36 +2389,40 @@ export default function MapView({
               />
             </Source>
 
-            {viewState.zoom >= 9 && huts.map((hut) => (
-               <Marker
-                 key={hut._id || hut.name}
-                 longitude={hut.location[0]}
-                 latitude={hut.location[1]}
-                 anchor="bottom"
-                 onClick={(e) => {
-                   e.originalEvent.stopPropagation();
-                   setSelectedHut(hut);
-                 }}
-                 style={{ cursor: 'pointer', zIndex: selectedHut?._id === hut._id ? 10 : 1 }}
-               >
-                 <div
-                   style={{
-                     width: 32,
-                     height: 32,
-                     borderRadius: '50%',
-                     background: '#166534',
-                     color: '#f8fafc',
-                     display: 'grid',
-                     placeItems: 'center',
-                     border: '2px solid #bbf7d0',
-                     boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                   }}
-                   title={hut.name}
-                 >
-                   ⌂
-                 </div>
-               </Marker>
-            ))}
+            {viewState.zoom >= 9 &&
+              huts.map((hut) => (
+                <Marker
+                  key={hut._id || hut.name}
+                  longitude={hut.location[0]}
+                  latitude={hut.location[1]}
+                  anchor="bottom"
+                  onClick={(e) => {
+                    e.originalEvent.stopPropagation()
+                    setSelectedHut(hut)
+                  }}
+                  style={{
+                    cursor: 'pointer',
+                    zIndex: selectedHut?._id === hut._id ? 10 : 1,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: '50%',
+                      background: '#166534',
+                      color: '#f8fafc',
+                      display: 'grid',
+                      placeItems: 'center',
+                      border: '2px solid #bbf7d0',
+                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    }}
+                    title={hut.name}
+                  >
+                    ⌂
+                  </div>
+                </Marker>
+              ))}
 
             {loadedRouteEndpoints ? (
               <>
@@ -2684,7 +2711,9 @@ export default function MapView({
           <div style={{ fontWeight: 800, fontSize: 12, marginBottom: 6 }}>
             Safety warning
           </div>
-          <div style={{ fontSize: 12, lineHeight: 1.45 }}>{unmarkedWarning}</div>
+          <div style={{ fontSize: 12, lineHeight: 1.45 }}>
+            {unmarkedWarning}
+          </div>
           <button
             type="button"
             onClick={() => setUnmarkedWarning('')}

@@ -10,6 +10,21 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+const trailMarkSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "" },
+    description: { type: String, default: "" },
+    colourType: {
+      type: String,
+      enum: ["red", "blue", "green", "yellow", "white", "black", "unmarked"],
+      default: "red",
+    },
+    startIndex: { type: Number, required: true, min: 0 },
+    endIndex: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const trailSchema = new mongoose.Schema(
   {
     source: {
@@ -72,6 +87,10 @@ const trailSchema = new mongoose.Schema(
       centerCoordinates: [Number],
       startCoordinates: [Number],
       endCoordinates: [Number],
+    },
+    trailMarks: {
+      type: [trailMarkSchema],
+      default: [],
     },
     reviews: [reviewSchema],
     averageAccuracy: { type: Number, default: 0 },

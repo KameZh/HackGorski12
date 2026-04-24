@@ -51,6 +51,26 @@ const DIFFICULTY_LABEL = {
   extreme: 'Extreme',
 }
 
+const TRAIL_MARK_COLOR = {
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  yellow: '#eab308',
+  white: '#e2e8f0',
+  black: '#0f172a',
+  unmarked: '#6b7280',
+}
+
+const TRAIL_MARK_LABEL = {
+  red: 'Red Mark',
+  blue: 'Blue Mark',
+  green: 'Green Mark',
+  yellow: 'Yellow Mark',
+  white: 'White Mark',
+  black: 'Black Mark',
+  unmarked: 'Unmarked',
+}
+
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const MAPBOX_STYLE_URL = import.meta.env.VITE_MAPBOX_STYLE_URL
 const MAPBOX_TILESET_URL = import.meta.env.VITE_MAPBOX_TILESET_URL
@@ -68,9 +88,25 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
 const USER_FOLLOW_BASE_ZOOM = 14.2
 const USER_FOLLOW_TRAIL_ZOOM = 17.8
+const TRAIL_VISIBILITY_MIN_ZOOM = 9
 
 const SEGMENT_COLOR_EXPRESSION = [
   'match',
+  ['get', 'colour_type'],
+  'red',
+  TRAIL_MARK_COLOR.red,
+  'blue',
+  TRAIL_MARK_COLOR.blue,
+  'green',
+  TRAIL_MARK_COLOR.green,
+  'yellow',
+  TRAIL_MARK_COLOR.yellow,
+  'white',
+  TRAIL_MARK_COLOR.white,
+  'black',
+  TRAIL_MARK_COLOR.black,
+  'unmarked',
+  TRAIL_MARK_COLOR.unmarked,
   ['get', 'difficulty'],
   'easy',
   DIFFICULTY_COLOR.easy,
@@ -83,6 +119,26 @@ const SEGMENT_COLOR_EXPRESSION = [
   '#64748b',
 ]
 
+function resolveSegmentColor(segment) {
+  const colourType = String(segment?.colourType || '').toLowerCase()
+  if (TRAIL_MARK_COLOR[colourType]) return TRAIL_MARK_COLOR[colourType]
+
+  const difficulty = String(segment?.difficulty || '').toLowerCase()
+  if (DIFFICULTY_COLOR[difficulty]) return DIFFICULTY_COLOR[difficulty]
+
+  return '#64748b'
+}
+
+function resolveSegmentLabel(segment) {
+  const colourType = String(segment?.colourType || '').toLowerCase()
+  if (TRAIL_MARK_LABEL[colourType]) return TRAIL_MARK_LABEL[colourType]
+
+  const difficulty = String(segment?.difficulty || '').toLowerCase()
+  if (DIFFICULTY_LABEL[difficulty]) return DIFFICULTY_LABEL[difficulty]
+
+  return 'Moderate'
+}
+
 const TRAIL_SOURCE_ID = 'pytechka-trails'
 const TRAIL_LAYER_IDS = {
   unmarked: 'pytechka-trails-unmarked',
@@ -91,6 +147,7 @@ const TRAIL_LAYER_IDS = {
   blue: 'pytechka-trails-blue',
   whiteCasing: 'pytechka-trails-white-casing',
   whiteMain: 'pytechka-trails-white-main',
+  black: 'pytechka-trails-black',
   red: 'pytechka-trails-red',
   featuredCasing: 'pytechka-trails-featured-casing',
   featuredMain: 'pytechka-trails-featured-main',
@@ -103,10 +160,16 @@ const INTERACTIVE_TRAIL_LAYER_IDS = [
   TRAIL_LAYER_IDS.green,
   TRAIL_LAYER_IDS.blue,
   TRAIL_LAYER_IDS.whiteMain,
+  TRAIL_LAYER_IDS.black,
   TRAIL_LAYER_IDS.red,
   TRAIL_LAYER_IDS.featuredMain,
   TRAIL_LAYER_IDS.user,
 ]
+
+const EMPTY_TRAIL_FEATURE_COLLECTION = {
+  type: 'FeatureCollection',
+  features: [],
+}
 
 const styles = {
   container: {
@@ -572,7 +635,35 @@ function formatDuration(seconds) {
   return `${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`
 }
 
-function sanitizeSegment(segment, maxIndex) {
+function sanitizeTrailMarkSegment(segment, maxIndex) {
+  const startIndex = Math.max(
+    0,
+    Math.min(maxIndex, Number(segment?.startIndex || 0))
+  )
+  const endIndex = Math.max(
+    startIndex,
+    Math.min(maxIndex, Number(segment?.endIndex || maxIndex))
+  )
+
+  const colourType = String(segment?.colourType || segment?.colour_type || '')
+    .toLowerCase()
+    .trim()
+  if (!TRAIL_MARK_COLOR[colourType]) return null
+
+  return {
+    name: String(segment?.name || 'Marked sector'),
+    difficulty: 'moderate',
+    colourType,
+    description:
+      String(segment?.description || '').trim() ||
+      `Creator mark: ${TRAIL_MARK_LABEL[colourType] || colourType}`,
+    estimatedTime: String(segment?.estimatedTime || ''),
+    startIndex,
+    endIndex,
+  }
+}
+
+function sanitizeAiSegment(segment, maxIndex) {
   const startIndex = Math.max(
     0,
     Math.min(maxIndex, Number(segment?.startIndex || 0))
@@ -585,6 +676,7 @@ function sanitizeSegment(segment, maxIndex) {
   return {
     name: String(segment?.name || 'Sector'),
     difficulty: String(segment?.difficulty || 'moderate').toLowerCase(),
+    colourType: null,
     description: String(segment?.description || ''),
     estimatedTime: String(segment?.estimatedTime || ''),
     startIndex,
@@ -599,6 +691,7 @@ function buildSegmentModel(trail, pointCount) {
       {
         name: 'Sector 1',
         difficulty: String(trail?.difficulty || 'moderate').toLowerCase(),
+        colourType: null,
         description: 'Start segment',
         estimatedTime: '',
         startIndex: 0,
@@ -607,10 +700,19 @@ function buildSegmentModel(trail, pointCount) {
     ]
   }
 
+  const creatorMarks = Array.isArray(trail?.trailMarks) ? trail.trailMarks : []
+  if (creatorMarks.length) {
+    const normalizedMarks = creatorMarks
+      .map((segment) => sanitizeTrailMarkSegment(segment, maxIndex))
+      .filter((segment) => segment && segment.endIndex >= segment.startIndex)
+
+    if (normalizedMarks.length) return normalizedMarks
+  }
+
   const aiSegments = Array.isArray(trail?.ai?.segments) ? trail.ai.segments : []
   if (aiSegments.length) {
     const normalized = aiSegments
-      .map((segment) => sanitizeSegment(segment, maxIndex))
+      .map((segment) => sanitizeAiSegment(segment, maxIndex))
       .filter((segment) => segment.endIndex >= segment.startIndex)
 
     if (normalized.length) return normalized
@@ -624,6 +726,7 @@ function buildSegmentModel(trail, pointCount) {
     {
       name: 'Sector 1',
       difficulty: difficulty === 'extreme' ? 'hard' : 'easy',
+      colourType: null,
       description: 'Warm up and establish your pace.',
       estimatedTime: '',
       startIndex: 0,
@@ -632,6 +735,7 @@ function buildSegmentModel(trail, pointCount) {
     {
       name: 'Sector 2',
       difficulty,
+      colourType: null,
       description: 'Main climbing and technical section.',
       estimatedTime: '',
       startIndex: Math.max(1, a + 1),
@@ -640,6 +744,7 @@ function buildSegmentModel(trail, pointCount) {
     {
       name: 'Sector 3',
       difficulty: difficulty === 'easy' ? 'moderate' : difficulty,
+      colourType: null,
       description: 'Final section and descent to finish.',
       estimatedTime: '',
       startIndex: Math.max(b + 1, 0),
@@ -679,6 +784,7 @@ function buildSegmentFeatureCollection(pathCoordinates, segments) {
           segmentIndex: index,
           name: String(segment?.name || `Segment ${index + 1}`),
           difficulty: String(segment?.difficulty || 'moderate').toLowerCase(),
+          colour_type: String(segment?.colourType || '').toLowerCase(),
           estimatedTime: String(segment?.estimatedTime || ''),
           description: String(segment?.description || ''),
           pointCount: endIndex - startIndex + 1,
@@ -842,7 +948,7 @@ export default function MapView({
   const [mapReady, setMapReady] = useState(false)
   const [selectedOfficialTrail, setSelectedOfficialTrail] = useState(null)
   const [unmarkedWarning, setUnmarkedWarning] = useState('')
-  const [isLegendVisible, setIsLegendVisible] = useState(true)
+  const [isLegendVisible, setIsLegendVisible] = useState(false)
   const [viewState, setViewState] = useState(INITIAL_VIEW)
   const [selectedAreaCenter, setSelectedAreaCenter] = useState(null)
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
@@ -936,6 +1042,16 @@ export default function MapView({
   const trailSourceCollection = useMemo(
     () => normalizeTrailGeojsonCollection(trailsGeojson),
     [trailsGeojson]
+  )
+
+  const trailsVisibleByZoom = viewState.zoom >= TRAIL_VISIBILITY_MIN_ZOOM
+
+  const visibleTrailSourceCollection = useMemo(
+    () =>
+      trailsVisibleByZoom
+        ? trailSourceCollection
+        : EMPTY_TRAIL_FEATURE_COLLECTION,
+    [trailsVisibleByZoom, trailSourceCollection]
   )
 
   const trailsById = useMemo(() => {
@@ -1115,6 +1231,11 @@ export default function MapView({
     setGeoError('')
     setUserLocation({ longitude, latitude, altitude })
     setActivityCurrentElevation(altitude)
+
+    // In Maps page we only recenter when user explicitly asks for it.
+    if (options.forceZoom !== true && options.recenter !== true) {
+      return
+    }
 
     const forceZoom = options.forceZoom === true
     const isTrailFollowMode =
@@ -1669,20 +1790,21 @@ export default function MapView({
         },
       }
 
-      if (normalized.colour_type === 'unmarked') {
-        setUnmarkedWarning(
-          'Warning: this section is unmarked. Advanced navigation skills are required.'
-        )
-      } else {
-        setUnmarkedWarning('')
-      }
-
       if (normalized.source === 'user') {
+        if (normalized.colour_type === 'unmarked') {
+          setUnmarkedWarning(
+            'Warning: this section is unmarked. Advanced navigation skills are required.'
+          )
+        } else {
+          setUnmarkedWarning('')
+        }
+
         setSelectedOfficialTrail(null)
         setSelectedTrail(matchedTrail || fallbackTrail)
         return
       }
 
+      setUnmarkedWarning('')
       setSelectedTrail(null)
       setSelectedOfficialTrail(matchedTrail || fallbackTrail)
     },
@@ -1761,7 +1883,9 @@ export default function MapView({
             if (nearest?.geometry?.coordinates) {
               snapped = nearest.geometry.coordinates
             }
-          } catch {}
+          } catch {
+            /* Snapping ping placement is best-effort. */
+          }
         }
 
         setPendingPing({ coordinates: snapped, trailId })
@@ -1942,7 +2066,6 @@ export default function MapView({
     promptedReportsRef.current = new Set()
 
     if (userLocation) {
-      applyLiveUserLocation(userLocation, { forceZoom: true, trailMode: true })
       lastActivityPointRef.current = {
         longitude: userLocation.longitude,
         latitude: userLocation.latitude,
@@ -1959,7 +2082,6 @@ export default function MapView({
     startReadiness,
     startSafety,
     startUnsafeAcknowledged,
-    applyLiveUserLocation,
     userLocation,
   ])
 
@@ -2215,7 +2337,7 @@ export default function MapView({
             <Source
               id={TRAIL_SOURCE_ID}
               type="geojson"
-              data={trailSourceCollection}
+              data={visibleTrailSourceCollection}
             >
               <Layer
                 id={TRAIL_LAYER_IDS.unmarked}
@@ -2311,6 +2433,22 @@ export default function MapView({
                   'line-color': '#ffffff',
                   'line-width': 2.5,
                   'line-opacity': 0.95,
+                }}
+              />
+
+              <Layer
+                id={TRAIL_LAYER_IDS.black}
+                type="line"
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                filter={[
+                  'all',
+                  ['==', ['get', 'colour_type'], 'black'],
+                  ['!=', ['get', 'source'], 'user'],
+                ]}
+                paint={{
+                  'line-color': '#0f172a',
+                  'line-width': 3,
+                  'line-opacity': 0.92,
                 }}
               />
 
@@ -2693,6 +2831,8 @@ export default function MapView({
 
       {unmarkedWarning ? (
         <div
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => event.stopPropagation()}
           style={{
             position: 'absolute',
             left: '50%',
@@ -2717,6 +2857,7 @@ export default function MapView({
           <button
             type="button"
             onClick={() => setUnmarkedWarning('')}
+            onPointerDown={(event) => event.stopPropagation()}
             style={{
               ...pingBtnBase,
               marginTop: 8,
@@ -2762,14 +2903,31 @@ export default function MapView({
               type="button"
               onClick={() => setIsLegendVisible(false)}
               style={{
-                ...pingBtnBase,
-                padding: '3px 8px',
-                fontSize: 11,
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                border: '1px solid rgba(148,163,184,0.45)',
+                display: 'grid',
+                placeItems: 'center',
+                cursor: 'pointer',
                 background: 'rgba(148,163,184,0.16)',
                 color: '#cbd5e1',
               }}
+              aria-label="Hide legend"
             >
-              Hide
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             </button>
           </div>
 
@@ -2778,6 +2936,7 @@ export default function MapView({
             ['Blue marking', '#2563eb', false, 3],
             ['Green marking', '#22c55e', false, 3],
             ['Yellow marking', '#FFD700', false, 3],
+            ['Black marking', '#0f172a', false, 3],
             ['Unmarked section', '#000000', true, 2],
             ['E3 Kom-Emine', '#dc2626', false, 5],
             ['E4', '#2563eb', false, 5],
@@ -2809,19 +2968,38 @@ export default function MapView({
           type="button"
           onClick={() => setIsLegendVisible(true)}
           style={{
-            ...pingBtnBase,
             position: 'absolute',
             left: 12,
             bottom: 'calc(env(safe-area-inset-bottom, 0px) + 86px)',
             zIndex: 21,
-            padding: '7px 11px',
-            fontSize: 12,
-            background: 'rgba(15, 23, 35, 0.9)',
-            border: '1px solid rgba(148,163,184,0.3)',
+            width: 32,
+            height: 32,
+            borderRadius: '50%',
+            border: '2px solid rgba(148,163,184,0.35)',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+            display: 'grid',
+            placeItems: 'center',
+            cursor: 'pointer',
+            background: 'rgba(15, 23, 35, 0.94)',
             color: '#e2e8f0',
           }}
+          title="Show legend"
+          aria-label="Show legend"
         >
-          Show legend
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
         </button>
       )}
 
@@ -2928,9 +3106,7 @@ export default function MapView({
               </div>
               <div style={{ fontSize: 12, color: '#9cb7c8', marginTop: 2 }}>
                 Current: {activeSector?.name || 'N/A'} (
-                {DIFFICULTY_LABEL[activeSector?.difficulty] ||
-                  activeSector?.difficulty ||
-                  'Moderate'}
+                {resolveSegmentLabel(activeSector)}
                 )
               </div>
             </div>
@@ -3013,14 +3189,14 @@ export default function MapView({
                 style={{
                   minHeight: 7,
                   borderRadius: 999,
-                  background: DIFFICULTY_COLOR[segment.difficulty] || '#64748b',
+                  background: resolveSegmentColor(segment),
                   opacity: index === currentSectorIndex ? 1 : 0.45,
                   border:
                     index === currentSectorIndex
                       ? '1px solid rgba(241,245,249,0.7)'
                       : '1px solid transparent',
                 }}
-                title={`${segment.name} (${DIFFICULTY_LABEL[segment.difficulty] || segment.difficulty})`}
+                title={`${segment.name} (${resolveSegmentLabel(segment)})`}
               />
             ))}
           </div>
@@ -3109,14 +3285,12 @@ export default function MapView({
                       style={{
                         padding: '2px 7px',
                         borderRadius: 999,
-                        background:
-                          DIFFICULTY_COLOR[segment.difficulty] || '#64748b',
+                        background: resolveSegmentColor(segment),
                         color: '#f8fafc',
                         fontSize: 10,
                       }}
                     >
-                      {DIFFICULTY_LABEL[segment.difficulty] ||
-                        segment.difficulty}
+                      {resolveSegmentLabel(segment)}
                     </span>
                   </div>
                   <div style={{ marginTop: 3, fontSize: 11, color: '#96afc1' }}>
@@ -3599,16 +3773,13 @@ export default function MapView({
                             style={{
                               padding: '2px 7px',
                               borderRadius: 999,
-                              background:
-                                DIFFICULTY_COLOR[segment.difficulty] ||
-                                '#64748b',
+                              background: resolveSegmentColor(segment),
                               color: '#f8fafc',
                               fontSize: 10,
                               fontWeight: 700,
                             }}
                           >
-                            {DIFFICULTY_LABEL[segment.difficulty] ||
-                              segment.difficulty}
+                            {resolveSegmentLabel(segment)}
                           </span>
                         </div>
                         <div

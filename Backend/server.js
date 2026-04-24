@@ -212,6 +212,57 @@ function deriveTrailPointLabels(geojson) {
   return { startPoint, endPoint, highestPoint };
 }
 
+const TRAIL_MARK_COLOURS = new Set([
+  "red",
+  "blue",
+  "green",
+  "yellow",
+  "white",
+  "black",
+  "unmarked",
+]);
+
+function normalizeTrailMarks(trailMarks, geojson) {
+  if (!Array.isArray(trailMarks) || !trailMarks.length) return [];
+
+  const coords = extractCoordinatesFromGeojson(geojson);
+  const maxIndex = Math.max(0, coords.length - 1);
+
+  return trailMarks
+    .map((entry, index) => {
+      const rawColour = normalizeStringValue(
+        entry?.colourType || entry?.colour_type,
+      ).toLowerCase();
+      if (!TRAIL_MARK_COLOURS.has(rawColour)) return null;
+
+      const rawStart = Number(entry?.startIndex);
+      const rawEnd = Number(entry?.endIndex);
+      if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) return null;
+
+      const startIndex = Math.max(
+        0,
+        Math.min(maxIndex, Math.round(Math.min(rawStart, rawEnd))),
+      );
+      const endIndex = Math.max(
+        startIndex,
+        Math.min(maxIndex, Math.round(Math.max(rawStart, rawEnd))),
+      );
+
+      return {
+        name:
+          normalizeStringValue(entry?.name).slice(0, 80) ||
+          `Sector ${index + 1}`,
+        description: normalizeStringValue(entry?.description).slice(0, 300),
+        colourType: rawColour,
+        startIndex,
+        endIndex,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex)
+    .slice(0, 200);
+}
+
 const FEATURED_REFS = new Set(["E3", "E4", "E8"]);
 
 function normalizeStringValue(value) {
@@ -436,6 +487,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       description,
       equipment,
       resources,
+      trailMarks,
     } = req.body;
     if (!geojson) return res.status(400).json({ error: "geojson is required" });
     if (!name) return res.status(400).json({ error: "name is required" });
@@ -468,6 +520,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       endCoordinates,
       geojson,
       stats,
+      trailMarks: normalizeTrailMarks(trailMarks, geojson),
       ai: { status: "pending" },
     });
 
@@ -606,6 +659,9 @@ app.get("/api/trails", async (req, res) => {
       String(req.query.officialOnly || "").toLowerCase() === "true";
     const unmarkedOnly =
       String(req.query.unmarkedOnly || "").toLowerCase() === "true";
+    const compact =
+      String(req.query.compact || "").toLowerCase() === "true" ||
+      String(req.query.includeGeometry || "").toLowerCase() === "false";
     const centerLng = Number(req.query.centerLng);
     const centerLat = Number(req.query.centerLat);
     const radiusKm = Number(req.query.radiusKm);
@@ -636,9 +692,12 @@ app.get("/api/trails", async (req, res) => {
 
     const userTrailsPromise = officialOnly
       ? Promise.resolve([])
-      : Trail.find(userFilter).sort(sortOption).select("-reviews");
-    const officialTrailsPromise =
-      OfficialTrail.find(officialFilter).sort(sortOption);
+      : Trail.find(userFilter)
+          .sort(sortOption)
+          .select(compact ? "-reviews -geojson" : "-reviews");
+    const officialTrailsPromise = OfficialTrail.find(officialFilter)
+      .sort(sortOption)
+      .select(compact ? "-geojson" : "");
 
     const [userTrails, officialTrails] = await Promise.all([
       userTrailsPromise,
@@ -854,10 +913,15 @@ app.put("/api/trails/:id", requireAuth(), async (req, res) => {
       "description",
       "equipment",
       "resources",
+      "trailMarks",
     ];
     for (const key of allowed) {
       if (req.body[key] !== undefined) {
-        trail[key] = req.body[key];
+        if (key === "trailMarks") {
+          trail.trailMarks = normalizeTrailMarks(req.body.trailMarks, trail.geojson);
+        } else {
+          trail[key] = req.body[key];
+        }
       }
     }
 

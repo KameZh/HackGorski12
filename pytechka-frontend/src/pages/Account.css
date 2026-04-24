@@ -716,3 +716,43 @@
   gap: 8px;
   margin-top: 4px;
 }
+
+.my-trail-mark-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.my-trail-mark-list {
+  display: grid;
+  gap: 8px;
+}
+
+.my-trail-mark-item {
+  border: 1px solid rgba(66, 129, 164, 0.34);
+  border-radius: 10px;
+  background: rgba(13, 21, 33, 0.78);
+  padding: 8px;
+  display: grid;
+  gap: 8px;
+}
+
+.my-trail-mark-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1.2fr 0.8fr 0.8fr auto;
+}
+
+.my-trail-mark-empty {
+  margin: 0;
+  color: rgba(251, 254, 249, 0.62);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 680px) {
+  .my-trail-mark-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

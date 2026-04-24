@@ -38,6 +38,53 @@ function getNextGoal(category, value = 0) {
   return tiers.find((goal) => value < goal) ?? null
 }
 
+const TRAIL_MARK_OPTIONS = [
+  { value: 'red', label: 'Red' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'green', label: 'Green' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'white', label: 'White' },
+  { value: 'black', label: 'Black' },
+  { value: 'unmarked', label: 'Unmarked' },
+]
+
+function normalizeTrailMarksInput(trailMarks, maxPointIndex) {
+  const limit = Number.isFinite(maxPointIndex)
+    ? Math.max(0, Math.floor(maxPointIndex))
+    : Number.POSITIVE_INFINITY
+
+  return (Array.isArray(trailMarks) ? trailMarks : [])
+    .map((segment, index) => {
+      const colourType = String(segment?.colourType || '').toLowerCase()
+      if (!TRAIL_MARK_OPTIONS.some((entry) => entry.value === colourType)) {
+        return null
+      }
+
+      const rawStart = Number(segment?.startIndex)
+      const rawEnd = Number(segment?.endIndex)
+      if (!Number.isFinite(rawStart) || !Number.isFinite(rawEnd)) return null
+
+      const startIndex = Math.max(
+        0,
+        Math.min(limit, Math.round(Math.min(rawStart, rawEnd)))
+      )
+      const endIndex = Math.max(
+        startIndex,
+        Math.min(limit, Math.round(Math.max(rawStart, rawEnd)))
+      )
+
+      return {
+        name: String(segment?.name || `Sector ${index + 1}`).slice(0, 80),
+        description: String(segment?.description || '').slice(0, 300),
+        colourType,
+        startIndex,
+        endIndex,
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex)
+}
+
 export default function Home() {
   const { isSignedIn, getToken } = useAuth()
   const { user } = useUser()
@@ -115,6 +162,7 @@ export default function Home() {
   }, [isSignedIn, getToken])
 
   const handleEditOpen = (trail) => {
+    const maxPointIndex = Math.max(0, Number(trail?.stats?.pointCount || 0) - 1)
     setEditingTrail(trail._id)
     setEditForm({
       name: trail.name || '',
@@ -123,15 +171,67 @@ export default function Home() {
       description: trail.description || '',
       equipment: trail.equipment || '',
       resources: trail.resources || '',
-
+      trailMarks: normalizeTrailMarksInput(trail.trailMarks, maxPointIndex),
+      maxPointIndex,
     })
+  }
+
+  const handleTrailMarkChange = (index, key, value) => {
+    setEditForm((prev) => {
+      const next = Array.isArray(prev.trailMarks) ? [...prev.trailMarks] : []
+      if (!next[index]) return prev
+
+      const normalizedValue =
+        key === 'startIndex' || key === 'endIndex' ? Number(value) : value
+      next[index] = {
+        ...next[index],
+        [key]: normalizedValue,
+      }
+
+      return {
+        ...prev,
+        trailMarks: next,
+      }
+    })
+  }
+
+  const handleAddTrailMark = () => {
+    setEditForm((prev) => ({
+      ...prev,
+      trailMarks: [
+        ...(Array.isArray(prev.trailMarks) ? prev.trailMarks : []),
+        {
+          name: `Sector ${(prev.trailMarks?.length || 0) + 1}`,
+          description: '',
+          colourType: 'red',
+          startIndex: 0,
+          endIndex: 1,
+        },
+      ],
+    }))
+  }
+
+  const handleRemoveTrailMark = (index) => {
+    setEditForm((prev) => ({
+      ...prev,
+      trailMarks: (Array.isArray(prev.trailMarks) ? prev.trailMarks : []).filter(
+        (_, idx) => idx !== index
+      ),
+    }))
   }
 
   const handleEditSave = async () => {
     if (!editingTrail) return
     setEditSaving(true)
     try {
-      const res = await updateTrail(editingTrail, editForm)
+      const payload = {
+        ...editForm,
+        trailMarks: normalizeTrailMarksInput(
+          editForm.trailMarks,
+          Number(editForm.maxPointIndex)
+        ),
+      }
+      const res = await updateTrail(editingTrail, payload)
       setMyTrails((prev) =>
         prev.map((t) => (t._id === editingTrail ? { ...t, ...res.data } : t))
       )
@@ -493,6 +593,100 @@ export default function Home() {
                         }
                         placeholder="Resources"
                       />
+
+                      <div className="my-trail-mark-head">
+                        <label className="rbf-label">Trail Marks</label>
+                        <button
+                          type="button"
+                          className="my-trail-edit-btn"
+                          onClick={handleAddTrailMark}
+                        >
+                          Add mark
+                        </button>
+                      </div>
+
+                      {Array.isArray(editForm.trailMarks) &&
+                      editForm.trailMarks.length > 0 ? (
+                        <div className="my-trail-mark-list">
+                          {editForm.trailMarks.map((segment, index) => (
+                            <div key={`trail-mark-${index}`} className="my-trail-mark-item">
+                              <input
+                                className="rbf-input"
+                                value={segment.name || ''}
+                                onChange={(e) =>
+                                  handleTrailMarkChange(index, 'name', e.target.value)
+                                }
+                                placeholder="Sector name"
+                              />
+
+                              <div className="my-trail-mark-grid">
+                                <select
+                                  className="rbf-input"
+                                  value={segment.colourType || 'red'}
+                                  onChange={(e) =>
+                                    handleTrailMarkChange(
+                                      index,
+                                      'colourType',
+                                      e.target.value
+                                    )
+                                  }
+                                >
+                                  {TRAIL_MARK_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value}>
+                                      {option.label}
+                                    </option>
+                                  ))}
+                                </select>
+
+                                <input
+                                  className="rbf-input"
+                                  type="number"
+                                  min={0}
+                                  max={Math.max(0, Number(editForm.maxPointIndex || 0))}
+                                  value={Number.isFinite(segment.startIndex) ? segment.startIndex : 0}
+                                  onChange={(e) =>
+                                    handleTrailMarkChange(
+                                      index,
+                                      'startIndex',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="Start"
+                                />
+
+                                <input
+                                  className="rbf-input"
+                                  type="number"
+                                  min={0}
+                                  max={Math.max(0, Number(editForm.maxPointIndex || 0))}
+                                  value={Number.isFinite(segment.endIndex) ? segment.endIndex : 0}
+                                  onChange={(e) =>
+                                    handleTrailMarkChange(
+                                      index,
+                                      'endIndex',
+                                      e.target.value
+                                    )
+                                  }
+                                  placeholder="End"
+                                />
+
+                                <button
+                                  type="button"
+                                  className="my-trail-delete-btn"
+                                  onClick={() => handleRemoveTrailMark(index)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="my-trail-mark-empty">
+                          No mark sectors for this trail.
+                        </p>
+                      )}
+
                       <div className="my-trail-edit-actions">
                         <button
                           className="my-trail-save-btn"

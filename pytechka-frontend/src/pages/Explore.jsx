@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import {
@@ -14,6 +14,13 @@ import {
   buildExploreFilterOptions,
 } from '../components/data/Explorerdata'
 import { fetchTrails } from '../api/trails'
+import { fetchMapTrailsGeojson } from '../api/maps'
+import TrailMapLayers from '../components/map/TrailMapLayers'
+import {
+  EMPTY_TRAIL_FEATURE_COLLECTION,
+  getInteractiveTrailLayerIds,
+  normalizeTrailGeojsonCollection,
+} from '../components/map/trailMapLayerUtils'
 import { buildCenteredView } from '../utils/mapDefaults'
 import { getSearchSuggestions } from '../utils/searchSuggestions'
 
@@ -32,6 +39,12 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 )
 
 const INITIAL_REGION_VIEW = buildCenteredView(6.6)
+const TRAIL_VISIBILITY_MIN_ZOOM = 6
+const TRAIL_LIST_BATCH = 48
+const EXPLORE_TRAIL_LAYER_PREFIX = 'explore-trails'
+const EXPLORE_INTERACTIVE_TRAIL_LAYER_IDS = getInteractiveTrailLayerIds(
+  EXPLORE_TRAIL_LAYER_PREFIX
+)
 
 const EXPLORE_FALLBACK_TERMS = [
   'Hiking',
@@ -56,6 +69,26 @@ function SectionBlock({ title, subtitle, children }) {
 }
 
 function getTrailCenterPoint(trail) {
+  const storedCenter = Array.isArray(trail?.stats?.centerCoordinates)
+    ? trail.stats.centerCoordinates
+    : Array.isArray(trail?.centerCoordinates)
+      ? trail.centerCoordinates
+      : null
+
+  if (storedCenter && storedCenter.length === 2) {
+    const [longitude, latitude] = storedCenter.map(Number)
+    if (Number.isFinite(longitude) && Number.isFinite(latitude)) {
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [longitude, latitude],
+        },
+        properties: {},
+      }
+    }
+  }
+
   if (!trail?.geojson) return null
 
   try {
@@ -82,28 +115,6 @@ function getTrailCenterPoint(trail) {
   }
 }
 
-function parseTrailGeojson(geojson) {
-  if (!geojson) return null
-
-  try {
-    const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson
-    if (!parsed || typeof parsed !== 'object' || !parsed.type) return null
-
-    if (
-      parsed.type === 'FeatureCollection' ||
-      parsed.type === 'Feature' ||
-      parsed.type === 'LineString' ||
-      parsed.type === 'MultiLineString'
-    ) {
-      return parsed
-    }
-
-    return null
-  } catch {
-    return null
-  }
-}
-
 export default function Explore() {
   const [searchQuery, setSearchQuery] = useState('')
   const [activeActivity, setActiveActivity] = useState(FILTER_DEFAULTS.activity)
@@ -118,9 +129,18 @@ export default function Explore() {
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
 
   const [trails, setTrails] = useState([])
+  const [trailsGeojson, setTrailsGeojson] = useState(
+    EMPTY_TRAIL_FEATURE_COLLECTION
+  )
   const [loadingTrails, setLoadingTrails] = useState(false)
+  const [loadingMapTrails, setLoadingMapTrails] = useState(false)
   const [errorTrails, setErrorTrails] = useState(null)
+  const [errorMapTrails, setErrorMapTrails] = useState(null)
   const [selectedTrailId, setSelectedTrailId] = useState(null)
+  const [visibleTrailCount, setVisibleTrailCount] = useState(TRAIL_LIST_BATCH)
+
+  const scrollContainerRef = useRef(null)
+  const sentinelRef = useRef(null)
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/outdoors-v12'
@@ -141,9 +161,31 @@ export default function Explore() {
     [trails, activeActivity, activeDifficulty]
   )
 
+  const restoreScrollPosition = useCallback((savedPosition) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = savedPosition.containerTop
+        }
+        window.scrollTo({
+          top: savedPosition.windowTop,
+          left: savedPosition.windowLeft,
+          behavior: 'auto',
+        })
+      })
+    })
+  }, [])
+
   const loadTrails = useCallback(async () => {
     setLoadingTrails(true)
     setErrorTrails(null)
+
+    const savedPosition = {
+      containerTop: scrollContainerRef.current?.scrollTop || 0,
+      windowTop: window.scrollY,
+      windowLeft: window.scrollX,
+    }
+
     try {
       const params = {
         ...(searchQuery && { search: searchQuery }),
@@ -155,11 +197,13 @@ export default function Explore() {
         }),
         ...(officialOnly ? { officialOnly: true } : {}),
         ...(unmarkedOnly ? { unmarkedOnly: true } : {}),
+        compact: true,
         sort: activeSort.toLowerCase().replace(' ', '_'),
       }
 
       const response = await fetchTrails(params)
       setTrails(Array.isArray(response.data) ? response.data : [])
+      restoreScrollPosition(savedPosition)
     } catch {
       setErrorTrails('Could not load trails. Please try again.')
       setTrails([])
@@ -173,11 +217,69 @@ export default function Explore() {
     activeSort,
     officialOnly,
     unmarkedOnly,
+    restoreScrollPosition,
   ])
 
   useEffect(() => {
     loadTrails()
   }, [loadTrails])
+
+  useEffect(() => {
+    let active = true
+
+    setLoadingMapTrails(true)
+    setErrorMapTrails(null)
+
+    fetchMapTrailsGeojson()
+      .then((response) => {
+        if (!active) return
+        setTrailsGeojson(normalizeTrailGeojsonCollection(response.data))
+      })
+      .catch(() => {
+        if (!active) return
+        setTrailsGeojson(EMPTY_TRAIL_FEATURE_COLLECTION)
+        setErrorMapTrails('Could not load map trail overlay.')
+      })
+      .finally(() => {
+        if (active) setLoadingMapTrails(false)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // IntersectionObserver-based infinite scroll
+  useEffect(() => {
+    const sentinel = sentinelRef.current
+    if (!sentinel) return undefined
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0]
+        if (entry?.isIntersecting && !loadingTrails) {
+          setVisibleTrailCount((count) => count + TRAIL_LIST_BATCH)
+        }
+      },
+      { rootMargin: '200px' }
+    )
+
+    observer.observe(sentinel)
+    return () => observer.disconnect()
+  }, [loadingTrails])
+
+  useEffect(() => {
+    setVisibleTrailCount(TRAIL_LIST_BATCH)
+  }, [
+    searchQuery,
+    activeActivity,
+    activeDifficulty,
+    activeSort,
+    officialOnly,
+    unmarkedOnly,
+    selectedAreaCenter,
+    selectedAreaRadiusKm,
+  ])
 
   const handleResetFilters = useCallback(() => {
     setSearchQuery('')
@@ -228,17 +330,20 @@ export default function Explore() {
     })
   }, [trails, selectedAreaFeature])
 
-  const visibleRenderableTrails = useMemo(() => {
-    return visibleTrails
-      .map((trail) => {
-        const geometry = parseTrailGeojson(trail.geojson)
-        if (!geometry) return null
-        return { trail, geometry }
-      })
-      .filter(Boolean)
-  }, [visibleTrails])
+  const visibleTrailSourceCollection = useMemo(
+    () =>
+      regionMapView.zoom >= TRAIL_VISIBILITY_MIN_ZOOM
+        ? trailsGeojson
+        : EMPTY_TRAIL_FEATURE_COLLECTION,
+    [regionMapView.zoom, trailsGeojson]
+  )
 
   const featuredTrails = visibleTrails
+  const displayedFeaturedTrails = useMemo(
+    () => featuredTrails.slice(0, visibleTrailCount),
+    [featuredTrails, visibleTrailCount]
+  )
+  const hasMoreFeaturedTrails = displayedFeaturedTrails.length < featuredTrails.length
   const searchSuggestions = useMemo(
     () =>
       getSearchSuggestions({
@@ -251,7 +356,7 @@ export default function Explore() {
   )
 
   return (
-    <div id="explore-page" className="explore-page">
+    <div id="explore-page" className="explore-page" ref={scrollContainerRef}>
       <div className="explore-glow explore-glow-top" />
       <div className="explore-glow explore-glow-bottom" />
 
@@ -459,33 +564,39 @@ export default function Explore() {
                 {...regionMapView}
                 mapboxAccessToken={MAPBOX_TOKEN}
                 mapStyle={resolvedMapStyle}
-                style={{ width: '100%', height: 260 }}
+                style={{ width: '100%', height: 340 }}
                 onMove={(event) => setRegionMapView(event.viewState)}
                 onClick={(event) => {
+                  const map = event.target
+                  const layerIds = EXPLORE_INTERACTIVE_TRAIL_LAYER_IDS.filter(
+                    (id) => map.getLayer(id)
+                  )
+                  const trailFeatures = layerIds.length
+                    ? map.queryRenderedFeatures(event.point, {
+                        layers: layerIds,
+                      })
+                    : []
+
+                  if (trailFeatures.length) {
+                    const trailId = String(
+                      trailFeatures[0]?.properties?.id || ''
+                    )
+                    if (trailId) {
+                      setSelectedTrailId(trailId)
+                      return
+                    }
+                  }
+
                   const { lng, lat } = event.lngLat
                   setSelectedAreaCenter([lng, lat])
                 }}
                 attributionControl={false}
               >
-                {visibleRenderableTrails.map(({ trail, geometry }) => (
-                  <Source
-                    key={`explore-trail-source-${trail._id || trail.id}`}
-                    id={`explore-trail-source-${trail._id || trail.id}`}
-                    type="geojson"
-                    data={geometry}
-                  >
-                    <Layer
-                      id={`explore-trail-line-${trail._id || trail.id}`}
-                      type="line"
-                      layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                      paint={{
-                        'line-color': '#48a9a6',
-                        'line-width': 3,
-                        'line-opacity': 0.9,
-                      }}
-                    />
-                  </Source>
-                ))}
+                <TrailMapLayers
+                  sourceId="explore-trails-source"
+                  layerPrefix={EXPLORE_TRAIL_LAYER_PREFIX}
+                  data={visibleTrailSourceCollection}
+                />
 
                 {hasVectorTileset ? (
                   <Source
@@ -579,12 +690,17 @@ export default function Explore() {
               </span>
               <span className="explore-badge">TRAILS</span>
             </div>
+            {(loadingMapTrails || errorMapTrails) && (
+              <div className="explore-map-load-state">
+                {loadingMapTrails ? 'Loading trail overlay...' : errorMapTrails}
+              </div>
+            )}
           </section>
 
           <SectionBlock
             title={
               searchQuery
-                ? `Featured tracks for \"${searchQuery}\"`
+                ? `Featured tracks for "${searchQuery}"`
                 : 'Featured Tracks'
             }
             subtitle={
@@ -608,7 +724,7 @@ export default function Explore() {
               </div>
             ) : featuredTrails.length > 0 ? (
               <div className="explore-cards-stack">
-                {featuredTrails.map((trail) => (
+                {displayedFeaturedTrails.map((trail) => (
                   <div
                     key={trail._id || trail.id}
                     className="explore-card-shell card-enter"
@@ -618,6 +734,14 @@ export default function Explore() {
                     <TrailCard trail={trail} />
                   </div>
                 ))}
+
+                {hasMoreFeaturedTrails ? (
+                  <div
+                    ref={sentinelRef}
+                    className="explore-scroll-sentinel"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
             ) : (
               <div className="explore-state-box">

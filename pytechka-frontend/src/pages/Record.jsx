@@ -9,11 +9,17 @@ import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import { useMapStore } from '../store/mapStore'
-import { fetchMapTrails, fetchHuts } from '../api/maps'
+import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
 import { createPing, fetchPings } from '../api/pings'
 import { buildCenteredView } from '../utils/mapDefaults'
+import TrailMapLayers from '../components/map/TrailMapLayers'
+import {
+  EMPTY_TRAIL_FEATURE_COLLECTION,
+  getInteractiveTrailLayerIds,
+  normalizeTrailGeojsonCollection,
+} from '../components/map/trailMapLayerUtils'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -31,13 +37,11 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 )
 
 const INITIAL_VIEW = buildCenteredView(7)
-
-const DIFFICULTY_COLOR = {
-  easy: '#22c55e',
-  moderate: '#f97316',
-  hard: '#ef4444',
-  extreme: '#7f1d1d',
-}
+const TRAIL_VISIBILITY_MIN_ZOOM = 9
+const RECORD_TRAIL_LAYER_PREFIX = 'record-trails'
+const RECORD_INTERACTIVE_TRAIL_LAYER_IDS = getInteractiveTrailLayerIds(
+  RECORD_TRAIL_LAYER_PREFIX
+)
 
 const PING_TYPES = {
   junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
@@ -196,17 +200,19 @@ export default function Record() {
   const [isTracking, setIsTracking] = useState(false)
   const [geoError, setGeoError] = useState('')
   const [trails, setTrails] = useState([])
+  const [trailsGeojson, setTrailsGeojson] = useState(
+    EMPTY_TRAIL_FEATURE_COLLECTION
+  )
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
   const [currentLocation, setCurrentLocation] = useState(null)
   const [currentElevation, setCurrentElevation] = useState(0)
   const [elevationGain, setElevationGain] = useState(0)
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
-  const [mapReady, setMapReady] = useState(false)
   const [savedRoute, setSavedRoute] = useState(null)
-  const [aiStatus, setAiStatus] = useState(null) 
+  const [aiStatus, setAiStatus] = useState(null)
   const [aiResult, setAiResult] = useState(null)
-  const [saving, setSaving] = useState(false)
+  const [saving] = useState(false)
   const [showPublishForm, setShowPublishForm] = useState(false)
 
   const [pings, setPings] = useState([])
@@ -256,15 +262,34 @@ export default function Record() {
     }
   }, [points])
 
-  const renderableTrails = useMemo(() => {
-    return trails
-      .map((trail) => {
-        const geometry = parseTrailGeojson(trail.geojson)
-        if (!geometry) return null
-        return { trail, geometry }
-      })
-      .filter(Boolean)
+  const visibleTrailSourceCollection = useMemo(
+    () =>
+      viewState.zoom >= TRAIL_VISIBILITY_MIN_ZOOM
+        ? trailsGeojson
+        : EMPTY_TRAIL_FEATURE_COLLECTION,
+    [trailsGeojson, viewState.zoom]
+  )
+
+  const trailsById = useMemo(() => {
+    const byId = new globalThis.Map()
+    trails.forEach((trail) => {
+      const id = String(trail?._id || trail?.id || '')
+      if (id) byId.set(id, trail)
+    })
+    return byId
   }, [trails])
+
+  const trailGeojsonFeaturesById = useMemo(() => {
+    const byId = new globalThis.Map()
+    const features = Array.isArray(trailsGeojson?.features)
+      ? trailsGeojson.features
+      : []
+    features.forEach((feature) => {
+      const id = String(feature?.properties?.id || '')
+      if (id && !byId.has(id)) byId.set(id, feature)
+    })
+    return byId
+  }, [trailsGeojson])
 
   const steps = useMemo(() => Math.round(distance / 0.78), [distance])
 
@@ -317,7 +342,6 @@ export default function Record() {
     const map = mapRef.current?.getMap()
     if (map) {
       applyTerrain(map, terrain3D)
-      setMapReady(true)
       if (pendingCenterRef.current) {
         map.flyTo(pendingCenterRef.current)
         pendingCenterRef.current = null
@@ -626,9 +650,9 @@ export default function Record() {
       const map = mapRef.current?.getMap()
       if (!map) return
 
-      const layerIds = renderableTrails
-        .map(({ trail }) => `record-trail-hit-${trail._id || trail.id}`)
-        .filter((id) => map.getLayer(id))
+      const layerIds = RECORD_INTERACTIVE_TRAIL_LAYER_IDS.filter((id) =>
+        map.getLayer(id)
+      )
 
       if (!layerIds.length) {
         setSelectedTrail(null)
@@ -645,16 +669,44 @@ export default function Record() {
         return
       }
 
-      const trailId = features[0].layer.id.replace('record-trail-hit-', '')
-      const selected = trails.find(
-        (trail) => String(trail._id || trail.id) === String(trailId)
-      )
+      const properties = features[0]?.properties || {}
+      const trailId = String(properties.id || '')
+      const selected = trailsById.get(trailId)
       if (selected) {
         setSelectedTrail(selected)
         setSelectedHut(null)
+        return
+      }
+
+      const geojsonFeature = trailGeojsonFeaturesById.get(trailId)
+      if (trailId && geojsonFeature) {
+        setSelectedTrail({
+          _id: trailId,
+          id: trailId,
+          name: properties.name || properties.name_bg || 'Trail',
+          name_bg: properties.name_bg || '',
+          name_en: properties.name_en || '',
+          ref: properties.ref || '',
+          source: properties.source || 'user',
+          difficulty: properties.difficulty || 'moderate',
+          colour_type: properties.colour_type || 'unmarked',
+          osm_colour: properties.osm_colour || '',
+          osm_marking: properties.osm_marking || '',
+          network: properties.network || '',
+          geojson: {
+            type: 'Feature',
+            geometry: geojsonFeature.geometry,
+            properties,
+          },
+          stats: {
+            distance: Number(properties.distance || 0) * 1000,
+            elevationGain: Number(properties.elevation_gain || 0),
+          },
+        })
+        setSelectedHut(null)
       }
     },
-    [renderableTrails, setSelectedTrail, trails]
+    [setSelectedTrail, trailGeojsonFeaturesById, trailsById]
   )
 
   useEffect(() => {
@@ -687,17 +739,33 @@ export default function Record() {
     setLoadingTrails(true)
     setTrailsError('')
 
-    fetchMapTrails()
-      .then((res) => {
+    Promise.allSettled([fetchMapTrails({ compact: true }), fetchMapTrailsGeojson()])
+      .then(([trailsResult, geojsonResult]) => {
         if (!active) return
-        setTrails(Array.isArray(res.data) ? res.data : [])
-      })
-      .catch(() => {
-        if (!active) return
-        setTrails([])
-        setTrailsError(
-          'Could not load trails from API. Record mode still works.'
-        )
+
+        if (trailsResult.status === 'fulfilled') {
+          setTrails(
+            Array.isArray(trailsResult.value?.data)
+              ? trailsResult.value.data
+              : []
+          )
+        } else {
+          setTrails([])
+          setTrailsError(
+            'Could not load trail details from API. Record mode still works.'
+          )
+        }
+
+        if (geojsonResult.status === 'fulfilled') {
+          setTrailsGeojson(
+            normalizeTrailGeojsonCollection(geojsonResult.value?.data)
+          )
+        } else {
+          setTrailsGeojson(EMPTY_TRAIL_FEATURE_COLLECTION)
+          setTrailsError(
+            'Could not load map trails from API. Record mode still works.'
+          )
+        }
       })
       .finally(() => {
         if (active) setLoadingTrails(false)
@@ -745,6 +813,7 @@ export default function Record() {
           clearInterval(interval)
         }
       } catch {
+        /* Ignore transient polling failures. */
       }
     }, 2000)
 
@@ -838,7 +907,6 @@ export default function Record() {
     loadedTrailActivity,
   ])
 
-  const markerPosition = points.length > 0 ? points[points.length - 1] : null
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
   const isActivityActive =
@@ -894,6 +962,7 @@ export default function Record() {
           liveNotificationReadyRef.current = true
         }
       } catch {
+        /* Native notification permission setup is best-effort. */
       }
     })()
 
@@ -915,6 +984,7 @@ export default function Record() {
             notifications: [{ id: LIVE_RECORDING_NOTIFICATION_ID }],
           })
         } catch {
+          /* Native notification cancellation is best-effort. */
         }
         return
       }
@@ -948,6 +1018,7 @@ export default function Record() {
           ],
         })
       } catch {
+        /* Native notification sync is best-effort. */
       }
     }
 
@@ -997,38 +1068,44 @@ export default function Record() {
           onLoad={handleMapLoad}
           onClick={handleMapClick}
         >
-          {renderableTrails.map(({ trail, geometry }) => {
-            const color = DIFFICULTY_COLOR[trail.difficulty] ?? '#6b7280'
-            const tid = trail._id || trail.id
-            return (
-              <Source
-                key={tid}
-                id={`record-trail-source-${tid}`}
-                type="geojson"
-                data={geometry}
-              >
-                <Layer
-                  id={`record-trail-hit-${tid}`}
-                  type="line"
-                  paint={{
-                    'line-color': color,
-                    'line-width': 16,
-                    'line-opacity': 0,
-                  }}
-                />
-                <Layer
-                  id={`record-trail-line-${tid}`}
-                  type="line"
-                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                  paint={{
-                    'line-color': color,
-                    'line-width': 4,
-                    'line-opacity': 0.72,
-                  }}
-                />
-              </Source>
-            )
-          })}
+          <TrailMapLayers
+            sourceId="record-trails-source"
+            layerPrefix={RECORD_TRAIL_LAYER_PREFIX}
+            data={visibleTrailSourceCollection}
+          />
+
+          {hasVectorTileset ? (
+            <Source
+              id="record-custom-tileset-source"
+              type="vector"
+              url={MAPBOX_TILESET_URL}
+            >
+              <Layer
+                id="record-custom-tileset-layer"
+                type="line"
+                source="record-custom-tileset-source"
+                source-layer={MAPBOX_TILESET_SOURCE_LAYER}
+                paint={{
+                  'line-color': MAPBOX_TILESET_LINE_COLOR,
+                  'line-width': MAPBOX_TILESET_LINE_WIDTH,
+                }}
+              />
+            </Source>
+          ) : null}
+
+          {hasRasterTileset ? (
+            <Source
+              id="record-custom-tileset-source"
+              type="raster"
+              url={MAPBOX_TILESET_URL}
+            >
+              <Layer
+                id="record-custom-tileset-raster-layer"
+                type="raster"
+                paint={{ 'raster-opacity': 0.9 }}
+              />
+            </Source>
+          ) : null}
 
           {routeGeoJSON && (
             <Source id="record-route" type="geojson" data={routeGeoJSON}>
@@ -1334,6 +1411,11 @@ export default function Record() {
         {loadingTrails && (
           <div className="record-info-box">Loading trails...</div>
         )}
+        {trailsError && (
+          <div className="record-info-box record-info-error">
+            {trailsError}
+          </div>
+        )}
         {geoError && (
           <div className="record-info-box record-info-error">{geoError}</div>
         )}
@@ -1405,7 +1487,7 @@ export default function Record() {
                         </span>
                         {seg.estimatedTime && (
                           <span className="record-ai-seg-time">
-                             {seg.estimatedTime}
+                            {seg.estimatedTime}
                           </span>
                         )}
                       </div>
@@ -1459,7 +1541,6 @@ export default function Record() {
             </div>
           ) : (
             <div className="record-actions-row record-actions-enter">
-              
               <button
                 onClick={saveTracking}
                 disabled={saving || points.length < 2}

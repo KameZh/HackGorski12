@@ -11,6 +11,7 @@ import TrashCluster from "./models/trashCluster.js";
 import User from "./models/user.js";
 import Hut from "./models/hut.js";
 import { calculateStats, processRouteAI } from "./services/aiAnalysis.js";
+import { isFeaturedOfficialTrail } from "./services/trailEnrichment.js";
 
 const port = process.env.PORT || 5174;
 const nodeEnv = String(process.env.NODE_ENV || "development").toLowerCase();
@@ -263,14 +264,8 @@ function normalizeTrailMarks(trailMarks, geojson) {
     .slice(0, 200);
 }
 
-const FEATURED_REFS = new Set(["E3", "E4", "E8"]);
-
 function normalizeStringValue(value) {
   return String(value || "").trim();
-}
-
-function normalizeRefValue(value) {
-  return normalizeStringValue(value).toUpperCase();
 }
 
 function inferColourTypeFromValues({
@@ -610,10 +605,15 @@ app.get("/api/trails/geojson", async (req, res) => {
         osmMarking: trail.osm_marking,
       });
 
-      const normalizedRef = normalizeRefValue(trail.ref);
       const normalizedSource = normalizeStringValue(trail.source) || "user";
       const source =
-        FEATURED_REFS.has(normalizedRef) && normalizedSource !== "user"
+        normalizedSource !== "user" &&
+        isFeaturedOfficialTrail({
+          ref: trail.ref,
+          name: trail.name,
+          name_bg: trail.name_bg,
+          name_en: trail.name_en,
+        })
           ? "osm_featured"
           : normalizedSource;
 

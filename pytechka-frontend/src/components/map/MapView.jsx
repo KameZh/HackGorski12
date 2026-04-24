@@ -31,6 +31,7 @@ import {
 } from '../../api/weather'
 import { buildCenteredView } from '../../utils/mapDefaults'
 import MapControls from './MapControls'
+import LiveCompass from './LiveCompass'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
 import HutPreviewCard from '../layout/HutPreviewCard'
 import OfficialTrailCard from '../layout/OfficialTrailCard'
@@ -89,6 +90,12 @@ const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
 const USER_FOLLOW_BASE_ZOOM = 14.2
 const USER_FOLLOW_TRAIL_ZOOM = 17.8
 const TRAIL_VISIBILITY_MIN_ZOOM = 9
+const MAPBOX_GEOCODING_ENDPOINT =
+  'https://api.mapbox.com/geocoding/v5/mapbox.places'
+const MAPBOX_DIRECTIONS_ENDPOINT =
+  'https://api.mapbox.com/directions/v5/mapbox/walking'
+const DEM_SOURCE_ID = 'mapbox-dem'
+const RELIEF_DEM_SOURCE_ID = 'pytechka-relief-dem'
 
 const SEGMENT_COLOR_EXPRESSION = [
   'match',
@@ -571,6 +578,20 @@ function haversineMeters([lon1, lat1], [lon2, lat2]) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function bearingDegrees([lon1, lat1], [lon2, lat2]) {
+  const toRad = (d) => (d * Math.PI) / 180
+  const toDeg = (r) => (r * 180) / Math.PI
+  const startLat = toRad(lat1)
+  const endLat = toRad(lat2)
+  const deltaLon = toRad(lon2 - lon1)
+  const y = Math.sin(deltaLon) * Math.cos(endLat)
+  const x =
+    Math.cos(startLat) * Math.sin(endLat) -
+    Math.sin(startLat) * Math.cos(endLat) * Math.cos(deltaLon)
+
+  return (toDeg(Math.atan2(y, x)) + 360) % 360
+}
+
 function pathLengthMeters(pathCoordinates) {
   if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return 0
 
@@ -890,8 +911,37 @@ function weatherIconUrl(icon) {
   return `https://openweathermap.org/img/wn/${icon}@2x.png`
 }
 
+function buildBoundsFromCoordinates(coordinates = []) {
+  const valid = coordinates
+    .map((coord) => [Number(coord?.[0]), Number(coord?.[1])])
+    .filter(
+      ([longitude, latitude]) =>
+        Number.isFinite(longitude) && Number.isFinite(latitude)
+    )
+
+  if (!valid.length) return null
+
+  return valid.reduce(
+    (bounds, [longitude, latitude]) => [
+      [
+        Math.min(bounds[0][0], longitude),
+        Math.min(bounds[0][1], latitude),
+      ],
+      [
+        Math.max(bounds[1][0], longitude),
+        Math.max(bounds[1][1], latitude),
+      ],
+    ],
+    [
+      [valid[0][0], valid[0][1]],
+      [valid[0][0], valid[0][1]],
+    ]
+  )
+}
+
 export default function MapView({
   searchQuery = '',
+  searchRequest = null,
   initialStartFocus = null,
   onTrailFlowVisibilityChange = null,
 }) {
@@ -901,6 +951,8 @@ export default function MapView({
   const locationWatchRef = useRef(null)
   const hasAutoCenteredOnUserRef = useRef(false)
   const lastCenteredLocationRef = useRef(null)
+  const lastCompassLocationRef = useRef(null)
+  const compassSyncEnabledRef = useRef(false)
   const trailFollowModeRef = useRef(false)
   const lastActivityPointRef = useRef(null)
   const lastStartReadinessLocationRef = useRef(null)
@@ -912,6 +964,7 @@ export default function MapView({
   const {
     mapStyle,
     terrain3D,
+    hillshadeRelief,
     selectedTrail,
     setSelectedTrail,
     trailsVersion,
@@ -954,6 +1007,8 @@ export default function MapView({
   const [selectedAreaRadiusKm, setSelectedAreaRadiusKm] = useState(8)
   const [areaInsightsEnabled, setAreaInsightsEnabled] = useState(false)
   const [areaInsightsMinimized, setAreaInsightsMinimized] = useState(false)
+  const [compassSyncEnabled, setCompassSyncEnabled] = useState(false)
+  const [movementHeading, setMovementHeading] = useState(null)
 
   const [areaWeatherLoading, setAreaWeatherLoading] = useState(false)
   const [areaWeatherError, setAreaWeatherError] = useState('')
@@ -967,6 +1022,10 @@ export default function MapView({
   const [startWeatherNow, setStartWeatherNow] = useState(null)
   const [startHoveredSegment, setStartHoveredSegment] = useState(0)
   const [startUnsafeAcknowledged, setStartUnsafeAcknowledged] = useState(false)
+  const [approachRoute, setApproachRoute] = useState(null)
+  const [approachSummary, setApproachSummary] = useState(null)
+  const [approachLoading, setApproachLoading] = useState(false)
+  const [approachError, setApproachError] = useState('')
 
   const [activeTrailSession, setActiveTrailSession] = useState(null)
   const [activityDistanceMeters, setActivityDistanceMeters] = useState(0)
@@ -1000,6 +1059,8 @@ export default function MapView({
   const [clusters, setClusters] = useState([])
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [voteSubmitting, setVoteSubmitting] = useState(false)
+  const [searchResultMarker, setSearchResultMarker] = useState(null)
+  const [searchMapError, setSearchMapError] = useState('')
 
   const isTrailFlowOverlayOpen = Boolean(
     activeTrailSession || (finishModalTrail && finishStats)
@@ -1232,6 +1293,36 @@ export default function MapView({
     setUserLocation({ longitude, latitude, altitude })
     setActivityCurrentElevation(altitude)
 
+    if (compassSyncEnabledRef.current || options.enableCompass === true) {
+      const gpsHeading = Number(coords?.heading)
+      if (Number.isFinite(gpsHeading) && gpsHeading >= 0) {
+        setMovementHeading(gpsHeading)
+      } else {
+        const previousCompassLocation = lastCompassLocationRef.current
+        if (previousCompassLocation) {
+          const movementMeters = haversineMeters(
+            [
+              previousCompassLocation.longitude,
+              previousCompassLocation.latitude,
+            ],
+            [longitude, latitude]
+          )
+          if (movementMeters >= 2) {
+            setMovementHeading(
+              bearingDegrees(
+                [
+                  previousCompassLocation.longitude,
+                  previousCompassLocation.latitude,
+                ],
+                [longitude, latitude]
+              )
+            )
+          }
+        }
+      }
+      lastCompassLocationRef.current = { longitude, latitude }
+    }
+
     // In Maps page we only recenter when user explicitly asks for it.
     if (options.forceZoom !== true && options.recenter !== true) {
       return
@@ -1375,6 +1466,79 @@ export default function MapView({
       clearTimeout(fetchTimeout)
     }
   }, [trailsVersion, searchQuery, setSelectedTrail])
+
+  useEffect(() => {
+    const query = String(searchRequest?.query || '').trim()
+    const requestId = searchRequest?.id
+    if (!query || !requestId || !MAPBOX_TOKEN) return undefined
+
+    let active = true
+    const mapCenter = mapRef.current?.getMap()?.getCenter()
+    const proximity =
+      Number.isFinite(userLocation?.longitude) &&
+      Number.isFinite(userLocation?.latitude)
+        ? `${userLocation.longitude},${userLocation.latitude}`
+        : `${mapCenter?.lng || INITIAL_VIEW.longitude},${mapCenter?.lat || INITIAL_VIEW.latitude}`
+    const params = new URLSearchParams({
+      access_token: MAPBOX_TOKEN,
+      limit: '1',
+      language: 'en,bg',
+      country: 'bg',
+      proximity,
+    })
+
+    setSearchMapError('')
+
+    fetch(
+      `${MAPBOX_GEOCODING_ENDPOINT}/${encodeURIComponent(query)}.json?${params.toString()}`
+    )
+      .then((response) => {
+        if (!response.ok) throw new Error('Search request failed')
+        return response.json()
+      })
+      .then((payload) => {
+        if (!active) return
+        const feature = Array.isArray(payload?.features)
+          ? payload.features[0]
+          : null
+        const coordinates = feature?.center
+        if (!Array.isArray(coordinates) || coordinates.length !== 2) {
+          setSearchMapError('No Mapbox location result found.')
+          return
+        }
+
+        const [longitude, latitude] = coordinates.map(Number)
+        if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+          setSearchMapError('Mapbox returned an invalid location.')
+          return
+        }
+
+        setSearchResultMarker({
+          coordinates: [longitude, latitude],
+          label: feature.place_name || query,
+        })
+        setSelectedAreaCenter([longitude, latitude])
+        setViewState((old) => ({
+          ...old,
+          longitude,
+          latitude,
+          zoom: Math.max(old.zoom, 12.8),
+        }))
+        mapRef.current?.getMap()?.flyTo({
+          center: [longitude, latitude],
+          zoom: 12.8,
+          duration: 850,
+          essential: true,
+        })
+      })
+      .catch(() => {
+        if (active) setSearchMapError('Could not search Mapbox right now.')
+      })
+
+    return () => {
+      active = false
+    }
+  }, [searchRequest, userLocation])
 
   useEffect(() => {
     if (!initialStartFocus?.startCoordinates) return
@@ -1665,31 +1829,50 @@ export default function MapView({
     }
   }, [])
 
+  const applyMapAtmosphere = useCallback((map) => {
+    if (!map) return
+    try {
+      map.setProjection?.({ name: 'globe' })
+      map.setFog?.({
+        color: 'rgb(186, 210, 235)',
+        'high-color': 'rgb(36, 92, 138)',
+        'horizon-blend': 0.08,
+        'space-color': 'rgb(8, 15, 26)',
+        'star-intensity': 0.12,
+      })
+    } catch {
+      /* Older Mapbox style/runtime combinations may not support atmosphere. */
+    }
+  }, [])
+
   const applyTerrain = useCallback((map, enabled) => {
     if (enabled) {
-      if (!map.getSource('mapbox-dem')) {
-        map.addSource('mapbox-dem', {
+      if (!map.getSource(DEM_SOURCE_ID)) {
+        map.addSource(DEM_SOURCE_ID, {
           type: 'raster-dem',
           url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
           tileSize: 512,
           maxzoom: 14,
         })
       }
-      map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 })
+      map.setTerrain({ source: DEM_SOURCE_ID, exaggeration: 1.5 })
       map.setPitch(45)
     } else {
       map.setTerrain(null)
-      map.setPitch(0)
+      if (map.getPitch() > 50) {
+        map.setPitch(0)
+      }
     }
   }, [])
 
   const handleMapLoad = useCallback(() => {
     const map = mapRef.current?.getMap()
     if (map) {
+      applyMapAtmosphere(map)
       applyTerrain(map, terrain3D)
       setMapReady(true)
     }
-  }, [terrain3D, applyTerrain])
+  }, [terrain3D, applyTerrain, applyMapAtmosphere])
 
   const handleMapError = useCallback(
     (event) => {
@@ -1715,8 +1898,11 @@ export default function MapView({
 
   useEffect(() => {
     const map = mapRef.current?.getMap()
-    if (map && map.loaded()) applyTerrain(map, terrain3D)
-  }, [terrain3D, applyTerrain])
+    if (map && map.loaded()) {
+      applyMapAtmosphere(map)
+      applyTerrain(map, terrain3D)
+    }
+  }, [terrain3D, applyTerrain, applyMapAtmosphere])
 
   const handleZoomIn = useCallback(() => {
     const map = mapRef.current?.getMap()
@@ -1728,10 +1914,40 @@ export default function MapView({
     map?.zoomOut({ duration: 200 })
   }, [])
 
+  const handleTogglePitch = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    if (!map) return
+
+    const tilted = map.getPitch() >= 35
+    const nextPitch = tilted ? 0 : 60
+    const nextBearing = tilted ? 0 : -18
+    const nextZoom = tilted ? map.getZoom() : Math.max(map.getZoom(), 12.5)
+
+    setViewState((old) => ({
+      ...old,
+      pitch: nextPitch,
+      bearing: nextBearing,
+      zoom: nextZoom,
+    }))
+
+    map.easeTo({
+      pitch: nextPitch,
+      bearing: nextBearing,
+      zoom: nextZoom,
+      duration: 550,
+      essential: true,
+    })
+  }, [])
+
   const handleCenterMe = useCallback(() => {
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
-        applyLiveUserLocation(coords, { forceZoom: true })
+        compassSyncEnabledRef.current = true
+        setCompassSyncEnabled(true)
+        applyLiveUserLocation(coords, {
+          forceZoom: true,
+          enableCompass: true,
+        })
         if (areaInsightsEnabled) {
           setSelectedAreaCenter([coords.longitude, coords.latitude])
         }
@@ -1948,6 +2164,9 @@ export default function MapView({
       setStartPanelTrail(trail)
       setStartHoveredSegment(0)
       setStartPanelError('')
+      setApproachRoute(null)
+      setApproachSummary(null)
+      setApproachError('')
 
       if (!userLocation && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
@@ -1966,6 +2185,101 @@ export default function MapView({
     },
     [userLocation]
   )
+
+  const handleShowApproachRoute = useCallback(async () => {
+    if (!startPanelCoordinates || !MAPBOX_TOKEN) {
+      setApproachError('Trail start coordinates are unavailable.')
+      return
+    }
+
+    const loadCurrentLocation = () =>
+      new Promise((resolve, reject) => {
+        if (userLocation) {
+          resolve(userLocation)
+          return
+        }
+        if (!navigator.geolocation) {
+          reject(new Error('Location unavailable'))
+          return
+        }
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) =>
+            resolve({
+              longitude: coords.longitude,
+              latitude: coords.latitude,
+              altitude: Number.isFinite(coords.altitude)
+                ? coords.altitude
+                : null,
+            }),
+          reject,
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+        )
+      })
+
+    setApproachLoading(true)
+    setApproachError('')
+
+    try {
+      const current = await loadCurrentLocation()
+      setUserLocation(current)
+
+      const origin = `${current.longitude},${current.latitude}`
+      const destination = `${startPanelCoordinates[0]},${startPanelCoordinates[1]}`
+      const params = new URLSearchParams({
+        access_token: MAPBOX_TOKEN,
+        geometries: 'geojson',
+        overview: 'full',
+        steps: 'false',
+        alternatives: 'false',
+      })
+
+      const response = await fetch(
+        `${MAPBOX_DIRECTIONS_ENDPOINT}/${origin};${destination}?${params.toString()}`
+      )
+      if (!response.ok) throw new Error('Directions failed')
+
+      const payload = await response.json()
+      const route = Array.isArray(payload?.routes) ? payload.routes[0] : null
+      const coordinates = route?.geometry?.coordinates
+      if (!Array.isArray(coordinates) || coordinates.length < 2) {
+        throw new Error('No route geometry')
+      }
+
+      const routeFeature = {
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {},
+            geometry: route.geometry,
+          },
+        ],
+      }
+
+      setApproachRoute(routeFeature)
+      setApproachSummary({
+        distanceMeters: Number(route.distance || 0),
+        durationSeconds: Number(route.duration || 0),
+      })
+
+      const bounds = buildBoundsFromCoordinates([
+        [current.longitude, current.latitude],
+        ...coordinates,
+        startPanelCoordinates,
+      ])
+      if (bounds) {
+        mapRef.current?.getMap()?.fitBounds(bounds, {
+          padding: 72,
+          duration: 850,
+          essential: true,
+        })
+      }
+    } catch {
+      setApproachError('Could not build a walking approach route.')
+    } finally {
+      setApproachLoading(false)
+    }
+  }, [startPanelCoordinates, userLocation])
 
   const handleFocusSelectedAreaTrail = useCallback(
     ({ trail, startCoordinates }) => {
@@ -2334,6 +2648,27 @@ export default function MapView({
       >
         {mapReady ? (
           <>
+            {hillshadeRelief ? (
+              <Source
+                id={RELIEF_DEM_SOURCE_ID}
+                type="raster-dem"
+                url="mapbox://mapbox.mapbox-terrain-dem-v1"
+                tileSize={512}
+                maxzoom={14}
+              >
+                <Layer
+                  id="pytechka-hillshade-relief"
+                  type="hillshade"
+                  paint={{
+                    'hillshade-exaggeration': 0.42,
+                    'hillshade-shadow-color': '#0f172a',
+                    'hillshade-highlight-color': '#e2e8f0',
+                    'hillshade-accent-color': '#4281a4',
+                  }}
+                />
+              </Source>
+            ) : null}
+
             <Source
               id={TRAIL_SOURCE_ID}
               type="geojson"
@@ -2635,6 +2970,33 @@ export default function MapView({
               </Marker>
             ) : null}
 
+            {searchResultMarker ? (
+              <Marker
+                longitude={searchResultMarker.coordinates[0]}
+                latitude={searchResultMarker.coordinates[1]}
+                anchor="bottom"
+              >
+                <div
+                  style={{
+                    minWidth: 34,
+                    height: 34,
+                    borderRadius: 999,
+                    background: 'linear-gradient(135deg, #f59e0b, #ef4444)',
+                    color: '#fff',
+                    display: 'grid',
+                    placeItems: 'center',
+                    border: '2px solid #f8fafc',
+                    boxShadow: '0 8px 18px rgba(0,0,0,0.38)',
+                    fontWeight: 900,
+                    fontSize: 13,
+                  }}
+                  title={searchResultMarker.label}
+                >
+                  Go
+                </div>
+              </Marker>
+            ) : null}
+
             {hasVectorTileset ? (
               <Source
                 id="custom-tileset-source"
@@ -2701,6 +3063,32 @@ export default function MapView({
                     'line-color': SEGMENT_COLOR_EXPRESSION,
                     'line-width': 6,
                     'line-opacity': 0.98,
+                  }}
+                />
+              </Source>
+            ) : null}
+
+            {approachRoute ? (
+              <Source id="map-approach-route" type="geojson" data={approachRoute}>
+                <Layer
+                  id="map-approach-route-casing"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': '#0f172a',
+                    'line-width': 8,
+                    'line-opacity': 0.85,
+                  }}
+                />
+                <Layer
+                  id="map-approach-route-line"
+                  type="line"
+                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                  paint={{
+                    'line-color': '#38bdf8',
+                    'line-width': 4,
+                    'line-opacity': 0.98,
+                    'line-dasharray': [1.2, 1],
                   }}
                 />
               </Source>
@@ -2828,6 +3216,17 @@ export default function MapView({
           </>
         ) : null}
       </Map>
+
+      <LiveCompass
+        mapBearing={viewState.bearing}
+        movementHeading={compassSyncEnabled ? movementHeading : null}
+        liveEnabled={compassSyncEnabled}
+        top={
+          isTrailFlowOverlayOpen
+            ? 'calc(env(safe-area-inset-top, 0px) + 12px)'
+            : 'calc(env(safe-area-inset-top, 0px) + 132px)'
+        }
+      />
 
       {unmarkedWarning ? (
         <div
@@ -3674,6 +4073,46 @@ export default function MapView({
               </div>
             ) : null}
 
+            <div style={{ ...styles.infoBox, marginTop: 10 }}>
+              <div style={{ fontWeight: 700, color: '#8de0dc' }}>
+                Mapbox Approach Route
+              </div>
+              <div style={{ marginTop: 4 }}>
+                {approachSummary
+                  ? `${(approachSummary.distanceMeters / 1000).toFixed(2)} km walk to the trail start · ${Math.max(
+                      1,
+                      Math.round(approachSummary.durationSeconds / 60)
+                    )} min`
+                  : 'Draw a walking route from your location to the trail start.'}
+              </div>
+              {approachError ? (
+                <div style={{ marginTop: 6, color: '#fca5a5' }}>
+                  {approachError}
+                </div>
+              ) : null}
+              <button
+                type="button"
+                onClick={handleShowApproachRoute}
+                disabled={approachLoading}
+                style={{
+                  ...pingBtnBase,
+                  width: '100%',
+                  marginTop: 8,
+                  background: approachRoute
+                    ? 'rgba(56,189,248,0.24)'
+                    : 'rgba(72,169,166,0.22)',
+                  color: '#bfdbfe',
+                  opacity: approachLoading ? 0.65 : 1,
+                }}
+              >
+                {approachLoading
+                  ? 'Building route...'
+                  : approachRoute
+                    ? 'Rebuild Approach'
+                    : 'Show Approach To Start'}
+              </button>
+            </div>
+
             <div
               style={{
                 ...styles.infoBox,
@@ -4071,6 +4510,7 @@ export default function MapView({
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onResetView={handleResetView}
+        onTogglePitch={handleTogglePitch}
         onToggleAreaInsights={handleToggleAreaInsights}
         areaInsightsEnabled={areaInsightsEnabled}
         showAreaInsightsButton
@@ -4274,6 +4714,7 @@ export default function MapView({
       {loadingTrails ||
       trailsError ||
       geoError ||
+      searchMapError ||
       mapError ||
       tilesetConfigWarning ? (
         <div
@@ -4293,6 +4734,9 @@ export default function MapView({
           ) : null}
           {trailsError ? <div style={styles.infoBox}>{trailsError}</div> : null}
           {geoError ? <div style={styles.infoBox}>{geoError}</div> : null}
+          {searchMapError ? (
+            <div style={styles.infoBox}>{searchMapError}</div>
+          ) : null}
           {mapError ? <div style={styles.infoBox}>{mapError}</div> : null}
           {tilesetConfigWarning ? (
             <div style={styles.infoBox}>{tilesetConfigWarning}</div>

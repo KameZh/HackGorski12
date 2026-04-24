@@ -4,6 +4,12 @@ import osmtogeojson from "osmtogeojson";
 import { connectDB, disconnectDB } from "../connection.js";
 import OfficialTrail from "../models/officialTrail.js";
 import { calculateStats } from "../services/aiAnalysis.js";
+import {
+  buildDefaultTrailMarks,
+  deriveTrailPointLabels,
+  inferOfficialTrailDifficulty,
+  isFeaturedOfficialTrail,
+} from "../services/trailEnrichment.js";
 
 const OVERPASS_ENDPOINTS = [
   String(
@@ -12,7 +18,6 @@ const OVERPASS_ENDPOINTS = [
   "https://overpass.kumi.systems/api/interpreter",
   "https://overpass.private.coffee/api/interpreter",
 ].filter(Boolean);
-const FEATURED_REFS = new Set(["E3", "E4", "E8"]);
 const OVERPASS_REQUEST_TIMEOUT_MS = Number(
   process.env.OVERPASS_REQUEST_TIMEOUT_MS || 90000,
 );
@@ -38,10 +43,6 @@ out geom;`;
 
 function normalizeString(value) {
   return String(value || "").trim();
-}
-
-function normalizeRef(value) {
-  return normalizeString(value).toUpperCase();
 }
 
 function buildTagSources(feature) {
@@ -173,8 +174,14 @@ function toFeatureTrailDoc(feature, index) {
     trailVisibility,
   });
 
-  const normalizedRef = normalizeRef(ref);
-  const source = FEATURED_REFS.has(normalizedRef) ? "osm_featured" : "osm";
+  const source = isFeaturedOfficialTrail({
+    ref,
+    name: displayName,
+    name_bg: nameBg,
+    name_en: nameEn,
+  })
+    ? "osm_featured"
+    : "osm";
 
   const geojsonFeature = {
     type: "Feature",
@@ -194,6 +201,13 @@ function toFeatureTrailDoc(feature, index) {
   };
 
   const stats = calculateStats(geojsonFeature);
+  const pointLabels = deriveTrailPointLabels(geojsonFeature);
+  const trailMarks = buildDefaultTrailMarks({
+    geojson: geojsonFeature,
+    colourType,
+    osmColour,
+    osmMarking,
+  });
 
   return {
     source,
@@ -202,8 +216,16 @@ function toFeatureTrailDoc(feature, index) {
     ref: normalizeString(ref),
     name_bg: normalizeString(nameBg),
     name_en: normalizeString(nameEn),
-    difficulty: "moderate",
+    difficulty: inferOfficialTrailDifficulty({
+      stats,
+      network: readTag(feature, ["network"]),
+      ref,
+      name: displayName,
+      name_bg: nameBg,
+      name_en: nameEn,
+    }),
     description: normalizeString(readTag(feature, ["description"])),
+    ...pointLabels,
     osm_colour: normalizeString(osmColour),
     osm_marking: osmMarking,
     colour_type: colourType,
@@ -220,6 +242,7 @@ function toFeatureTrailDoc(feature, index) {
     geojson: geojsonFeature,
     geom: geometry,
     stats,
+    trailMarks,
   };
 }
 
@@ -321,8 +344,14 @@ function buildDocsFromRawRelations(elements = []) {
       trailVisibility,
     });
 
-    const normalizedRef = normalizeRef(ref);
-    const source = FEATURED_REFS.has(normalizedRef) ? "osm_featured" : "osm";
+    const source = isFeaturedOfficialTrail({
+      ref,
+      name: displayName,
+      name_bg: nameBg,
+      name_en: nameEn,
+    })
+      ? "osm_featured"
+      : "osm";
 
     const geojsonFeature = {
       type: "Feature",
@@ -342,6 +371,14 @@ function buildDocsFromRawRelations(elements = []) {
     };
 
     const stats = calculateStats(geojsonFeature);
+    const osmMarking = marked || trailVisibility;
+    const pointLabels = deriveTrailPointLabels(geojsonFeature);
+    const trailMarks = buildDefaultTrailMarks({
+      geojson: geojsonFeature,
+      colourType,
+      osmColour,
+      osmMarking,
+    });
 
     docs.push({
       source,
@@ -350,10 +387,18 @@ function buildDocsFromRawRelations(elements = []) {
       ref,
       name_bg: nameBg,
       name_en: nameEn,
-      difficulty: "moderate",
+      difficulty: inferOfficialTrailDifficulty({
+        stats,
+        network: tags.network,
+        ref,
+        name: displayName,
+        name_bg: nameBg,
+        name_en: nameEn,
+      }),
       description: normalizeString(tags.description),
+      ...pointLabels,
       osm_colour: osmColour,
-      osm_marking: marked || trailVisibility,
+      osm_marking: osmMarking,
       colour_type: colourType,
       network: normalizeString(tags.network),
       startCoordinates:
@@ -369,6 +414,7 @@ function buildDocsFromRawRelations(elements = []) {
       geojson: geojsonFeature,
       geom: geometry,
       stats,
+      trailMarks,
     });
   }
 

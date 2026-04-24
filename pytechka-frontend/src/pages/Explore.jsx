@@ -162,7 +162,35 @@ export default function Explore() {
   )
 
   const restoreScrollPosition = useCallback((savedPosition) => {
+    const restore = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = savedPosition.containerTop
+      }
+      window.scrollTo({
+        top: savedPosition.windowTop,
+        left: savedPosition.windowLeft,
+        behavior: 'auto',
+      })
+    }
+
     requestAnimationFrame(() => {
+      restore()
+      requestAnimationFrame(() => {
+        restore()
+        window.setTimeout(() => {
+          restore()
+        }, 80)
+      })
+    })
+  }, [])
+
+  const restoreWindowPositionOnly = useCallback((savedPosition) => {
+    requestAnimationFrame(() => {
+      window.scrollTo({
+        top: savedPosition.windowTop,
+        left: savedPosition.windowLeft,
+        behavior: 'auto',
+      })
       requestAnimationFrame(() => {
         if (scrollContainerRef.current) {
           scrollContainerRef.current.scrollTop = savedPosition.containerTop
@@ -176,15 +204,26 @@ export default function Explore() {
     })
   }, [])
 
+  const captureScrollPosition = useCallback(
+    () => ({
+      containerTop: scrollContainerRef.current?.scrollTop || 0,
+      windowTop: window.scrollY,
+      windowLeft: window.scrollX,
+    }),
+    []
+  )
+
+  const appendVisibleTrails = useCallback(() => {
+    const savedPosition = captureScrollPosition()
+    setVisibleTrailCount((count) => count + TRAIL_LIST_BATCH)
+    restoreWindowPositionOnly(savedPosition)
+  }, [captureScrollPosition, restoreWindowPositionOnly])
+
   const loadTrails = useCallback(async () => {
     setLoadingTrails(true)
     setErrorTrails(null)
 
-    const savedPosition = {
-      containerTop: scrollContainerRef.current?.scrollTop || 0,
-      windowTop: window.scrollY,
-      windowLeft: window.scrollX,
-    }
+    const savedPosition = captureScrollPosition()
 
     try {
       const params = {
@@ -206,9 +245,9 @@ export default function Explore() {
       restoreScrollPosition(savedPosition)
     } catch {
       setErrorTrails('Could not load trails. Please try again.')
-      setTrails([])
     } finally {
       setLoadingTrails(false)
+      restoreScrollPosition(savedPosition)
     }
   }, [
     searchQuery,
@@ -217,6 +256,7 @@ export default function Explore() {
     activeSort,
     officialOnly,
     unmarkedOnly,
+    captureScrollPosition,
     restoreScrollPosition,
   ])
 
@@ -258,7 +298,7 @@ export default function Explore() {
       (entries) => {
         const entry = entries[0]
         if (entry?.isIntersecting && !loadingTrails) {
-          setVisibleTrailCount((count) => count + TRAIL_LIST_BATCH)
+          appendVisibleTrails()
         }
       },
       { rootMargin: '200px' }
@@ -266,10 +306,12 @@ export default function Explore() {
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [loadingTrails])
+  }, [appendVisibleTrails, loadingTrails])
 
   useEffect(() => {
+    const savedPosition = captureScrollPosition()
     setVisibleTrailCount(TRAIL_LIST_BATCH)
+    restoreScrollPosition(savedPosition)
   }, [
     searchQuery,
     activeActivity,
@@ -279,6 +321,8 @@ export default function Explore() {
     unmarkedOnly,
     selectedAreaCenter,
     selectedAreaRadiusKm,
+    captureScrollPosition,
+    restoreScrollPosition,
   ])
 
   const handleResetFilters = useCallback(() => {
@@ -709,9 +753,9 @@ export default function Explore() {
                 : `${featuredTrails.length} tracks match your active filters`
             }
           >
-            {loadingTrails ? (
+            {loadingTrails && trails.length === 0 ? (
               <div className="explore-state-box">Loading routes...</div>
-            ) : errorTrails ? (
+            ) : errorTrails && trails.length === 0 ? (
               <div className="explore-state-box">
                 <p>{errorTrails}</p>
                 <button
@@ -724,6 +768,18 @@ export default function Explore() {
               </div>
             ) : featuredTrails.length > 0 ? (
               <div className="explore-cards-stack">
+                {errorTrails ? (
+                  <div className="explore-inline-error" aria-live="polite">
+                    {errorTrails}
+                  </div>
+                ) : null}
+
+                {loadingTrails ? (
+                  <div className="explore-inline-loading" aria-live="polite">
+                    Refreshing trail results...
+                  </div>
+                ) : null}
+
                 {displayedFeaturedTrails.map((trail) => (
                   <div
                     key={trail._id || trail.id}

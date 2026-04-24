@@ -9,12 +9,16 @@ export const useMapStore = create((set) => ({
 
   terrain3D: false,
 
+  hillshadeRelief: false,
+
   trailsVersion: 0,
 
   setMode: (mode) => set({ mode }),
   setSelectedTrail: (trail) => set({ selectedTrail: trail }),
   setMapStyle: (style) => set({ mapStyle: style }),
   toggleTerrain: () => set((s) => ({ terrain3D: !s.terrain3D })),
+  toggleHillshadeRelief: () =>
+    set((s) => ({ hillshadeRelief: !s.hillshadeRelief })),
   toggleMapStyle: () =>
     set((s) => ({
       mapStyle:

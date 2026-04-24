@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "import:osm-trails": "node scripts/importOsmTrails.js"
+    "import:osm-trails": "node scripts/importOsmTrails.js",
+    "backfill:official-trails": "node scripts/backfillOfficialTrailFields.js"
   },
   "keywords": [],
   "author": "",

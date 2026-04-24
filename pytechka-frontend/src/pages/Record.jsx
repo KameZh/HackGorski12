@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core'
 import { LocalNotifications } from '@capacitor/local-notifications'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
+import LiveCompass from '../components/map/LiveCompass'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
@@ -42,6 +43,7 @@ const RECORD_TRAIL_LAYER_PREFIX = 'record-trails'
 const RECORD_INTERACTIVE_TRAIL_LAYER_IDS = getInteractiveTrailLayerIds(
   RECORD_TRAIL_LAYER_PREFIX
 )
+const RECORD_DEM_SOURCE_ID = 'record-relief-dem'
 
 const PING_TYPES = {
   junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
@@ -177,16 +179,32 @@ function distanceMeters(p1, p2) {
   return R * c
 }
 
+function bearingDegrees(p1, p2) {
+  const toRad = (deg) => (deg * Math.PI) / 180
+  const toDeg = (rad) => (rad * 180) / Math.PI
+  const startLat = toRad(p1.latitude)
+  const endLat = toRad(p2.latitude)
+  const deltaLon = toRad(p2.longitude - p1.longitude)
+  const y = Math.sin(deltaLon) * Math.cos(endLat)
+  const x =
+    Math.cos(startLat) * Math.sin(endLat) -
+    Math.sin(startLat) * Math.cos(endLat) * Math.cos(deltaLon)
+
+  return (toDeg(Math.atan2(y, x)) + 360) % 360
+}
+
 export default function Record() {
   const mapRef = useRef(null)
   const watchRef = useRef(null)
   const pendingCenterRef = useRef(null)
+  const lastCompassLocationRef = useRef(null)
   const liveNotificationReadyRef = useRef(false)
   const liveNotificationLastBodyRef = useRef('')
   const liveNotificationTickRef = useRef(-1)
   const {
     mapStyle,
     terrain3D,
+    hillshadeRelief,
     setSelectedTrail,
     setMode,
     selectedTrail,
@@ -209,6 +227,7 @@ export default function Record() {
   const [currentElevation, setCurrentElevation] = useState(0)
   const [elevationGain, setElevationGain] = useState(0)
   const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
+  const [movementHeading, setMovementHeading] = useState(null)
   const [savedRoute, setSavedRoute] = useState(null)
   const [aiStatus, setAiStatus] = useState(null)
   const [aiResult, setAiResult] = useState(null)
@@ -359,6 +378,31 @@ export default function Record() {
     map?.zoomOut({ duration: 200 })
   }, [])
 
+  const handleTogglePitch = useCallback(() => {
+    const map = mapRef.current?.getMap()
+    if (!map) return
+
+    const tilted = map.getPitch() >= 35
+    const nextPitch = tilted ? 0 : 58
+    const nextBearing = tilted ? 0 : -18
+    const nextZoom = tilted ? map.getZoom() : Math.max(map.getZoom(), 13)
+
+    setViewState((old) => ({
+      ...old,
+      pitch: nextPitch,
+      bearing: nextBearing,
+      zoom: nextZoom,
+    }))
+
+    map.easeTo({
+      pitch: nextPitch,
+      bearing: nextBearing,
+      zoom: nextZoom,
+      duration: 500,
+      essential: true,
+    })
+  }, [])
+
   const onPosition = useCallback((position) => {
     const nextElevation = Number.isFinite(position.coords.altitude)
       ? position.coords.altitude
@@ -374,6 +418,20 @@ export default function Record() {
     if (Number.isFinite(nextElevation)) {
       setCurrentElevation(nextElevation)
     }
+
+    const gpsHeading = Number(position.coords.heading)
+    if (Number.isFinite(gpsHeading) && gpsHeading >= 0) {
+      setMovementHeading(gpsHeading)
+    } else {
+      const previousCompassLocation = lastCompassLocationRef.current
+      if (previousCompassLocation) {
+        const movementMeters = distanceMeters(previousCompassLocation, nextPoint)
+        if (movementMeters >= 2) {
+          setMovementHeading(bearingDegrees(previousCompassLocation, nextPoint))
+        }
+      }
+    }
+    lastCompassLocationRef.current = nextPoint
 
     setGeoError('')
     setPoints((prev) => {
@@ -443,6 +501,7 @@ export default function Record() {
 
     clearWatch()
     setIsTracking(true)
+    lastCompassLocationRef.current = null
 
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
@@ -471,6 +530,7 @@ export default function Record() {
     clearWatch()
     setIsTracking(false)
     setCurrentSpeedKmh(0)
+    lastCompassLocationRef.current = null
   }, [clearWatch])
 
   const resetActivity = useCallback(() => {
@@ -481,6 +541,8 @@ export default function Record() {
     setDistance(0)
     setElevationGain(0)
     setCurrentSpeedKmh(0)
+    setMovementHeading(null)
+    lastCompassLocationRef.current = null
     setGeoError('')
     setPingMode(false)
     setPingDesc('')
@@ -718,10 +780,31 @@ export default function Record() {
           ? position.coords.altitude
           : null
 
-        setCurrentLocation({
+        const nextLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
-        })
+        }
+
+        setCurrentLocation(nextLocation)
+
+        const gpsHeading = Number(position.coords.heading)
+        if (Number.isFinite(gpsHeading) && gpsHeading >= 0) {
+          setMovementHeading(gpsHeading)
+        } else {
+          const previousCompassLocation = lastCompassLocationRef.current
+          if (previousCompassLocation) {
+            const movementMeters = distanceMeters(
+              previousCompassLocation,
+              nextLocation
+            )
+            if (movementMeters >= 2) {
+              setMovementHeading(
+                bearingDegrees(previousCompassLocation, nextLocation)
+              )
+            }
+          }
+        }
+        lastCompassLocationRef.current = nextLocation
 
         if (Number.isFinite(nextAltitude)) {
           setCurrentElevation(nextAltitude)
@@ -1068,6 +1151,27 @@ export default function Record() {
           onLoad={handleMapLoad}
           onClick={handleMapClick}
         >
+          {hillshadeRelief ? (
+            <Source
+              id={RECORD_DEM_SOURCE_ID}
+              type="raster-dem"
+              url="mapbox://mapbox.mapbox-terrain-dem-v1"
+              tileSize={512}
+              maxzoom={14}
+            >
+              <Layer
+                id="record-hillshade-relief"
+                type="hillshade"
+                paint={{
+                  'hillshade-exaggeration': 0.42,
+                  'hillshade-shadow-color': '#0f172a',
+                  'hillshade-highlight-color': '#e2e8f0',
+                  'hillshade-accent-color': '#4281a4',
+                }}
+              />
+            </Source>
+          ) : null}
+
           <TrailMapLayers
             sourceId="record-trails-source"
             layerPrefix={RECORD_TRAIL_LAYER_PREFIX}
@@ -1197,6 +1301,11 @@ export default function Record() {
             })}
         </Map>
       </div>
+
+      <LiveCompass
+        mapBearing={viewState.bearing}
+        movementHeading={movementHeading}
+      />
 
       {isActivityActive ? (
         <button
@@ -1425,6 +1534,7 @@ export default function Record() {
         onCenterMe={handleCenterMe}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
+        onTogglePitch={handleTogglePitch}
         showResetViewButton={false}
       />
 

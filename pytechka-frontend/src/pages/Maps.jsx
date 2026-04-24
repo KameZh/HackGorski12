@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import MapView from '../components/map/MapView'
 import BottomNav from '../components/layout/Bottomnav'
@@ -21,6 +21,7 @@ export default function Maps() {
   const [searchFocused, setSearchFocused] = useState(false)
   const [suggestionTrails, setSuggestionTrails] = useState([])
   const [hideTopBar, setHideTopBar] = useState(false)
+  const [searchRequest, setSearchRequest] = useState(null)
 
   const initialStartFocus = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -98,6 +99,16 @@ export default function Maps() {
     [searchQuery, suggestionTrails]
   )
 
+  const handleMapSearchSubmit = useCallback(
+    (event) => {
+      event.preventDefault()
+      const query = searchQuery.trim()
+      if (!query) return
+      setSearchRequest({ id: Date.now(), query })
+    },
+    [searchQuery]
+  )
+
   return (
     <div id="maps-page" className="maps-page">
       <div className="maps-glow maps-glow-top" />
@@ -106,6 +117,7 @@ export default function Maps() {
       <div className="maps-layer">
         <MapView
           searchQuery={searchQuery}
+          searchRequest={searchRequest}
           initialStartFocus={initialStartFocus}
           onTrailFlowVisibilityChange={setHideTopBar}
         />
@@ -119,7 +131,10 @@ export default function Maps() {
               <span className="maps-badge">LIVE</span>
             </div>
 
-            <div className={`maps-search ${searchFocused ? 'focused' : ''}`}>
+            <form
+              className={`maps-search ${searchFocused ? 'focused' : ''}`}
+              onSubmit={handleMapSearchSubmit}
+            >
               <svg
                 width="16"
                 height="16"
@@ -156,6 +171,7 @@ export default function Maps() {
               </datalist>
               {searchQuery && (
                 <button
+                  type="button"
                   id="maps-search-clear"
                   onClick={() => setSearchQuery('')}
                   className="maps-clear-btn"
@@ -174,7 +190,7 @@ export default function Maps() {
                   </svg>
                 </button>
               )}
-            </div>
+            </form>
           </div>
         </div>
       ) : null}

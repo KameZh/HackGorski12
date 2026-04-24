@@ -33,12 +33,20 @@ export default function MapControls({
   onZoomIn,
   onZoomOut,
   onResetView,
+  onTogglePitch,
   showResetViewButton = true,
   onToggleAreaInsights,
   areaInsightsEnabled = false,
   showAreaInsightsButton = false,
 }) {
-  const { mapStyle, terrain3D, toggleMapStyle, toggleTerrain } = useMapStore()
+  const {
+    mapStyle,
+    terrain3D,
+    hillshadeRelief,
+    toggleMapStyle,
+    toggleTerrain,
+    toggleHillshadeRelief,
+  } = useMapStore()
 
   const inactiveButton = {
     ...styles.buttonBase,
@@ -124,6 +132,60 @@ export default function MapControls({
           <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
         </svg>
       </button>
+
+      <button
+        id="map-relief-toggle"
+        title={hillshadeRelief ? 'Hide relief shading' : 'Show relief shading'}
+        onClick={toggleHillshadeRelief}
+        style={{
+          ...styles.buttonBase,
+          background: hillshadeRelief
+            ? 'linear-gradient(180deg, #334155, #0f766e)'
+            : 'rgba(18, 26, 40, 0.9)',
+          color: hillshadeRelief ? '#fbfef9' : '#9fc9de',
+        }}
+        aria-label="Toggle relief shading"
+      >
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 17c3-5 5-8 8-8s4 4 7 4c1 0 2-.4 3-1" />
+          <path d="M3 21c3-4 5-6 8-6s4 3 7 3c1 0 2-.2 3-.8" />
+          <path d="M3 13c2-4 4-6 7-6 4 0 5 4 8 4 1 0 2-.3 3-1" />
+        </svg>
+      </button>
+
+      {onTogglePitch ? (
+        <button
+          id="map-pitch-toggle"
+          title="Toggle tilted 3D view"
+          onClick={() => onTogglePitch?.()}
+          style={inactiveButton}
+          aria-label="Toggle tilted 3D view"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M3 16 12 4l9 12" />
+            <path d="M6 16h12" />
+            <path d="M8 20h8" />
+          </svg>
+        </button>
+      ) : null}
 
       <button
         id="map-center-me"

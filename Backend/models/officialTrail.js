@@ -1,5 +1,20 @@
 import mongoose from "mongoose";
 
+const trailMarkSchema = new mongoose.Schema(
+  {
+    name: { type: String, default: "" },
+    description: { type: String, default: "" },
+    colourType: {
+      type: String,
+      enum: ["red", "blue", "green", "yellow", "white", "black", "unmarked"],
+      default: "red",
+    },
+    startIndex: { type: Number, required: true, min: 0 },
+    endIndex: { type: Number, required: true, min: 0 },
+  },
+  { _id: false },
+);
+
 const officialTrailSchema = new mongoose.Schema(
   {
     source: {
@@ -29,6 +44,9 @@ const officialTrailSchema = new mongoose.Schema(
     },
     network: { type: String, default: "" },
     description: { type: String, default: "" },
+    startPoint: { type: String, default: "" },
+    endPoint: { type: String, default: "" },
+    highestPoint: { type: String, default: "" },
     startCoordinates: {
       type: [Number],
       default: null,
@@ -55,6 +73,10 @@ const officialTrailSchema = new mongoose.Schema(
       centerCoordinates: [Number],
       startCoordinates: [Number],
       endCoordinates: [Number],
+    },
+    trailMarks: {
+      type: [trailMarkSchema],
+      default: [],
     },
     averageAccuracy: { type: Number, default: 0 },
   },

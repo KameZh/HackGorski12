@@ -4,6 +4,13 @@ export const createPing = (data) => {
   return api.post('/pings', data)
 }
 
+export const createPhotoPing = (data) => {
+  return api.post('/pings', {
+    ...data,
+    type: 'photo',
+  })
+}
+
 export const fetchPings = (params = {}) => {
   return api.get('/pings', { params })
 }

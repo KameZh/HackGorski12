@@ -9,11 +9,13 @@ import LiveCompass from '../components/map/LiveCompass'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
+import CameraButton from '../components/camera/CameraButton'
+import PhotoCaptureModal from '../components/camera/PhotoCaptureModal'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
-import { createPing, fetchPings } from '../api/pings'
+import { createPing, createPhotoPing, fetchPings } from '../api/pings'
 import { buildCenteredView } from '../utils/mapDefaults'
 import TrailMapLayers from '../components/map/TrailMapLayers'
 import {
@@ -53,6 +55,7 @@ const PING_TYPES = {
     emoji: '🌳',
     color: '#dc2626',
   },
+  photo: { label: 'Photo', emoji: '📷', color: '#8b5cf6' },
 }
 
 const pingMarkerStyle = {
@@ -65,6 +68,20 @@ const pingMarkerStyle = {
   cursor: 'pointer',
   border: '2px solid #fff',
   boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+}
+
+const photoMarkerStyle = {
+  width: 44,
+  height: 44,
+  borderRadius: '12px',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 22,
+  cursor: 'pointer',
+  border: '3px solid #fff',
+  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+  overflow: 'hidden',
+  background: '#8b5cf6',
 }
 
 const pingBtnBase = {
@@ -241,6 +258,10 @@ export default function Record() {
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
   const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
+
+  // Photo capture state
+  const [capturedPhoto, setCapturedPhoto] = useState(null)
+  const [showPhotoModal, setShowPhotoModal] = useState(false)
 
   const [huts, setHuts] = useState([])
   const [selectedHut, setSelectedHut] = useState(null)
@@ -990,6 +1011,28 @@ export default function Record() {
     loadedTrailActivity,
   ])
 
+  // Handle photo capture from camera button
+  const handlePhotoCapture = useCallback((photo) => {
+    setCapturedPhoto(photo)
+    setShowPhotoModal(true)
+  }, [])
+
+  // Handle photo submission
+  const handlePhotoSubmit = useCallback(async (photoData) => {
+    try {
+      const res = await createPhotoPing({
+        type: 'photo',
+        description: photoData.description,
+        photoUrl: photoData.webPath,
+        coordinates: photoData.coordinates,
+      })
+      setPings((prev) => [res.data, ...prev])
+    } catch (err) {
+      console.error('Photo ping submit error:', err)
+      throw err
+    }
+  }, [])
+
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
   const isActivityActive =
@@ -1277,6 +1320,39 @@ export default function Record() {
           {viewState.zoom >= 12 &&
             pings.map((ping) => {
               const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+              
+              if (ping.type === 'photo' && ping.photoUrl) {
+                return (
+                  <Marker
+                    key={ping._id}
+                    longitude={ping.coordinates[0]}
+                    latitude={ping.coordinates[1]}
+                    anchor="center"
+                    onClick={(e) => {
+                      e.originalEvent.stopPropagation()
+                      setSelectedPing(
+                        selectedPing?._id === ping._id ? null : ping
+                      )
+                    }}
+                  >
+                    <div
+                      style={photoMarkerStyle}
+                      title={`${cfg.label}: ${ping.description || 'No description'}`}
+                    >
+                      <img
+                        src={ping.photoUrl}
+                        alt={ping.description || 'Photo'}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover',
+                        }}
+                      />
+                    </div>
+                  </Marker>
+                )
+              }
+
               return (
                 <Marker
                   key={ping._id}
@@ -1305,6 +1381,23 @@ export default function Record() {
       <LiveCompass
         mapBearing={viewState.bearing}
         movementHeading={movementHeading}
+      />
+
+      {/* Camera button for capturing photos */}
+      <CameraButton
+        onPhotoCapture={handlePhotoCapture}
+        className="record-camera-button"
+      />
+
+      {/* Photo capture modal */}
+      <PhotoCaptureModal
+        photo={capturedPhoto}
+        isOpen={showPhotoModal}
+        onClose={() => {
+          setShowPhotoModal(false)
+          setCapturedPhoto(null)
+        }}
+        onSubmit={handlePhotoSubmit}
       />
 
       {isActivityActive ? (
@@ -1450,6 +1543,20 @@ export default function Record() {
           {selectedPing.description ? (
             <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 6 }}>
               {selectedPing.description}
+            </div>
+          ) : null}
+          {selectedPing.type === 'photo' && selectedPing.photoUrl ? (
+            <div style={{ marginBottom: 6 }}>
+              <img
+                src={selectedPing.photoUrl}
+                alt={selectedPing.description || 'Photo'}
+                style={{
+                  width: '100%',
+                  maxHeight: '200px',
+                  objectFit: 'cover',
+                  borderRadius: 8,
+                }}
+              />
             </div>
           ) : null}
           <div style={{ fontSize: 11, color: '#64748b' }}>

@@ -1100,7 +1100,7 @@ async function detectTrashClusters(newPing) {
 
 app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
   try {
-    const { trailId, type, description, coordinates } = req.body;
+    const { trailId, type, description, coordinates, photoUrl } = req.body;
     if (!type) return res.status(400).json({ error: "type is required" });
     if (
       !coordinates ||
@@ -1124,6 +1124,7 @@ app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
       username: req.dbUser?.username || "Anonymous",
       type,
       description: description || "",
+      photoUrl: photoUrl || null,
       coordinates,
       expiresAt: Ping.computeExpiresAt(type),
     });

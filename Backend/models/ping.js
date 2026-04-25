@@ -12,10 +12,11 @@ const pingSchema = new mongoose.Schema(
     username: { type: String, default: 'Anonymous' },
     type: {
       type: String,
-      enum: ['junk', 'mud', 'environmental_danger'],
+      enum: ['junk', 'mud', 'environmental_danger', 'photo'],
       required: true,
     },
     description: { type: String, default: '' },
+    photoUrl: { type: String, default: null },
     coordinates: {
       type: [Number],
       required: true,
@@ -35,6 +36,7 @@ const PING_EXPIRATION = {
   junk: null,
   mud: 24 * 60 * 60 * 1000,
   environmental_danger: 7 * 24 * 60 * 60 * 1000,
+  photo: null, // Photos don't expire
 }
 
 pingSchema.statics.computeExpiresAt = function (type) {

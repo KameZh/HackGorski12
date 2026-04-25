@@ -38,6 +38,7 @@ export default function MapControls({
   onToggleAreaInsights,
   areaInsightsEnabled = false,
   showAreaInsightsButton = false,
+  children,
 }) {
   const {
     mapStyle,
@@ -322,6 +323,8 @@ export default function MapControls({
           </svg>
         </button>
       </div>
+
+      {children}
     </div>
   )
 }

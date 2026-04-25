@@ -259,6 +259,11 @@ const PING_TYPES = {
     marker: 'D',
     color: '#dc2626',
   },
+  photo: {
+    label: 'Photo',
+    marker: '📷',
+    color: '#8b5cf6',
+  },
 }
 
 const CLUSTER_CONFIG = {
@@ -298,6 +303,20 @@ const pingMarkerStyle = {
   cursor: 'pointer',
   border: '2px solid #fff',
   boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+}
+
+const photoMarkerStyle = {
+  width: 44,
+  height: 44,
+  borderRadius: '12px',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 22,
+  cursor: 'pointer',
+  border: '3px solid #fff',
+  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+  overflow: 'hidden',
+  background: '#8b5cf6',
 }
 
 const overlayCard = {
@@ -542,8 +561,8 @@ function extractLineCoordinates(geojson) {
   if (parsed.type === 'FeatureCollection') {
     return Array.isArray(parsed.features)
       ? parsed.features.flatMap((feature) =>
-          extractLineCoordinates(feature?.geometry)
-        )
+        extractLineCoordinates(feature?.geometry)
+      )
       : []
   }
 
@@ -938,12 +957,12 @@ function buildBoundsFromCoordinates(coordinates = []) {
     ]
   )
 }
-
 export default function MapView({
   searchQuery = '',
   searchRequest = null,
   initialStartFocus = null,
   onTrailFlowVisibilityChange = null,
+  children,
 }) {
   const navigate = useNavigate()
   const { isSignedIn, userId } = useAuth()
@@ -1095,8 +1114,8 @@ export default function MapView({
 
   const tilesetConfigWarning =
     Boolean(MAPBOX_TILESET_URL) &&
-    MAPBOX_TILESET_TYPE === 'vector' &&
-    !MAPBOX_TILESET_SOURCE_LAYER
+      MAPBOX_TILESET_TYPE === 'vector' &&
+      !MAPBOX_TILESET_SOURCE_LAYER
       ? 'Tileset source-layer is missing. Set VITE_MAPBOX_TILESET_SOURCE_LAYER.'
       : ''
 
@@ -1476,7 +1495,7 @@ export default function MapView({
     const mapCenter = mapRef.current?.getMap()?.getCenter()
     const proximity =
       Number.isFinite(userLocation?.longitude) &&
-      Number.isFinite(userLocation?.latitude)
+        Number.isFinite(userLocation?.latitude)
         ? `${userLocation.longitude},${userLocation.latitude}`
         : `${mapCenter?.lng || INITIAL_VIEW.longitude},${mapCenter?.lat || INITIAL_VIEW.latitude}`
     const params = new URLSearchParams({
@@ -1685,16 +1704,16 @@ export default function MapView({
       fetchTrailStartReadiness(trailId, { maxDistanceMeters: 1000 }),
       hasWeatherApiKey() && startPanelCoordinates
         ? fetchCurrentWeather({
-            latitude: startPanelCoordinates[1],
-            longitude: startPanelCoordinates[0],
-          })
+          latitude: startPanelCoordinates[1],
+          longitude: startPanelCoordinates[0],
+        })
         : Promise.resolve(null),
       hasWeatherApiKey() && startPanelCoordinates
         ? fetchWeatherForecast({
-            latitude: startPanelCoordinates[1],
-            longitude: startPanelCoordinates[0],
-            limit: 10,
-          })
+          latitude: startPanelCoordinates[1],
+          longitude: startPanelCoordinates[0],
+          limit: 10,
+        })
         : Promise.resolve([]),
     ])
       .then(([readinessRes, weatherNowRes, forecastRes]) => {
@@ -1781,7 +1800,7 @@ export default function MapView({
 
       fetchClusters()
         .then((r) => setClusters(Array.isArray(r.data) ? r.data : []))
-        .catch(() => {})
+        .catch(() => { })
     } catch (err) {
       console.error('Ping submit error:', err)
     } finally {
@@ -1813,7 +1832,7 @@ export default function MapView({
         setSelectedCluster(null)
         fetchPings()
           .then((r) => setPings(Array.isArray(r.data) ? r.data : []))
-          .catch(() => {})
+          .catch(() => { })
       } else {
         setClusters((prev) =>
           prev.map((cluster) =>
@@ -2086,9 +2105,9 @@ export default function MapView({
           parseTrailGeojson(
             activeTrailSession?.pathCoordinates?.length
               ? {
-                  type: 'LineString',
-                  coordinates: activeTrailSession.pathCoordinates,
-                }
+                type: 'LineString',
+                coordinates: activeTrailSession.pathCoordinates,
+              }
               : null
           )
 
@@ -2179,7 +2198,7 @@ export default function MapView({
                 : null,
             })
           },
-          () => {}
+          () => { }
         )
       }
     },
@@ -2324,8 +2343,8 @@ export default function MapView({
       setStartPanelError(
         startReadiness?.distanceToStartMeters
           ? `Move closer to the start point. You are ${Math.round(
-              startReadiness.distanceToStartMeters
-            )} m away and must be within 1000 m.`
+            startReadiness.distanceToStartMeters
+          )} m away and must be within 1000 m.`
           : 'Enable location and move within 1 km from the trail start to begin.'
       )
       return
@@ -2509,7 +2528,7 @@ export default function MapView({
           )
           fetchPings()
             .then((r) => setPings(Array.isArray(r.data) ? r.data : []))
-            .catch(() => {})
+            .catch(() => { })
         } else {
           setClusters((prev) =>
             prev.map((entry) => (entry._id === payload._id ? res.data : entry))
@@ -3141,6 +3160,40 @@ export default function MapView({
             {viewState.zoom >= 12 &&
               pings.map((ping) => {
                 const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+
+                // Render photo pings with image preview
+                if (ping.type === 'photo' && ping.photoUrl) {
+                  return (
+                    <Marker
+                      key={ping._id}
+                      longitude={ping.coordinates[0]}
+                      latitude={ping.coordinates[1]}
+                      anchor="center"
+                      onClick={(e) => {
+                        e.originalEvent.stopPropagation()
+                        setSelectedPing(
+                          selectedPing?._id === ping._id ? null : ping
+                        )
+                      }}
+                    >
+                      <div
+                        style={photoMarkerStyle}
+                        title={`${cfg.label}: ${ping.description || 'No description'}`}
+                      >
+                        <img
+                          src={ping.photoUrl}
+                          alt={ping.description || 'Photo'}
+                          style={{
+                            width: '100%',
+                            height: '100%',
+                            objectFit: 'cover',
+                          }}
+                        />
+                      </div>
+                    </Marker>
+                  )
+                }
+
                 return (
                   <Marker
                     key={ping._id}
@@ -3849,6 +3902,20 @@ export default function MapView({
               {selectedPing.description}
             </div>
           ) : null}
+          {selectedPing.type === 'photo' && selectedPing.photoUrl ? (
+            <div style={{ marginBottom: 6 }}>
+              <img
+                src={selectedPing.photoUrl}
+                alt={selectedPing.description || 'Photo'}
+                style={{
+                  width: '100%',
+                  maxHeight: '200px',
+                  objectFit: 'cover',
+                  borderRadius: 8,
+                }}
+              />
+            </div>
+          ) : null}
           <div style={{ fontSize: 11, color: '#64748b' }}>
             By {selectedPing.username || 'Anonymous'} ·{' '}
             {new Date(selectedPing.createdAt).toLocaleDateString()}
@@ -4080,9 +4147,9 @@ export default function MapView({
               <div style={{ marginTop: 4 }}>
                 {approachSummary
                   ? `${(approachSummary.distanceMeters / 1000).toFixed(2)} km walk to the trail start · ${Math.max(
-                      1,
-                      Math.round(approachSummary.durationSeconds / 60)
-                    )} min`
+                    1,
+                    Math.round(approachSummary.durationSeconds / 60)
+                  )} min`
                   : 'Draw a walking route from your location to the trail start.'}
               </div>
               {approachError ? (
@@ -4514,7 +4581,9 @@ export default function MapView({
         onToggleAreaInsights={handleToggleAreaInsights}
         areaInsightsEnabled={areaInsightsEnabled}
         showAreaInsightsButton
-      />
+      >
+        {children}
+      </MapControls>
 
       {showRadiusPanel ? (
         <div
@@ -4712,11 +4781,11 @@ export default function MapView({
       ) : null}
 
       {loadingTrails ||
-      trailsError ||
-      geoError ||
-      searchMapError ||
-      mapError ||
-      tilesetConfigWarning ? (
+        trailsError ||
+        geoError ||
+        searchMapError ||
+        mapError ||
+        tilesetConfigWarning ? (
         <div
           style={{
             position: 'absolute',

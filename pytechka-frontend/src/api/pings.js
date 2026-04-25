@@ -7,6 +7,7 @@ export const createPing = (data) => {
 export const createPhotoPing = (data) => {
   return api.post('/photo-pings', {
     type: 'photo',
+    ...(data.trailId ? { trailId: data.trailId } : {}),
     description: data.description || '',
     photoUrl: data.photoUrl,
     photoCategory: data.photoCategory || 'memory',

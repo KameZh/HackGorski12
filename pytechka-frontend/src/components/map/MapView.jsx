@@ -38,7 +38,8 @@ import HutPreviewCard from '../layout/HutPreviewCard'
 import OfficialTrailCard from '../layout/OfficialTrailCard'
 import CameraButton from '../camera/CameraButton'
 import PhotoCaptureModal from '../camera/PhotoCaptureModal'
-
+import { useOfflineStore } from '../../store/offlineStore'
+import OfflineMapModal from './OfflineMapModal'
 const INITIAL_VIEW = buildCenteredView(7)
 
 const DIFFICULTY_COLOR = {
@@ -1098,6 +1099,13 @@ export default function MapView({
   const [selectedPing, setSelectedPing] = useState(null)
   const [capturedPhoto, setCapturedPhoto] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false)
+
+  const { offlineTrails, loadOfflineTrails } = useOfflineStore()
+
+  useEffect(() => {
+    loadOfflineTrails()
+  }, [loadOfflineTrails])
 
   const [clusters, setClusters] = useState([])
   const [selectedCluster, setSelectedCluster] = useState(null)
@@ -1485,36 +1493,62 @@ export default function MapView({
           if (!active) return
 
           const trailsOk = trailsResult.status === 'fulfilled'
-          const nextTrails = trailsOk
+          let apiTrails = trailsOk
             ? Array.isArray(trailsResult.value?.data)
               ? trailsResult.value.data
               : []
             : []
 
-          setTrails(nextTrails)
+          const mergedMap = new Map()
+          offlineTrails.forEach(t => mergedMap.set(t._id || t.id, t))
+          apiTrails.forEach(t => mergedMap.set(t._id || t.id, t))
+          const mergedTrails = Array.from(mergedMap.values())
+
+          setTrails(mergedTrails)
 
           const geojsonOk = geojsonResult.status === 'fulfilled'
-          if (geojsonOk) {
-            setTrailsGeojson(
-              normalizeTrailGeojsonCollection(geojsonResult.value?.data)
-            )
+          if (geojsonOk && trailsOk) {
+             const apiGeojson = normalizeTrailGeojsonCollection(geojsonResult.value?.data)
+             const offlineGeojson = buildTrailGeojsonFromTrails(offlineTrails)
+             const mergedFeatures = new Map()
+             
+             apiGeojson.features.forEach(f => {
+               if (f.properties?.id) mergedFeatures.set(f.properties.id, f)
+             })
+             offlineGeojson.features.forEach(f => {
+               if (f.properties?.id && !mergedFeatures.has(f.properties.id)) {
+                 mergedFeatures.set(f.properties.id, f)
+               }
+             })
+
+             setTrailsGeojson({ type: 'FeatureCollection', features: Array.from(mergedFeatures.values()) })
           } else {
-            setTrailsGeojson(buildTrailGeojsonFromTrails(nextTrails))
+            setTrailsGeojson(buildTrailGeojsonFromTrails(mergedTrails))
           }
 
           if (!trailsOk) {
-            setTrailsError(
-              'Could not load trails from the API. The base map is still available.'
-            )
+            if (offlineTrails.length > 0) {
+              setTrailsError('Offline mode. Displaying downloaded trails.')
+            } else {
+              setTrailsError(
+                'Could not load trails from the API. The base map is still available.'
+              )
+            }
           }
         })
         .catch(() => {
           if (!active) return
-          setTrails([])
-          setTrailsGeojson({ type: 'FeatureCollection', features: [] })
-          setTrailsError(
-            'Could not load trails from the API. The base map is still available.'
-          )
+          if (offlineTrails.length > 0) {
+             setTrails([...offlineTrails])
+             setTrailsGeojson(buildTrailGeojsonFromTrails(offlineTrails))
+             setTrailsError('Offline mode. Displaying downloaded trails.')
+          } else {
+             setTrails([])
+             setTrailsGeojson({ type: 'FeatureCollection', features: [] })
+             setTrailsError(
+               'Could not load trails from the API. The base map is still available.'
+             )
+          }
         })
         .finally(() => {
           if (active) setLoadingTrails(false)
@@ -4709,9 +4743,17 @@ export default function MapView({
         onToggleAreaInsights={handleToggleAreaInsights}
         areaInsightsEnabled={areaInsightsEnabled}
         showAreaInsightsButton
+        onToggleOffline={() => setOfflineModalOpen(true)}
+        showOfflineButton={true}
       >
         {children}
       </MapControls>
+
+      <OfflineMapModal
+        isOpen={offlineModalOpen}
+        onClose={() => setOfflineModalOpen(false)}
+        currentTrails={trails}
+      />
 
       {activeTrailSession ? (
         <CameraButton

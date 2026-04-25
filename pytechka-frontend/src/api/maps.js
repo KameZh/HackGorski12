@@ -1,11 +1,11 @@
 import api from './client'
 
 export const fetchMapTrails = (params = {}) => {
-  return api.get('/trails', { params })
+  return api.get('/trails', { params, timeout: 60000 })
 }
 
 export const fetchMapTrailsGeojson = () => {
-  return api.get('/trails/geojson')
+  return api.get('/trails/geojson', { timeout: 60000 })
 }
 
 export const fetchMapTrailsByArea = ({

@@ -153,3 +153,82 @@ export function normalizeTrailGeojsonCollection(collection) {
 
   return { type: 'FeatureCollection', features }
 }
+
+export function parseTrailGeojson(geojson) {
+  if (!geojson) return null
+  try {
+    const parsed = typeof geojson === 'string' ? JSON.parse(geojson) : geojson
+    if (!parsed || typeof parsed !== 'object' || !parsed.type) return null
+    if (
+      parsed.type === 'FeatureCollection' ||
+      parsed.type === 'Feature' ||
+      parsed.type === 'LineString' ||
+      parsed.type === 'MultiLineString'
+    ) {
+      return parsed
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+export function extractLineGeometries(geojson) {
+  const parsed = parseTrailGeojson(geojson)
+  if (!parsed) return []
+
+  if (parsed.type === 'LineString' || parsed.type === 'MultiLineString') {
+    return [parsed]
+  }
+
+  if (parsed.type === 'Feature') {
+    return extractLineGeometries(parsed.geometry)
+  }
+
+  if (parsed.type === 'FeatureCollection') {
+    return Array.isArray(parsed.features)
+      ? parsed.features.flatMap((feature) =>
+        extractLineGeometries(feature?.geometry)
+      )
+      : []
+  }
+
+  return []
+}
+
+export function buildTrailGeojsonFromTrails(trails = []) {
+  const features = trails.flatMap((trail) => {
+    const geometries = extractLineGeometries(trail.geojson)
+    if (!geometries.length) return []
+
+    const source = String(trail.source || 'user').toLowerCase()
+    const trailRef = String(trail.ref || '').trim()
+
+    return geometries.map((geometry) => ({
+      type: 'Feature',
+      geometry,
+      properties: normalizeTrailFeatureProperties({
+        id: String(trail._id || trail.id || ''),
+        name: trail.name,
+        name_bg: trail.name_bg,
+        name_en: trail.name_en,
+        ref: trailRef,
+        source,
+        difficulty: trail.difficulty,
+        colour_type: trail.colour_type,
+        osm_colour: trail.osm_colour,
+        osm_marking: trail.osm_marking,
+        network: trail.network,
+        distance: Number(trail.stats?.distance || 0) / 1000,
+        elevation_gain: Number(trail.stats?.elevationGain || 0),
+        description: trail.description,
+      }),
+    }))
+  })
+
+  return {
+    type: 'FeatureCollection',
+    features,
+  }
+}
+

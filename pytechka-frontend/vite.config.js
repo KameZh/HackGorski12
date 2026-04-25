@@ -9,6 +9,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      workbox: {
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/api\.mapbox\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'offline-mapbox-tiles',
+              expiration: {
+                maxEntries: 10000,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+              matchOptions: {
+                ignoreSearch: true,
+              },
+            },
+          },
+        ],
+      },
       manifest: {
         name: 'Pytechka',
         short_name: 'Pytechka',

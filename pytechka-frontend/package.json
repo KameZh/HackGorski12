@@ -22,6 +22,7 @@
     "@tmcw/togeojson": "^7.1.2",
     "@turf/turf": "^7.3.4",
     "axios": "^1.13.6",
+    "localforage": "^1.10.0",
     "mapbox-gl": "^3.20.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

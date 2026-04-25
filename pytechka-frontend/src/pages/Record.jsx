@@ -11,6 +11,7 @@ import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import CameraButton from '../components/camera/CameraButton'
 import PhotoCaptureModal from '../components/camera/PhotoCaptureModal'
+import OfflineMapModal from '../components/map/OfflineMapModal'
 import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
@@ -22,7 +23,9 @@ import {
   EMPTY_TRAIL_FEATURE_COLLECTION,
   getInteractiveTrailLayerIds,
   normalizeTrailGeojsonCollection,
+  buildTrailGeojsonFromTrails,
 } from '../components/map/trailMapLayerUtils'
+import { useOfflineStore } from '../store/offlineStore'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -280,6 +283,7 @@ export default function Record() {
   // Photo capture state
   const [capturedPhoto, setCapturedPhoto] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false)
 
   const [huts, setHuts] = useState([])
   const [selectedHut, setSelectedHut] = useState(null)
@@ -290,6 +294,9 @@ export default function Record() {
   const [finishSubmitting, setFinishSubmitting] = useState(false)
   const [finishError, setFinishError] = useState('')
   const [finishSuccess, setFinishSuccess] = useState('')
+
+  const { loadOfflineTrails } = useOfflineStore()
+
 
   const resolvedMapStyle =
     MAPBOX_STYLE_URL || `mapbox://styles/mapbox/${mapStyle}`
@@ -858,40 +865,62 @@ export default function Record() {
 
   useEffect(() => {
     let active = true
-    setLoadingTrails(true)
-    setTrailsError('')
 
-    Promise.allSettled([fetchMapTrails({ compact: true }), fetchMapTrailsGeojson()])
-      .then(([trailsResult, geojsonResult]) => {
+    const loadTrails = async () => {
+      setLoadingTrails(true)
+      setTrailsError('')
+
+      // Step 1: immediately show whatever is in offline storage
+      await loadOfflineTrails()
+      const cachedTrails = useOfflineStore.getState().offlineTrails
+      if (cachedTrails.length > 0) {
+        setTrails([...cachedTrails])
+        setTrailsGeojson(buildTrailGeojsonFromTrails(cachedTrails))
+        setLoadingTrails(false) // stop the spinner immediately
+      }
+
+      // Step 2: try to fetch from API in the background
+      try {
+        const [trailsResult, geojsonResult] = await Promise.allSettled([
+          fetchMapTrails({ compact: true }),
+          fetchMapTrailsGeojson(),
+        ])
         if (!active) return
 
+        const fresh = cachedTrails.length === 0 // only show loading if we had nothing to show
+
         if (trailsResult.status === 'fulfilled') {
-          setTrails(
-            Array.isArray(trailsResult.value?.data)
-              ? trailsResult.value.data
-              : []
-          )
-        } else {
-          setTrails([])
-          setTrailsError(
-            'Could not load trail details from API. Record mode still works.'
-          )
+          const apiTrails = Array.isArray(trailsResult.value?.data) ? trailsResult.value.data : []
+          const mergedMap = new globalThis.Map()
+          cachedTrails.forEach(t => mergedMap.set(t._id || t.id, t))
+          apiTrails.forEach(t => mergedMap.set(t._id || t.id, t))
+          setTrails(Array.from(mergedMap.values()))
+        } else if (cachedTrails.length === 0) {
+          setTrailsError('Could not load trail details from API. Record mode still works.')
         }
 
         if (geojsonResult.status === 'fulfilled') {
-          setTrailsGeojson(
-            normalizeTrailGeojsonCollection(geojsonResult.value?.data)
-          )
-        } else {
+          const apiGeojson = normalizeTrailGeojsonCollection(geojsonResult.value?.data)
+          const offlineGeojson = buildTrailGeojsonFromTrails(cachedTrails)
+          const mergedFeatures = new globalThis.Map()
+          apiGeojson.features.forEach(f => { if (f.properties?.id) mergedFeatures.set(f.properties.id, f) })
+          offlineGeojson.features.forEach(f => { if (f.properties?.id && !mergedFeatures.has(f.properties.id)) mergedFeatures.set(f.properties.id, f) })
+          setTrailsGeojson({ type: 'FeatureCollection', features: Array.from(mergedFeatures.values()) })
+        } else if (cachedTrails.length === 0) {
           setTrailsGeojson(EMPTY_TRAIL_FEATURE_COLLECTION)
-          setTrailsError(
-            'Could not load map trails from API. Record mode still works.'
-          )
         }
-      })
-      .finally(() => {
-        if (active) setLoadingTrails(false)
-      })
+
+        if (fresh) setLoadingTrails(false)
+      } catch {
+        if (!active) return
+        if (cachedTrails.length === 0) {
+          setTrailsError('Offline — no cached trails available.')
+          setLoadingTrails(false)
+        }
+      }
+    }
+
+    loadTrails()
 
     return () => {
       active = false
@@ -899,7 +928,8 @@ export default function Record() {
       setMode('explore')
       setSelectedTrail(null)
     }
-  }, [clearWatch, setMode, setSelectedTrail])
+  }, [clearWatch, setMode, setSelectedTrail, loadOfflineTrails])
+
 
   useEffect(() => {
     const map = mapRef.current?.getMap()
@@ -1755,6 +1785,14 @@ export default function Record() {
         onZoomOut={handleZoomOut}
         onTogglePitch={handleTogglePitch}
         showResetViewButton={false}
+        onToggleOffline={() => setOfflineModalOpen(true)}
+        showOfflineButton={true}
+      />
+
+      <OfflineMapModal
+        isOpen={offlineModalOpen}
+        onClose={() => setOfflineModalOpen(false)}
+        mapCenter={viewState}
       />
 
       {selectedTrail && !selectedHut && (

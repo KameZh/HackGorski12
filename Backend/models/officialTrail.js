@@ -65,6 +65,7 @@ const officialTrailSchema = new mongoose.Schema(
     },
     geojson: { type: Object, required: true },
     geom: { type: Object, default: null },
+    mapGeometry: { type: Object, default: null },
     stats: {
       distance: Number,
       elevationGain: Number,

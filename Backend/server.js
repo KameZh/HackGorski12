@@ -373,6 +373,62 @@ function extractLineGeometries(geojson) {
   return [];
 }
 
+function sampleCoordinates(coordinates = [], maxPoints = 120) {
+  if (!Array.isArray(coordinates) || coordinates.length <= maxPoints) {
+    return coordinates;
+  }
+
+  const lastIndex = coordinates.length - 1;
+  const sampled = [];
+  for (let i = 0; i < maxPoints; i += 1) {
+    const sourceIndex = Math.round((i / (maxPoints - 1)) * lastIndex);
+    sampled.push(coordinates[sourceIndex]);
+  }
+
+  return sampled;
+}
+
+function simplifyMapGeometry(geometry, maxPoints = 120) {
+  if (!geometry || typeof geometry !== "object") return null;
+
+  if (geometry.type === "Feature") {
+    return simplifyMapGeometry(geometry.geometry, maxPoints);
+  }
+
+  if (geometry.type === "FeatureCollection") {
+    const firstLine = Array.isArray(geometry.features)
+      ? geometry.features
+          .map((feature) => simplifyMapGeometry(feature?.geometry, maxPoints))
+          .find(Boolean)
+      : null;
+    return firstLine || null;
+  }
+
+  if (geometry.type === "LineString") {
+    return {
+      type: "LineString",
+      coordinates: sampleCoordinates(geometry.coordinates, maxPoints),
+    };
+  }
+
+  if (geometry.type === "MultiLineString") {
+    const lines = Array.isArray(geometry.coordinates)
+      ? geometry.coordinates.filter(Array.isArray)
+      : [];
+    const lineBudget = Math.max(1, lines.length);
+    const pointsPerLine = Math.max(2, Math.floor(maxPoints / lineBudget));
+
+    return {
+      type: "MultiLineString",
+      coordinates: lines
+        .map((line) => sampleCoordinates(line, pointsPerLine))
+        .filter((line) => Array.isArray(line) && line.length >= 2),
+    };
+  }
+
+  return null;
+}
+
 function buildTrailSearchFilter(search) {
   if (!search) return null;
 
@@ -539,6 +595,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       startCoordinates,
       endCoordinates,
       geojson,
+      mapGeometry: simplifyMapGeometry(geojson),
       stats,
       trailMarks: normalizeTrailMarks(trailMarks, geojson),
       ai: { status: "pending" },
@@ -604,23 +661,31 @@ app.post(
 
 app.get("/api/trails/geojson", async (req, res) => {
   try {
-    const selectFields =
-      "geojson geom name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
+    const userTrailFields =
+      "geojson geom mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
+    const officialTrailFields =
+      "mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
 
     const [userTrails, officialTrails] = await Promise.all([
-      Trail.find({}).select(selectFields),
-      OfficialTrail.find({}).select(selectFields),
+      Trail.find({}).select(userTrailFields).lean(),
+      OfficialTrail.find({ mapGeometry: { $ne: null } })
+        .select(officialTrailFields)
+        .lean(),
     ]);
 
     const trails = [...userTrails, ...officialTrails];
 
     const features = trails.flatMap((trail) => {
-      const fallbackGeometry =
-        trail.geom && typeof trail.geom === "object" ? [trail.geom] : [];
+      const storedGeometry =
+        trail.mapGeometry && typeof trail.mapGeometry === "object"
+          ? [trail.mapGeometry]
+          : trail.geom && typeof trail.geom === "object"
+            ? [simplifyMapGeometry(trail.geom)]
+            : [];
       const geometries = extractLineGeometries(trail.geojson);
-      const geometryCandidates = geometries.length
-        ? geometries
-        : fallbackGeometry;
+      const geometryCandidates = storedGeometry.length
+        ? storedGeometry
+        : geometries;
 
       if (!geometryCandidates.length) return [];
 
@@ -719,10 +784,12 @@ app.get("/api/trails", async (req, res) => {
       ? Promise.resolve([])
       : Trail.find(userFilter)
           .sort(sortOption)
-          .select(compact ? "-reviews -geojson" : "-reviews");
+          .select(compact ? "-reviews -geojson -geom -mapGeometry" : "-reviews")
+          .lean();
     const officialTrailsPromise = OfficialTrail.find(officialFilter)
       .sort(sortOption)
-      .select(compact ? "-geojson -geom" : "");
+      .select(compact ? "-geojson -geom -mapGeometry" : "")
+      .lean();
 
     const [userTrails, officialTrails] = await Promise.all([
       userTrailsPromise,

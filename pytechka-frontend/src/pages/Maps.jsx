@@ -2,10 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import MapView from '../components/map/MapView'
 import BottomNav from '../components/layout/Bottomnav'
-import CameraButton from '../components/camera/CameraButton'
-import PhotoCaptureModal from '../components/camera/PhotoCaptureModal'
 import { fetchMapTrails } from '../api/maps'
-import { createPhotoPing } from '../api/pings'
 import { getSearchSuggestions } from '../utils/searchSuggestions'
 import './Maps.css'
 
@@ -25,10 +22,6 @@ export default function Maps() {
   const [suggestionTrails, setSuggestionTrails] = useState([])
   const [hideTopBar, setHideTopBar] = useState(false)
   const [searchRequest, setSearchRequest] = useState(null)
-
-  // Photo capture state
-  const [capturedPhoto, setCapturedPhoto] = useState(null)
-  const [showPhotoModal, setShowPhotoModal] = useState(false)
 
   const initialStartFocus = useMemo(() => {
     const params = new URLSearchParams(location.search)
@@ -116,27 +109,6 @@ export default function Maps() {
     [searchQuery]
   )
 
-  // Handle photo capture from camera button
-  const handlePhotoCapture = useCallback((photo) => {
-    setCapturedPhoto(photo)
-    setShowPhotoModal(true)
-  }, [])
-
-  // Handle photo submission
-  const handlePhotoSubmit = useCallback(async (photoData) => {
-    try {
-      await createPhotoPing({
-        type: 'photo',
-        description: photoData.description,
-        photoUrl: photoData.webPath,
-        coordinates: photoData.coordinates,
-      })
-    } catch (err) {
-      console.error('Photo ping submit error:', err)
-      throw err
-    }
-  }, [])
-
   return (
     <div id="maps-page" className="maps-page">
       <div className="maps-glow maps-glow-top" />
@@ -148,21 +120,8 @@ export default function Maps() {
           searchRequest={searchRequest}
           initialStartFocus={initialStartFocus}
           onTrailFlowVisibilityChange={setHideTopBar}
-        >
-          <CameraButton onPhotoCapture={handlePhotoCapture} />
-        </MapView>
+        />
       </div>
-
-      {/* Photo capture modal */}
-      <PhotoCaptureModal
-        photo={capturedPhoto}
-        isOpen={showPhotoModal}
-        onClose={() => {
-          setShowPhotoModal(false)
-          setCapturedPhoto(null)
-        }}
-        onSubmit={handlePhotoSubmit}
-      />
 
       {!hideTopBar ? (
         <div id="maps-topbar" className="maps-topbar">

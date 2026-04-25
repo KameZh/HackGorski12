@@ -7,6 +7,7 @@ import { connectDB, disconnectDB, isDatabaseReady } from "./connection.js";
 import Trail from "./models/trail.js";
 import OfficialTrail from "./models/officialTrail.js";
 import Ping from "./models/ping.js";
+import PhotoPing from "./models/photoPing.js";
 import TrashCluster from "./models/trashCluster.js";
 import User from "./models/user.js";
 import Hut from "./models/hut.js";
@@ -27,6 +28,30 @@ const enableAIAnalysis =
       (nodeEnv === "production" ? "false" : "true"),
   ).toLowerCase() === "true";
 const isVercelRuntime = Boolean(process.env.VERCEL);
+const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+const PHOTO_PING_CATEGORIES = new Set([
+  "viewpoint",
+  "trail_condition",
+  "marking",
+  "water_source",
+  "hazard",
+  "memory",
+]);
+
+function normalizePhotoPingPayload(body = {}) {
+  const photoUrl = String(body.photoUrl || body.webPath || "").trim();
+  const description = String(body.description || "").trim().slice(0, 200);
+  const coordinates = Array.isArray(body.coordinates)
+    ? body.coordinates.map((value) => Number(value))
+    : [];
+  const rawCategory = String(body.photoCategory || "memory").trim();
+  const photoCategory = PHOTO_PING_CATEGORIES.has(rawCategory)
+    ? rawCategory
+    : "memory";
+  const trailId = isMongoObjectId(body.trailId) ? String(body.trailId) : "";
+
+  return { photoUrl, description, coordinates, photoCategory, trailId };
+}
 
 const app = express();
 const corsOptions = {
@@ -50,7 +75,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 app.disable("x-powered-by");
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "6mb" }));
 app.use(clerkMiddleware());
 
 app.get("/healthz", (req, res) => {
@@ -1098,9 +1123,96 @@ async function detectTrashClusters(newPing) {
   }
 }
 
-app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
+async function createPhotoPingHandler(req, res) {
   try {
-    const { trailId, type, description, coordinates, photoUrl } = req.body;
+    const { photoUrl, description, coordinates, photoCategory, trailId } =
+      normalizePhotoPingPayload(req.body);
+
+    if (!photoUrl) {
+      return res.status(400).json({ error: "photoUrl is required" });
+    }
+
+    if (!photoUrl.startsWith("data:image/") && !photoUrl.startsWith("http")) {
+      return res.status(400).json({ error: "Invalid photo data" });
+    }
+
+    if (
+      coordinates.length !== 2 ||
+      !Number.isFinite(coordinates[0]) ||
+      !Number.isFinite(coordinates[1]) ||
+      Math.abs(coordinates[0]) > 180 ||
+      Math.abs(coordinates[1]) > 90
+    ) {
+      return res
+        .status(400)
+        .json({ error: "coordinates must be [longitude, latitude]" });
+    }
+
+    const { userId } = getAuth(req);
+    const ping = await PhotoPing.create({
+      trailId: trailId || null,
+      userId,
+      username: req.auth?.sessionClaims?.username || "Anonymous",
+      type: "photo",
+      description,
+      photoUrl,
+      photoCategory,
+      coordinates,
+      expiresAt: null,
+    });
+
+    return res.status(201).json(ping);
+  } catch (err) {
+    console.error("Photo ping create error:", err);
+    if (err?.name === "ValidationError") {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err?.name === "CastError") {
+      return res.status(400).json({ error: "Invalid photo data" });
+    }
+    if (String(err?.message || "").includes("BSONObj size")) {
+      return res.status(413).json({
+        error: "Photo is too large. Please retake it or choose a smaller image.",
+      });
+    }
+    return res.status(500).json({
+      error:
+        nodeEnv === "production"
+          ? "Failed to create photo ping"
+          : err?.message || "Failed to create photo ping",
+    });
+  }
+}
+
+app.post("/api/pings/photo", requireAuth(), createPhotoPingHandler);
+app.post("/api/photo-pings", requireAuth(), createPhotoPingHandler);
+
+app.get("/api/photo-pings", async (req, res) => {
+  try {
+    const filter = { resolved: { $ne: true } };
+    if (req.query.trailId) filter.trailId = String(req.query.trailId);
+    const photoPings = await PhotoPing.find(filter).sort({ createdAt: -1 });
+    res.json(photoPings);
+  } catch (err) {
+    console.error("Photo pings list error:", err);
+    res.status(500).json({ error: "Failed to fetch photo pings" });
+  }
+});
+
+app.post(
+  "/api/pings",
+  requireAuth(),
+  (req, res, next) => {
+    if (req.body?.type === "photo") {
+      return createPhotoPingHandler(req, res);
+    }
+    return checkUser(req, res, next);
+  },
+  async (req, res) => {
+  try {
+    const { trailId, type, description, coordinates, photoUrl, photoCategory } =
+      req.body;
+    const normalizedTrailId = String(trailId || "").trim();
     if (!type) return res.status(400).json({ error: "type is required" });
     if (
       !coordinates ||
@@ -1111,20 +1223,30 @@ app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
         .status(400)
         .json({ error: "coordinates must be [longitude, latitude]" });
     }
+    if (type === "photo" && !photoUrl) {
+      return res.status(400).json({ error: "photoUrl is required" });
+    }
 
-    if (trailId) {
-      const trail = await Trail.findById(trailId);
+    if (normalizedTrailId) {
+      if (!isMongoObjectId(normalizedTrailId)) {
+        return res.status(400).json({ error: "Invalid trail id" });
+      }
+
+      const trail =
+        (await Trail.findById(normalizedTrailId).select("_id")) ||
+        (await OfficialTrail.findById(normalizedTrailId).select("_id"));
       if (!trail) return res.status(404).json({ error: "Trail not found" });
     }
 
     const { userId } = getAuth(req);
     const ping = await Ping.create({
-      trailId: trailId || null,
+      trailId: normalizedTrailId || null,
       userId,
       username: req.dbUser?.username || "Anonymous",
       type,
       description: description || "",
       photoUrl: photoUrl || null,
+      photoCategory: type === "photo" ? photoCategory || "memory" : null,
       coordinates,
       expiresAt: Ping.computeExpiresAt(type),
     });
@@ -1136,9 +1258,21 @@ app.post("/api/pings", requireAuth(), checkUser, async (req, res) => {
     res.status(201).json(ping);
   } catch (err) {
     console.error("Ping create error:", err);
+    if (err?.name === "ValidationError") {
+      return res.status(400).json({ error: err.message });
+    }
+    if (err?.name === "CastError") {
+      return res.status(400).json({ error: "Invalid ping data" });
+    }
+    if (String(err?.message || "").includes("BSONObj size")) {
+      return res.status(413).json({
+        error: "Photo is too large. Please retake it or choose a smaller image.",
+      });
+    }
     res.status(500).json({ error: "Failed to create ping" });
   }
-});
+  },
+);
 
 app.get("/api/pings", async (req, res) => {
   try {
@@ -1252,6 +1386,12 @@ app.post(
 app.use((err, req, res, next) => {
   if (err?.message === "Not allowed by CORS") {
     return res.status(403).json({ error: "Origin not allowed" });
+  }
+
+  if (err?.type === "entity.too.large" || err?.status === 413) {
+    return res.status(413).json({
+      error: "Photo is too large. Please retake it or choose a smaller image.",
+    });
   }
 
   if (err?.status === 401) {

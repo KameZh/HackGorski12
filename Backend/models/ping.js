@@ -17,6 +17,19 @@ const pingSchema = new mongoose.Schema(
     },
     description: { type: String, default: '' },
     photoUrl: { type: String, default: null },
+    photoCategory: {
+      type: String,
+      enum: [
+        'viewpoint',
+        'trail_condition',
+        'marking',
+        'water_source',
+        'hazard',
+        'memory',
+        null,
+      ],
+      default: null,
+    },
     coordinates: {
       type: [Number],
       required: true,

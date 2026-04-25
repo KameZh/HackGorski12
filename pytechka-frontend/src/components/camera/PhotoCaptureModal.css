@@ -106,8 +106,47 @@
   color: #64748b;
 }
 
+.photo-category-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.photo-category-btn {
+  min-height: 40px;
+  border-radius: 10px;
+  border: 1px solid rgba(66, 129, 164, 0.45);
+  background: rgba(30, 41, 59, 0.72);
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.photo-category-btn:hover,
+.photo-category-btn.active {
+  border-color: rgba(72, 169, 166, 0.9);
+  background: rgba(72, 169, 166, 0.2);
+  color: #f8fafc;
+}
+
 .location-info {
   padding: 0 20px 16px;
+}
+
+.photo-submit-error {
+  margin: 0 20px 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.32);
+  background: rgba(239, 68, 68, 0.14);
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .location-success {

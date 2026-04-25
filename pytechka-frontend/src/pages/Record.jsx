@@ -46,6 +46,12 @@ const RECORD_INTERACTIVE_TRAIL_LAYER_IDS = getInteractiveTrailLayerIds(
   RECORD_TRAIL_LAYER_PREFIX
 )
 const RECORD_DEM_SOURCE_ID = 'record-relief-dem'
+const MONGO_OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i
+
+const asMongoObjectId = (value) => {
+  const id = String(value || '').trim()
+  return MONGO_OBJECT_ID_PATTERN.test(id) ? id : null
+}
 
 const PING_TYPES = {
   junk: { label: 'Junk / Rubbish', emoji: '🗑️', color: '#f59e0b' },
@@ -56,6 +62,19 @@ const PING_TYPES = {
     color: '#dc2626',
   },
   photo: { label: 'Photo', emoji: '📷', color: '#8b5cf6' },
+}
+
+const REPORT_PING_TYPES = Object.fromEntries(
+  Object.entries(PING_TYPES).filter(([key]) => key !== 'photo')
+)
+
+const PHOTO_CATEGORY_META = {
+  viewpoint: { label: 'Viewpoint', color: '#38bdf8' },
+  trail_condition: { label: 'Trail condition', color: '#f59e0b' },
+  marking: { label: 'Trail mark', color: '#ef4444' },
+  water_source: { label: 'Water source', color: '#22c55e' },
+  hazard: { label: 'Hazard', color: '#dc2626' },
+  memory: { label: 'Memory', color: '#8b5cf6' },
 }
 
 const pingMarkerStyle = {
@@ -71,15 +90,14 @@ const pingMarkerStyle = {
 }
 
 const photoMarkerStyle = {
-  width: 44,
-  height: 44,
-  borderRadius: '12px',
+  width: 34,
+  height: 34,
+  borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
-  fontSize: 22,
   cursor: 'pointer',
-  border: '3px solid #fff',
-  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+  border: '2px solid #fff',
+  boxShadow: '0 3px 10px rgba(0,0,0,0.4)',
   overflow: 'hidden',
   background: '#8b5cf6',
 }
@@ -96,11 +114,11 @@ const pingBtnBase = {
 
 const pingPopupStyle = {
   position: 'absolute',
-  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 170px)',
+  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 218px)',
   left: '50%',
   transform: 'translateX(-50%)',
   width: 'min(90vw, 340px)',
-  zIndex: 25,
+  zIndex: 45,
   border: '1px solid rgba(66, 129, 164, 0.5)',
   borderRadius: 14,
   background: 'rgba(17, 26, 40, 0.95)',
@@ -1012,32 +1030,70 @@ export default function Record() {
   ])
 
   // Handle photo capture from camera button
-  const handlePhotoCapture = useCallback((photo) => {
-    setCapturedPhoto(photo)
-    setShowPhotoModal(true)
-  }, [])
+  const handlePhotoCapture = useCallback(
+    (photo) => {
+      const activityActive =
+        isTracking ||
+        points.length > 0 ||
+        elapsedSeconds > 0 ||
+        distance > 0 ||
+        Boolean(loadedTrailActivity)
+
+      if (!activityActive) return
+
+      setCapturedPhoto(photo)
+      setShowPhotoModal(true)
+      setSelectedPing(null)
+    },
+    [isTracking, points.length, elapsedSeconds, distance, loadedTrailActivity]
+  )
 
   // Handle photo submission
   const handlePhotoSubmit = useCallback(async (photoData) => {
     try {
+      const trailId = asMongoObjectId(loadedTrailActivity?.trailId)
       const res = await createPhotoPing({
-        type: 'photo',
+        ...(trailId ? { trailId } : {}),
         description: photoData.description,
-        photoUrl: photoData.webPath,
+        photoUrl: photoData.photoUrl,
+        photoCategory: photoData.photoCategory,
         coordinates: photoData.coordinates,
       })
-      setPings((prev) => [res.data, ...prev])
+      const savedPhotoPing = {
+        ...res.data,
+        type: 'photo',
+        photoUrl: res.data?.photoUrl || photoData.photoUrl,
+        photoCategory: res.data?.photoCategory || photoData.photoCategory,
+        coordinates: res.data?.coordinates || photoData.coordinates,
+      }
+      setPings((prev) => [savedPhotoPing, ...prev])
+      setSelectedPing(savedPhotoPing)
+      setPingMode(false)
+      if (Array.isArray(photoData.coordinates)) {
+        setViewState((old) => ({
+          ...old,
+          longitude: photoData.coordinates[0],
+          latitude: photoData.coordinates[1],
+          zoom: Math.max(old.zoom || 0, 16),
+        }))
+      }
     } catch (err) {
       console.error('Photo ping submit error:', err)
       throw err
     }
-  }, [])
+  }, [loadedTrailActivity])
 
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
   const isActivityActive =
     isTracking || hasRecordingData || Boolean(loadedTrailActivity)
   const showControls = hasRecordingData || isTracking
+
+  useEffect(() => {
+    if (isActivityActive) return
+    setShowPhotoModal(false)
+    setCapturedPhoto(null)
+  }, [isActivityActive])
 
   const liveNotificationBody = useMemo(() => {
     return [
@@ -1317,11 +1373,16 @@ export default function Record() {
               )
             })}
 
-          {viewState.zoom >= 12 &&
-            pings.map((ping) => {
+          {pings.map((ping) => {
               const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
-              
-              if (ping.type === 'photo' && ping.photoUrl) {
+              const isPhoto = Boolean(ping.photoUrl)
+              const categoryMeta =
+                PHOTO_CATEGORY_META[ping.photoCategory] ||
+                PHOTO_CATEGORY_META.memory
+
+              if (!isPhoto && viewState.zoom < 12) return null
+
+              if (isPhoto) {
                 return (
                   <Marker
                     key={ping._id}
@@ -1336,8 +1397,11 @@ export default function Record() {
                     }}
                   >
                     <div
-                      style={photoMarkerStyle}
-                      title={`${cfg.label}: ${ping.description || 'No description'}`}
+                      style={{
+                        ...photoMarkerStyle,
+                        borderColor: categoryMeta.color,
+                      }}
+                      title={`${categoryMeta.label}: ${ping.description || 'No description'}`}
                     >
                       <img
                         src={ping.photoUrl}
@@ -1381,13 +1445,21 @@ export default function Record() {
       <LiveCompass
         mapBearing={viewState.bearing}
         movementHeading={movementHeading}
+        top={
+          showControls
+            ? 'calc(env(safe-area-inset-top, 0px) + 156px)'
+            : undefined
+        }
+        left={12}
+        zIndex={19}
       />
 
-      {/* Camera button for capturing photos */}
-      <CameraButton
-        onPhotoCapture={handlePhotoCapture}
-        className="record-camera-button"
-      />
+      {isActivityActive ? (
+        <CameraButton
+          onPhotoCapture={handlePhotoCapture}
+          className="record-camera-button"
+        />
+      ) : null}
 
       {/* Photo capture modal */}
       <PhotoCaptureModal
@@ -1406,25 +1478,42 @@ export default function Record() {
             setPingMode((v) => !v)
             setSelectedPing(null)
           }}
-          style={{
-            position: 'absolute',
-            top: showControls
-              ? 'calc(env(safe-area-inset-top, 0px) + 214px)'
-              : 'calc(env(safe-area-inset-top, 0px) + 150px)',
-            right: 12,
-            zIndex: 20,
-            ...pingBtnBase,
-            minWidth: 118,
-            background: pingMode
-              ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
-              : 'linear-gradient(135deg, #0f766e, #0e7490)',
-            color: '#fff',
-            border: '1px solid rgba(255,255,255,0.22)',
-            boxShadow: '0 8px 20px rgba(0,0,0,0.32)',
-            letterSpacing: '0.02em',
-          }}
+          className={`record-ping-button ${pingMode ? 'active' : ''}`}
+          type="button"
+          aria-label={pingMode ? 'Cancel ping' : 'Add ping'}
+          title={pingMode ? 'Cancel ping' : 'Add ping'}
         >
-          {pingMode ? 'Cancel Ping' : 'Add Ping'}
+          {pingMode ? (
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          ) : (
+            <svg
+              width="21"
+              height="21"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 21s7-5.4 7-12a7 7 0 0 0-14 0c0 6.6 7 12 7 12z" />
+              <circle cx="12" cy="9" r="2.4" />
+            </svg>
+          )}
         </button>
       ) : null}
 
@@ -1435,7 +1524,7 @@ export default function Record() {
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            {Object.entries(PING_TYPES).map(([key, cfg]) => (
+            {Object.entries(REPORT_PING_TYPES).map(([key, cfg]) => (
               <button
                 key={key}
                 onClick={() => setPingType(key)}
@@ -1545,8 +1634,31 @@ export default function Record() {
               {selectedPing.description}
             </div>
           ) : null}
-          {selectedPing.type === 'photo' && selectedPing.photoUrl ? (
+          {selectedPing.photoUrl ? (
             <div style={{ marginBottom: 6 }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginBottom: 8,
+                  padding: '4px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(148,163,184,0.14)',
+                  color:
+                    (
+                      PHOTO_CATEGORY_META[selectedPing.photoCategory] ||
+                      PHOTO_CATEGORY_META.memory
+                    ).color,
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {(
+                  PHOTO_CATEGORY_META[selectedPing.photoCategory] ||
+                  PHOTO_CATEGORY_META.memory
+                ).label}
+              </div>
               <img
                 src={selectedPing.photoUrl}
                 alt={selectedPing.description || 'Photo'}
@@ -1737,16 +1849,6 @@ export default function Record() {
 
       <div className="record-live-panel-wrap">
         <div className="record-live-panel">
-          <div className="record-title-row">
-            <h1 className="record-topbar-title">
-              {isTracking
-                ? 'Recording...'
-                : hasRecordingData
-                  ? 'Paused'
-                  : 'Record Active'}
-            </h1>
-          </div>
-
           {!hasRecordingData && !isTracking ? (
             <div className="record-start-only-row">
               <button

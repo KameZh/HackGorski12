@@ -20,6 +20,7 @@ import {
 import {
   fetchPings,
   createPing,
+  createPhotoPing,
   votePingGone,
   fetchClusters,
   voteClusterGone,
@@ -35,6 +36,8 @@ import LiveCompass from './LiveCompass'
 import RoutePreviewCard from '../layout/RoutePreviewCard'
 import HutPreviewCard from '../layout/HutPreviewCard'
 import OfficialTrailCard from '../layout/OfficialTrailCard'
+import CameraButton from '../camera/CameraButton'
+import PhotoCaptureModal from '../camera/PhotoCaptureModal'
 
 const INITIAL_VIEW = buildCenteredView(7)
 
@@ -96,6 +99,12 @@ const MAPBOX_DIRECTIONS_ENDPOINT =
   'https://api.mapbox.com/directions/v5/mapbox/walking'
 const DEM_SOURCE_ID = 'mapbox-dem'
 const RELIEF_DEM_SOURCE_ID = 'pytechka-relief-dem'
+const MONGO_OBJECT_ID_PATTERN = /^[a-f\d]{24}$/i
+
+const asMongoObjectId = (value) => {
+  const id = String(value || '').trim()
+  return MONGO_OBJECT_ID_PATTERN.test(id) ? id : null
+}
 
 const SEGMENT_COLOR_EXPRESSION = [
   'match',
@@ -266,6 +275,19 @@ const PING_TYPES = {
   },
 }
 
+const REPORT_PING_TYPES = Object.fromEntries(
+  Object.entries(PING_TYPES).filter(([key]) => key !== 'photo')
+)
+
+const PHOTO_CATEGORY_META = {
+  viewpoint: { label: 'Viewpoint', color: '#38bdf8' },
+  trail_condition: { label: 'Trail condition', color: '#f59e0b' },
+  marking: { label: 'Trail mark', color: '#ef4444' },
+  water_source: { label: 'Water source', color: '#22c55e' },
+  hazard: { label: 'Hazard', color: '#dc2626' },
+  memory: { label: 'Memory', color: '#8b5cf6' },
+}
+
 const CLUSTER_CONFIG = {
   clutter: {
     label: 'Trash Clutter',
@@ -306,15 +328,14 @@ const pingMarkerStyle = {
 }
 
 const photoMarkerStyle = {
-  width: 44,
-  height: 44,
-  borderRadius: '12px',
+  width: 34,
+  height: 34,
+  borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
-  fontSize: 22,
   cursor: 'pointer',
-  border: '3px solid #fff',
-  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+  border: '2px solid #fff',
+  boxShadow: '0 3px 10px rgba(0,0,0,0.4)',
   overflow: 'hidden',
   background: '#8b5cf6',
 }
@@ -962,6 +983,7 @@ export default function MapView({
   searchRequest = null,
   initialStartFocus = null,
   onTrailFlowVisibilityChange = null,
+  injectedPing = null,
   children,
 }) {
   const navigate = useNavigate()
@@ -1074,12 +1096,31 @@ export default function MapView({
   const [pingDesc, setPingDesc] = useState('')
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
+  const [capturedPhoto, setCapturedPhoto] = useState(null)
+  const [showPhotoModal, setShowPhotoModal] = useState(false)
 
   const [clusters, setClusters] = useState([])
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [voteSubmitting, setVoteSubmitting] = useState(false)
   const [searchResultMarker, setSearchResultMarker] = useState(null)
   const [searchMapError, setSearchMapError] = useState('')
+
+  useEffect(() => {
+    if (!injectedPing?._id) return undefined
+
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      setPings((current) => {
+        if (current.some((ping) => ping._id === injectedPing._id)) return current
+        return [injectedPing, ...current]
+      })
+    })
+
+    return () => {
+      active = false
+    }
+  }, [injectedPing])
 
   const isTrailFlowOverlayOpen = Boolean(
     activeTrailSession || (finishModalTrail && finishStats)
@@ -1808,6 +1849,59 @@ export default function MapView({
     }
   }, [pendingPing, activeTrailSession, pingType, pingDesc])
 
+  const handlePhotoCapture = useCallback(
+    (photo) => {
+      if (!activeTrailSession) {
+        setGeoError('Start a trail first. Photos are saved during an activity.')
+        return
+      }
+
+      setCapturedPhoto(photo)
+      setShowPhotoModal(true)
+      setSelectedPing(null)
+    },
+    [activeTrailSession]
+  )
+
+  const handlePhotoSubmit = useCallback(
+    async (photoData) => {
+      if (!activeTrailSession) return
+
+      try {
+        const trailId = asMongoObjectId(activeTrailSession.trailId)
+        const res = await createPhotoPing({
+          ...(trailId ? { trailId } : {}),
+          description: photoData.description,
+          photoUrl: photoData.photoUrl,
+          photoCategory: photoData.photoCategory,
+          coordinates: photoData.coordinates,
+        })
+        const savedPhotoPing = {
+          ...res.data,
+          type: 'photo',
+          photoUrl: res.data?.photoUrl || photoData.photoUrl,
+          photoCategory: res.data?.photoCategory || photoData.photoCategory,
+          coordinates: res.data?.coordinates || photoData.coordinates,
+        }
+        setPings((prev) => [savedPhotoPing, ...prev])
+        setSelectedPing(savedPhotoPing)
+        setPingMode(false)
+        if (Array.isArray(photoData.coordinates)) {
+          setViewState((old) => ({
+            ...old,
+            longitude: photoData.coordinates[0],
+            latitude: photoData.coordinates[1],
+            zoom: Math.max(old.zoom || 0, 16),
+          }))
+        }
+      } catch (err) {
+        console.error('Photo ping submit error:', err)
+        throw err
+      }
+    },
+    [activeTrailSession]
+  )
+
   const handlePingVote = useCallback(async (pingId) => {
     setVoteSubmitting(true)
     try {
@@ -2499,6 +2593,8 @@ export default function MapView({
     if (activeTrailSession) return
     setPingMode(false)
     setPendingPing(null)
+    setShowPhotoModal(false)
+    setCapturedPhoto(null)
   }, [activeTrailSession])
 
   const handleKeepPrompt = useCallback(() => {
@@ -3157,12 +3253,16 @@ export default function MapView({
               </Marker>
             ) : null}
 
-            {viewState.zoom >= 12 &&
-              pings.map((ping) => {
+            {pings.map((ping) => {
                 const cfg = PING_TYPES[ping.type] || PING_TYPES.junk
+                const isPhoto = Boolean(ping.photoUrl)
+                const categoryMeta =
+                  PHOTO_CATEGORY_META[ping.photoCategory] ||
+                  PHOTO_CATEGORY_META.memory
 
-                // Render photo pings with image preview
-                if (ping.type === 'photo' && ping.photoUrl) {
+                if (!isPhoto && viewState.zoom < 12) return null
+
+                if (isPhoto) {
                   return (
                     <Marker
                       key={ping._id}
@@ -3177,8 +3277,11 @@ export default function MapView({
                       }}
                     >
                       <div
-                        style={photoMarkerStyle}
-                        title={`${cfg.label}: ${ping.description || 'No description'}`}
+                        style={{
+                          ...photoMarkerStyle,
+                          borderColor: categoryMeta.color,
+                        }}
+                        title={`${categoryMeta.label}: ${ping.description || 'No description'}`}
                       >
                         <img
                           src={ping.photoUrl}
@@ -3798,7 +3901,7 @@ export default function MapView({
           </div>
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            {Object.entries(PING_TYPES).map(([key, cfg]) => (
+            {Object.entries(REPORT_PING_TYPES).map(([key, cfg]) => (
               <button
                 key={key}
                 onClick={() => setPingType(key)}
@@ -3902,8 +4005,31 @@ export default function MapView({
               {selectedPing.description}
             </div>
           ) : null}
-          {selectedPing.type === 'photo' && selectedPing.photoUrl ? (
+          {selectedPing.photoUrl ? (
             <div style={{ marginBottom: 6 }}>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  marginBottom: 8,
+                  padding: '4px 8px',
+                  borderRadius: 999,
+                  background: 'rgba(148,163,184,0.14)',
+                  color:
+                    (
+                      PHOTO_CATEGORY_META[selectedPing.photoCategory] ||
+                      PHOTO_CATEGORY_META.memory
+                    ).color,
+                  fontSize: 11,
+                  fontWeight: 800,
+                }}
+              >
+                {(
+                  PHOTO_CATEGORY_META[selectedPing.photoCategory] ||
+                  PHOTO_CATEGORY_META.memory
+                ).label}
+              </div>
               <img
                 src={selectedPing.photoUrl}
                 alt={selectedPing.description || 'Photo'}
@@ -3921,18 +4047,20 @@ export default function MapView({
             {new Date(selectedPing.createdAt).toLocaleDateString()}
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-            <button
-              onClick={() => handlePingVote(selectedPing._id)}
-              disabled={voteSubmitting}
-              style={{
-                ...pingBtnBase,
-                flex: 1,
-                background: 'rgba(34,197,94,0.18)',
-                color: '#4ade80',
-              }}
-            >
-              {voteSubmitting ? '...' : 'Not there anymore'}
-            </button>
+            {!selectedPing.photoUrl ? (
+              <button
+                onClick={() => handlePingVote(selectedPing._id)}
+                disabled={voteSubmitting}
+                style={{
+                  ...pingBtnBase,
+                  flex: 1,
+                  background: 'rgba(34,197,94,0.18)',
+                  color: '#4ade80',
+                }}
+              >
+                {voteSubmitting ? '...' : 'Not there anymore'}
+              </button>
+            ) : null}
             <button
               onClick={() => setSelectedPing(null)}
               style={{
@@ -4584,6 +4712,23 @@ export default function MapView({
       >
         {children}
       </MapControls>
+
+      {activeTrailSession ? (
+        <CameraButton
+          onPhotoCapture={handlePhotoCapture}
+          className="maps-camera-button"
+        />
+      ) : null}
+
+      <PhotoCaptureModal
+        photo={capturedPhoto}
+        isOpen={showPhotoModal}
+        onClose={() => {
+          setShowPhotoModal(false)
+          setCapturedPhoto(null)
+        }}
+        onSubmit={handlePhotoSubmit}
+      />
 
       {showRadiusPanel ? (
         <div

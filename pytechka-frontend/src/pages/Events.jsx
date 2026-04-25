@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { SignInButton, SignedIn, SignedOut, useUser } from '@clerk/clerk-react'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import Map, { Layer, Source } from 'react-map-gl/mapbox'
+import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
 import BottomNav from '../components/layout/Bottomnav'
 import { fetchMapTrails } from '../api/maps'
 import {
@@ -68,7 +68,7 @@ function toFeatureCollection(geojson) {
 
 async function fetchMapTrailsWithTimeout(timeoutMs = 2600) {
   return Promise.race([
-    fetchMapTrails(),
+    fetchMapTrails({ compact: true }),
     new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Trails request timeout')), timeoutMs)
     }),
@@ -349,11 +349,16 @@ export default function Events() {
                   className="events-card events-cluster-card events-cluster-card-event card-enter"
                 >
                   <div className="events-card-head">
-                    <div>
-                      <h2 className="events-card-title">Cleanup Event</h2>
-                      <p className="events-card-region">
-                        {cluster.pingCount} trash reports in this area
-                      </p>
+                    <div className="events-cluster-heading">
+                      <span className="events-cluster-badge events-cluster-badge-event">
+                        E
+                      </span>
+                      <div>
+                        <h2 className="events-card-title">Cleanup Event</h2>
+                        <p className="events-card-region">
+                          {cluster.pingCount} trash reports in this area
+                        </p>
+                      </div>
                     </div>
                     <span className="events-date-badge events-date-badge-event">
                       EVENT
@@ -421,11 +426,16 @@ export default function Events() {
                   className="events-card events-cluster-card events-cluster-card-clutter card-enter"
                 >
                   <div className="events-card-head">
-                    <div>
-                      <h2 className="events-card-title">Clutter Warning</h2>
-                      <p className="events-card-region">
-                        {cluster.pingCount} trash reports in this area
-                      </p>
+                    <div className="events-cluster-heading">
+                      <span className="events-cluster-badge events-cluster-badge-clutter">
+                        C
+                      </span>
+                      <div>
+                        <h2 className="events-card-title">Clutter Warning</h2>
+                        <p className="events-card-region">
+                          {cluster.pingCount} trash reports in this area
+                        </p>
+                      </div>
                     </div>
                     <span className="events-date-badge events-date-badge-warning">
                       WARNING
@@ -732,13 +742,24 @@ export default function Events() {
 
           <section className="events-detail-sheet">
             <header className="events-detail-header">
-              <div>
-                <h3 className="events-detail-title">
-                  {selectedCluster.level === 'event'
-                    ? 'Cleanup Event Area'
-                    : 'Clutter Warning Area'}
-                </h3>
-                <p className="events-detail-date">Live report summary</p>
+              <div className="events-cluster-heading">
+                <span
+                  className={`events-cluster-badge ${
+                    selectedCluster.level === 'event'
+                      ? 'events-cluster-badge-event'
+                      : 'events-cluster-badge-clutter'
+                  }`}
+                >
+                  {selectedCluster.level === 'event' ? 'E' : 'C'}
+                </span>
+                <div>
+                  <h3 className="events-detail-title">
+                    {selectedCluster.level === 'event'
+                      ? 'Cleanup Event Area'
+                      : 'Clutter Warning Area'}
+                  </h3>
+                  <p className="events-detail-date">Live report summary</p>
+                </div>
               </div>
 
               <button
@@ -806,6 +827,21 @@ export default function Events() {
                       />
                     </Source>
                   ) : null}
+                  <Marker
+                    longitude={selectedClusterCenter.longitude}
+                    latitude={selectedClusterCenter.latitude}
+                    anchor="center"
+                  >
+                    <span
+                      className={`events-cluster-badge events-map-cluster-badge ${
+                        selectedCluster.level === 'event'
+                          ? 'events-cluster-badge-event'
+                          : 'events-cluster-badge-clutter'
+                      }`}
+                    >
+                      {selectedCluster.level === 'event' ? 'E' : 'C'}
+                    </span>
+                  </Marker>
                 </Map>
               ) : (
                 <div className="events-mini-map-fallback">

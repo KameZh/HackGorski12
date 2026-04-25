@@ -562,7 +562,7 @@ app.get("/api/trails/mine", requireAuth(), async (req, res) => {
     const { userId } = getAuth(req);
     const trails = await Trail.find({ userId })
       .sort({ createdAt: -1 })
-      .select("-reviews -geojson");
+      .select("-reviews");
     res.json(trails);
   } catch (err) {
     console.error("My trails error:", err);
@@ -722,7 +722,7 @@ app.get("/api/trails", async (req, res) => {
           .select(compact ? "-reviews -geojson" : "-reviews");
     const officialTrailsPromise = OfficialTrail.find(officialFilter)
       .sort(sortOption)
-      .select(compact ? "-geojson" : "");
+      .select(compact ? "-geojson -geom" : "");
 
     const [userTrails, officialTrails] = await Promise.all([
       userTrailsPromise,

@@ -8,9 +8,17 @@ const trailsStore = localforage.createInstance({
   description: 'Stores trail data for offline usage',
 })
 
+const draftsStore = localforage.createInstance({
+  name: 'PytechkaOffline',
+  storeName: 'recorded_trail_drafts',
+  description: 'Stores recorded trails before publishing',
+})
+
 export const useOfflineStore = create((set, get) => ({
   offlineTrails: [],
+  draftTrails: [],
   isLoaded: false,
+  draftsLoaded: false,
 
   // Load all trails from local storage into memory
   loadOfflineTrails: async () => {
@@ -23,6 +31,73 @@ export const useOfflineStore = create((set, get) => ({
     } catch (err) {
       console.error('Failed to load offline trails', err)
       set({ isLoaded: true }) // Set loaded even on fail to stop loading spinners
+    }
+  },
+
+  loadDraftTrails: async () => {
+    try {
+      const drafts = []
+      await draftsStore.iterate((value) => {
+        drafts.push(value)
+      })
+      drafts.sort(
+        (a, b) => new Date(b.savedAt || 0) - new Date(a.savedAt || 0)
+      )
+      set({ draftTrails: drafts, draftsLoaded: true })
+    } catch (err) {
+      console.error('Failed to load local trail drafts', err)
+      set({ draftsLoaded: true })
+    }
+  },
+
+  saveDraftTrail: async (draft) => {
+    try {
+      const id =
+        draft?.localId ||
+        `local-trail-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      const next = {
+        ...draft,
+        localId: id,
+        source: 'local_draft',
+        savedAt: draft?.savedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+
+      await draftsStore.setItem(id, next)
+      set((state) => {
+        const existing = state.draftTrails.filter(
+          (trail) => trail.localId !== id
+        )
+        return { draftTrails: [next, ...existing] }
+      })
+      return next
+    } catch (err) {
+      console.error('Failed to save local trail draft', err)
+      throw err
+    }
+  },
+
+  updateDraftTrail: async (id, updates) => {
+    const current = await draftsStore.getItem(id)
+    if (!current) throw new Error('Local trail draft not found')
+    return get().saveDraftTrail({
+      ...current,
+      ...updates,
+      localId: id,
+      savedAt: current.savedAt,
+    })
+  },
+
+  removeDraftTrail: async (id) => {
+    try {
+      if (!id) return
+      await draftsStore.removeItem(id)
+      set((state) => ({
+        draftTrails: state.draftTrails.filter((trail) => trail.localId !== id),
+      }))
+    } catch (err) {
+      console.error('Failed to remove local trail draft', err)
+      throw err
     }
   },
 

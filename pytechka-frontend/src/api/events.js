@@ -58,6 +58,28 @@ function computeCenterCoordinates(geojson) {
   }
 }
 
+function resolveTrailCenterCoordinates(trail) {
+  const candidates = [
+    trail?.stats?.centerCoordinates,
+    trail?.centerCoordinates,
+    trail?.startCoordinates,
+    trail?.stats?.startCoordinates,
+  ]
+
+  for (const candidate of candidates) {
+    if (
+      Array.isArray(candidate) &&
+      candidate.length >= 2 &&
+      Number.isFinite(Number(candidate[0])) &&
+      Number.isFinite(Number(candidate[1]))
+    ) {
+      return [Number(candidate[0]), Number(candidate[1])]
+    }
+  }
+
+  return computeCenterCoordinates(trail?.geojson)
+}
+
 function formatDateBadge(date) {
   return new Intl.DateTimeFormat('bg-BG', {
     weekday: 'short',
@@ -281,7 +303,7 @@ export async function syncCleanupEventsFromTrails({
 
       const centerCoordinates = Array.isArray(event.centerCoordinates)
         ? event.centerCoordinates
-        : computeCenterCoordinates(sourceTrail.geojson)
+        : resolveTrailCenterCoordinates(sourceTrail)
 
       const schedule = await chooseSuggestedWeekend({
         latitude: centerCoordinates[1],
@@ -315,7 +337,7 @@ export async function syncCleanupEventsFromTrails({
     if (issueCount <= 3) continue
     if (routeIdsWithEvent.has(routeId)) continue
 
-    const centerCoordinates = computeCenterCoordinates(trail.geojson)
+    const centerCoordinates = resolveTrailCenterCoordinates(trail)
     const schedule = await chooseSuggestedWeekend({
       latitude: centerCoordinates[1],
       longitude: centerCoordinates[0],

@@ -172,6 +172,41 @@
   gap: 12px;
 }
 
+.events-cluster-heading {
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+  gap: 9px;
+}
+
+.events-cluster-badge {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
+}
+
+.events-cluster-badge-event {
+  background: #dc2626;
+}
+
+.events-cluster-badge-clutter {
+  background: #f97316;
+}
+
+.events-map-cluster-badge {
+  pointer-events: none;
+}
+
 .events-card-title {
   margin: 0;
   font-size: 1rem;

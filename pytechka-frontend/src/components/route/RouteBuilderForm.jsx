@@ -145,7 +145,14 @@ function findNearestRoutePointIndex(pathCoordinates, longitude, latitude) {
   return index
 }
 
-export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
+export default function RouteBuilderForm({
+  geojson,
+  onSuccess,
+  onCancel,
+  publishOnSubmit = true,
+  title = 'Publish Trail',
+  submitLabel,
+}) {
   const [name, setName] = useState('')
   const [region, setRegion] = useState('')
   const [difficulty, setDifficulty] = useState('moderate')
@@ -307,7 +314,7 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
     setError('')
 
     try {
-      const res = await publishTrail({
+      const payload = {
         geojson,
         name: name.trim(),
         region: region.trim(),
@@ -316,10 +323,21 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
         equipment: equipment.trim(),
         resources: resources.trim(),
         trailMarks: normalizeTrailMarksForSave(trailMarks),
-      })
-      onSuccess?.(res.data)
+      }
+
+      if (publishOnSubmit) {
+        const res = await publishTrail(payload)
+        onSuccess?.(res.data)
+      } else {
+        onSuccess?.(payload)
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to publish trail. Please try again.')
+      setError(
+        err.response?.data?.error ||
+          (publishOnSubmit
+            ? 'Failed to publish trail. Please try again.'
+            : 'Failed to save trail locally. Please try again.')
+      )
     } finally {
       setSubmitting(false)
     }
@@ -329,7 +347,7 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
     <div className="rbf-overlay" onClick={onCancel}>
       <div className="rbf-panel" onClick={(e) => e.stopPropagation()}>
         <div className="rbf-header">
-          <h2 className="rbf-title">Publish Trail</h2>
+          <h2 className="rbf-title">{title}</h2>
           <button className="rbf-close-btn" onClick={onCancel} aria-label="Close">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -486,7 +504,11 @@ export default function RouteBuilderForm({ geojson, onSuccess, onCancel }) {
               className="rbf-btn rbf-btn-publish"
               disabled={submitting}
             >
-              {submitting ? 'Publishing...' : 'Publish'}
+              {submitting
+                ? publishOnSubmit
+                  ? 'Publishing...'
+                  : 'Saving...'
+                : submitLabel || (publishOnSubmit ? 'Publish' : 'Save locally')}
             </button>
           </div>
         </form>

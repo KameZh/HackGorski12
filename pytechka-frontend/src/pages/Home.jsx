@@ -1,10 +1,17 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
+import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
+import 'mapbox-gl/dist/mapbox-gl.css'
 import api from '../api/client'
-import { updateTrail, deleteTrail } from '../api/trails'
+import { updateTrail, deleteTrail, publishTrail } from '../api/trails'
 import BottomNav from '../components/layout/Bottomnav'
+import { useOfflineStore } from '../store/offlineStore'
 import './Account.css'
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const MAPBOX_STYLE_URL =
+  import.meta.env.VITE_MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/outdoors-v12'
 
 const BADGE_TIERS = {
   trailers: [
@@ -39,14 +46,170 @@ function getNextGoal(category, value = 0) {
 }
 
 const TRAIL_MARK_OPTIONS = [
-  { value: 'red', label: 'Red' },
-  { value: 'blue', label: 'Blue' },
-  { value: 'green', label: 'Green' },
-  { value: 'yellow', label: 'Yellow' },
-  { value: 'white', label: 'White' },
-  { value: 'black', label: 'Black' },
-  { value: 'unmarked', label: 'Unmarked' },
+  { value: 'red', label: 'Red', color: '#ef4444' },
+  { value: 'blue', label: 'Blue', color: '#3b82f6' },
+  { value: 'green', label: 'Green', color: '#22c55e' },
+  { value: 'yellow', label: 'Yellow', color: '#eab308' },
+  { value: 'white', label: 'White', color: '#f8fafc' },
+  { value: 'black', label: 'Black', color: '#0f172a' },
+  { value: 'unmarked', label: 'Unmarked', color: '#6b7280' },
 ]
+
+const TRAIL_MARK_COLORS = TRAIL_MARK_OPTIONS.reduce((acc, option) => {
+  acc[option.value] = option.color
+  return acc
+}, {})
+
+function parseLineCoordinates(geojson) {
+  if (!geojson || typeof geojson !== 'object') return []
+  if (geojson.type === 'LineString') {
+    return Array.isArray(geojson.coordinates)
+      ? geojson.coordinates
+          .map((point) => [Number(point?.[0]), Number(point?.[1])])
+          .filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1]))
+      : []
+  }
+  if (geojson.type === 'MultiLineString') {
+    return Array.isArray(geojson.coordinates)
+      ? geojson.coordinates.flatMap((line) => parseLineCoordinates({
+          type: 'LineString',
+          coordinates: line,
+        }))
+      : []
+  }
+  if (geojson.type === 'Feature') return parseLineCoordinates(geojson.geometry)
+  if (geojson.type === 'FeatureCollection') {
+    return Array.isArray(geojson.features)
+      ? geojson.features.flatMap((feature) => parseLineCoordinates(feature?.geometry))
+      : []
+  }
+  return []
+}
+
+function buildLineFeatureCollection(pathCoordinates) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: pathCoordinates },
+      },
+    ],
+  }
+}
+
+function buildTrailMarkFeatureCollection(pathCoordinates, trailMarks) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
+  const maxIndex = pathCoordinates.length - 1
+  const features = (Array.isArray(trailMarks) ? trailMarks : [])
+    .map((segment, index) => {
+      const startIndex = Math.max(0, Math.min(maxIndex, Number(segment?.startIndex || 0)))
+      const endIndex = Math.max(startIndex, Math.min(maxIndex, Number(segment?.endIndex || maxIndex)))
+      const coordinates = pathCoordinates.slice(startIndex, endIndex + 1)
+      if (coordinates.length < 2) return null
+      return {
+        type: 'Feature',
+        properties: {
+          id: String(index),
+          colour_type: String(segment?.colourType || 'unmarked'),
+        },
+        geometry: { type: 'LineString', coordinates },
+      }
+    })
+    .filter(Boolean)
+  return features.length ? { type: 'FeatureCollection', features } : null
+}
+
+function AccountTrailMap({ trail }) {
+  const pathCoordinates = useMemo(
+    () => parseLineCoordinates(trail?.geojson),
+    [trail?.geojson]
+  )
+  const base = useMemo(
+    () => buildLineFeatureCollection(pathCoordinates),
+    [pathCoordinates]
+  )
+  const sectors = useMemo(
+    () => buildTrailMarkFeatureCollection(pathCoordinates, trail?.trailMarks),
+    [pathCoordinates, trail?.trailMarks]
+  )
+  const start = pathCoordinates[0]
+
+  if (!MAPBOX_TOKEN || !base || !start) {
+    return (
+      <div className="account-trail-map account-trail-map-empty">
+        Trail map is unavailable for this route.
+      </div>
+    )
+  }
+
+  return (
+    <div className="account-trail-map">
+      <Map
+        initialViewState={{
+          longitude: Number(start[0]),
+          latitude: Number(start[1]),
+          zoom: 14.2,
+        }}
+        mapboxAccessToken={MAPBOX_TOKEN}
+        mapStyle={MAPBOX_STYLE_URL}
+        attributionControl={false}
+        interactive={false}
+        style={{ width: '100%', height: '100%' }}
+      >
+        <Source id={`account-trail-base-${trail._id || trail.localId}`} type="geojson" data={base}>
+          <Layer
+            id={`account-trail-base-shadow-${trail._id || trail.localId}`}
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': '#020617', 'line-width': 7, 'line-opacity': 0.7 }}
+          />
+          <Layer
+            id={`account-trail-base-line-${trail._id || trail.localId}`}
+            type="line"
+            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': '#48a9a6', 'line-width': 4, 'line-opacity': 0.9 }}
+          />
+        </Source>
+        {sectors ? (
+          <Source id={`account-trail-sectors-${trail._id || trail.localId}`} type="geojson" data={sectors}>
+            <Layer
+              id={`account-trail-sectors-line-${trail._id || trail.localId}`}
+              type="line"
+              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+              paint={{
+                'line-color': [
+                  'match',
+                  ['get', 'colour_type'],
+                  'red',
+                  TRAIL_MARK_COLORS.red,
+                  'blue',
+                  TRAIL_MARK_COLORS.blue,
+                  'green',
+                  TRAIL_MARK_COLORS.green,
+                  'yellow',
+                  TRAIL_MARK_COLORS.yellow,
+                  'white',
+                  TRAIL_MARK_COLORS.white,
+                  'black',
+                  TRAIL_MARK_COLORS.black,
+                  TRAIL_MARK_COLORS.unmarked,
+                ],
+                'line-width': 6,
+                'line-opacity': 0.98,
+              }}
+            />
+          </Source>
+        ) : null}
+        <Marker longitude={Number(start[0])} latitude={Number(start[1])} anchor="center">
+          <div className="account-trail-start-marker">Start</div>
+        </Marker>
+      </Map>
+    </div>
+  )
+}
 
 function normalizeTrailMarksInput(trailMarks, maxPointIndex) {
   const limit = Number.isFinite(maxPointIndex)
@@ -101,7 +264,14 @@ export default function Home() {
   const [editingTrail, setEditingTrail] = useState(null)
   const [editForm, setEditForm] = useState({})
   const [editSaving, setEditSaving] = useState(false)
+  const [publishingDraftId, setPublishingDraftId] = useState(null)
+  const [draftError, setDraftError] = useState('')
   const navigate = useNavigate()
+  const {
+    draftTrails,
+    loadDraftTrails,
+    removeDraftTrail,
+  } = useOfflineStore()
 
   const describeApiError = (err) => {
     const status = err?.response?.status ? `HTTP ${err.response.status}` : ''
@@ -160,6 +330,10 @@ export default function Home() {
       canceled = true
     }
   }, [isSignedIn, getToken])
+
+  useEffect(() => {
+    if (isSignedIn) loadDraftTrails()
+  }, [isSignedIn, loadDraftTrails])
 
   const handleEditOpen = (trail) => {
     const maxPointIndex = Math.max(0, Number(trail?.stats?.pointCount || 0) - 1)
@@ -251,6 +425,37 @@ export default function Home() {
     } catch (err) {
       console.error('Failed to delete trail:', err)
     }
+  }
+
+  const handlePublishDraft = async (draft) => {
+    if (!draft?.localId) return
+    setPublishingDraftId(draft.localId)
+    setDraftError('')
+    try {
+      const res = await publishTrail({
+        geojson: draft.geojson,
+        name: draft.name,
+        region: draft.region,
+        difficulty: draft.difficulty,
+        description: draft.description,
+        equipment: draft.equipment,
+        resources: draft.resources,
+        trailMarks: normalizeTrailMarksInput(
+          draft.trailMarks,
+          Math.max(0, Number(draft.stats?.pointCount || 0) - 1)
+        ),
+      })
+      await removeDraftTrail(draft.localId)
+      setMyTrails((prev) => [res.data, ...prev])
+    } catch (err) {
+      setDraftError(describeApiError(err) || 'Could not publish local trail.')
+    } finally {
+      setPublishingDraftId(null)
+    }
+  }
+
+  const handleDiscardDraft = async (draftId) => {
+    await removeDraftTrail(draftId)
   }
 
   const handleLogout = async () => {
@@ -515,7 +720,73 @@ export default function Home() {
         </div>
 
         <div className="account-section" style={{ marginTop: '1rem' }}>
-          <h3 className="account-section-title">My Trails</h3>
+          <h3 className="account-section-title">Local Trail Drafts</h3>
+          {draftError ? (
+            <div className="account-badges-box" style={{ color: '#fca5a5' }}>
+              {draftError}
+            </div>
+          ) : null}
+          <div className="my-trails-list">
+            {draftTrails.length > 0 ? (
+              draftTrails.map((trail) => (
+                <div key={trail.localId} className="my-trail-item my-trail-draft">
+                  <div className="my-trail-info">
+                    <span className="my-trail-name">{trail.name}</span>
+                    <span className="my-trail-meta">
+                      Saved on device · {trail.difficulty || 'moderate'} ·{' '}
+                      {trail.region || 'No region'}
+                    </span>
+                  </div>
+                  <AccountTrailMap trail={trail} />
+                  {Array.isArray(trail.trailMarks) && trail.trailMarks.length > 0 ? (
+                    <div className="account-trail-mark-row">
+                      {trail.trailMarks.map((segment, index) => (
+                        <span
+                          key={`${trail.localId}-mark-${index}`}
+                          className="account-trail-mark-chip"
+                        >
+                          <i
+                            style={{
+                              background:
+                                TRAIL_MARK_COLORS[segment.colourType] ||
+                                TRAIL_MARK_COLORS.unmarked,
+                            }}
+                          />
+                          {segment.name || `Sector ${index + 1}`}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <div className="my-trail-actions">
+                    <button
+                      className="my-trail-save-btn"
+                      onClick={() => handlePublishDraft(trail)}
+                      disabled={publishingDraftId === trail.localId}
+                    >
+                      {publishingDraftId === trail.localId
+                        ? 'Publishing...'
+                        : 'Publish'}
+                    </button>
+                    <button
+                      className="my-trail-delete-btn"
+                      onClick={() => handleDiscardDraft(trail.localId)}
+                      disabled={publishingDraftId === trail.localId}
+                    >
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="account-badges-box">
+                No local recorded trails waiting to publish.
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="account-section" style={{ marginTop: '1rem' }}>
+          <h3 className="account-section-title">Published Trails</h3>
           <div className="my-trails-list">
             {myTrails.length > 0 ? (
               myTrails.map((trail) => (
@@ -711,6 +982,26 @@ export default function Home() {
                           {trail.difficulty} · {trail.region || 'No region'}
                         </span>
                       </div>
+                      <AccountTrailMap trail={trail} />
+                      {Array.isArray(trail.trailMarks) && trail.trailMarks.length > 0 ? (
+                        <div className="account-trail-mark-row">
+                          {trail.trailMarks.map((segment, index) => (
+                            <span
+                              key={`${trail._id}-mark-${index}`}
+                              className="account-trail-mark-chip"
+                            >
+                              <i
+                                style={{
+                                  background:
+                                    TRAIL_MARK_COLORS[segment.colourType] ||
+                                    TRAIL_MARK_COLORS.unmarked,
+                                }}
+                              />
+                              {segment.name || `Sector ${index + 1}`}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="my-trail-actions">
                         <button
                           className="my-trail-edit-btn"

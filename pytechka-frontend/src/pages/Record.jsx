@@ -16,7 +16,13 @@ import { useMapStore } from '../store/mapStore'
 import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
 import { fetchTrailById } from '../api/trails'
-import { createPing, createPhotoPing, fetchPings } from '../api/pings'
+import {
+  createPing,
+  createPhotoPing,
+  fetchPings,
+  fetchClusters,
+  voteClusterGone,
+} from '../api/pings'
 import { buildCenteredView } from '../utils/mapDefaults'
 import TrailMapLayers from '../components/map/TrailMapLayers'
 import {
@@ -78,6 +84,37 @@ const PHOTO_CATEGORY_META = {
   water_source: { label: 'Water source', color: '#22c55e' },
   hazard: { label: 'Hazard', color: '#dc2626' },
   memory: { label: 'Memory', color: '#8b5cf6' },
+}
+
+const CLUSTER_CONFIG = {
+  clutter: {
+    label: 'Trash Clutter',
+    marker: 'C',
+    color: '#f97316',
+    votesNeeded: 3,
+  },
+  event: {
+    label: 'Cleanup Event',
+    marker: 'E',
+    color: '#dc2626',
+    votesNeeded: 5,
+  },
+}
+
+const clusterMarkerStyle = {
+  width: 34,
+  height: 34,
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  color: '#ffffff',
+  fontSize: 16,
+  fontWeight: 900,
+  lineHeight: 1,
+  cursor: 'pointer',
+  border: '2px solid rgba(255, 255, 255, 0.9)',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.42)',
+  textShadow: '0 1px 2px rgba(0,0,0,0.45)',
 }
 
 const pingMarkerStyle = {
@@ -239,6 +276,7 @@ export default function Record() {
   const liveNotificationReadyRef = useRef(false)
   const liveNotificationLastBodyRef = useRef('')
   const liveNotificationTickRef = useRef(-1)
+  const wakeLockRef = useRef(null)
   const {
     mapStyle,
     terrain3D,
@@ -278,6 +316,9 @@ export default function Record() {
   const [pingDesc, setPingDesc] = useState('')
   const [pingSubmitting, setPingSubmitting] = useState(false)
   const [selectedPing, setSelectedPing] = useState(null)
+  const [clusters, setClusters] = useState([])
+  const [selectedCluster, setSelectedCluster] = useState(null)
+  const [clusterVoting, setClusterVoting] = useState(null)
   const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
 
   // Photo capture state
@@ -295,7 +336,7 @@ export default function Record() {
   const [finishError, setFinishError] = useState('')
   const [finishSuccess, setFinishSuccess] = useState('')
 
-  const { loadOfflineTrails } = useOfflineStore()
+  const { loadOfflineTrails, saveDraftTrail } = useOfflineStore()
 
 
   const resolvedMapStyle =
@@ -692,13 +733,36 @@ export default function Record() {
   ])
 
   const handlePublishSuccess = useCallback(
-    (trail) => {
+    async (trail) => {
+      const localDraft = await saveDraftTrail({
+        ...trail,
+        stats: {
+          distance: Math.round(distance),
+          elevationGain: Math.round(elevationGain),
+          duration: elapsedSeconds,
+          pointCount: points.length,
+          startCoordinates:
+            points.length > 0
+              ? [points[0].longitude, points[0].latitude]
+              : undefined,
+          endCoordinates:
+            points.length > 0
+              ? [
+                  points[points.length - 1].longitude,
+                  points[points.length - 1].latitude,
+                ]
+              : undefined,
+        },
+      })
       setShowPublishForm(false)
-      setSavedRoute(trail)
-      setAiStatus(trail?.ai?.status || 'pending')
-      refreshTrails()
+      setSavedRoute(localDraft)
+      setAiStatus(null)
+      setAiResult({
+        message:
+          'Trail saved on this device. Publish it from Account when you are ready.',
+      })
     },
-    [refreshTrails]
+    [distance, elevationGain, elapsedSeconds, points, saveDraftTrail]
   )
 
   const handleCenterMe = useCallback(() => {
@@ -765,6 +829,7 @@ export default function Record() {
       if (!layerIds.length) {
         setSelectedTrail(null)
         setSelectedHut(null)
+        setSelectedCluster(null)
         return
       }
 
@@ -774,6 +839,7 @@ export default function Record() {
       if (!features.length) {
         setSelectedTrail(null)
         setSelectedHut(null)
+        setSelectedCluster(null)
         return
       }
 
@@ -783,6 +849,7 @@ export default function Record() {
       if (selected) {
         setSelectedTrail(selected)
         setSelectedHut(null)
+        setSelectedCluster(null)
         return
       }
 
@@ -812,6 +879,7 @@ export default function Record() {
           },
         })
         setSelectedHut(null)
+        setSelectedCluster(null)
       }
     },
     [setSelectedTrail, trailGeojsonFeaturesById, trailsById]
@@ -988,6 +1056,20 @@ export default function Record() {
 
   useEffect(() => {
     let active = true
+    fetchClusters()
+      .then((res) => {
+        if (active) setClusters(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => {
+        if (active) setClusters([])
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
     fetchHuts()
       .then((res) => {
         if (active) setHuts(Array.isArray(res.data) ? res.data : [])
@@ -1040,6 +1122,13 @@ export default function Record() {
         coordinates: [currentLocation.longitude, currentLocation.latitude],
       })
       setPings((prev) => [res.data, ...prev])
+      fetchClusters()
+        .then((clustersRes) =>
+          setClusters(
+            Array.isArray(clustersRes.data) ? clustersRes.data : []
+          )
+        )
+        .catch(() => {})
       setPingMode(false)
       setPingDesc('')
     } catch (err) {
@@ -1058,6 +1147,28 @@ export default function Record() {
     trails,
     loadedTrailActivity,
   ])
+
+  const handleClusterVote = useCallback(async (clusterId) => {
+    setClusterVoting(clusterId)
+    try {
+      const res = await voteClusterGone(clusterId)
+      if (res.data?.resolved) {
+        setClusters((prev) => prev.filter((cluster) => cluster._id !== clusterId))
+        setSelectedCluster(null)
+      } else {
+        setClusters((prev) =>
+          prev.map((cluster) =>
+            cluster._id === clusterId ? res.data : cluster
+          )
+        )
+        setSelectedCluster(res.data)
+      }
+    } catch (err) {
+      console.error('Cluster vote error:', err)
+    } finally {
+      setClusterVoting(null)
+    }
+  }, [])
 
   // Handle photo capture from camera button
   const handlePhotoCapture = useCallback(
@@ -1143,6 +1254,47 @@ export default function Record() {
     if (isActivityActive) return
     setPingMode(false)
   }, [isActivityActive])
+
+  useEffect(() => {
+    let released = false
+
+    const requestWakeLock = async () => {
+      if (!isTracking || !navigator.wakeLock?.request) return
+      try {
+        wakeLockRef.current = await navigator.wakeLock.request('screen')
+        wakeLockRef.current.addEventListener('release', () => {
+          if (!released) wakeLockRef.current = null
+        })
+      } catch {
+        wakeLockRef.current = null
+      }
+    }
+
+    const releaseWakeLock = async () => {
+      released = true
+      try {
+        await wakeLockRef.current?.release?.()
+      } catch {
+        /* Wake lock release is best-effort. */
+      } finally {
+        wakeLockRef.current = null
+      }
+    }
+
+    requestWakeLock()
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isTracking) {
+        requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      releaseWakeLock()
+    }
+  }, [isTracking])
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
@@ -1424,6 +1576,7 @@ export default function Record() {
                       setSelectedPing(
                         selectedPing?._id === ping._id ? null : ping
                       )
+                      setSelectedCluster(null)
                     }}
                   >
                     <div
@@ -1458,6 +1611,7 @@ export default function Record() {
                     setSelectedPing(
                       selectedPing?._id === ping._id ? null : ping
                     )
+                    setSelectedCluster(null)
                   }}
                 >
                   <div
@@ -1469,6 +1623,46 @@ export default function Record() {
                 </Marker>
               )
             })}
+
+          {clusters.map((cluster) => {
+            if (
+              !Array.isArray(cluster.coordinates) ||
+              cluster.coordinates.length < 2
+            ) {
+              return null
+            }
+
+            const cfg =
+              CLUSTER_CONFIG[cluster.level] || CLUSTER_CONFIG.clutter
+
+            return (
+              <Marker
+                key={cluster._id}
+                longitude={cluster.coordinates[0]}
+                latitude={cluster.coordinates[1]}
+                anchor="center"
+                style={{ zIndex: selectedCluster?._id === cluster._id ? 12 : 8 }}
+                onClick={(e) => {
+                  e.originalEvent.stopPropagation()
+                  setSelectedCluster(
+                    selectedCluster?._id === cluster._id ? null : cluster
+                  )
+                  setSelectedPing(null)
+                  setSelectedHut(null)
+                }}
+              >
+                <div
+                  style={{
+                    ...clusterMarkerStyle,
+                    background: cfg.color,
+                  }}
+                  title={`${cfg.label}: ${cluster.description || ''}`}
+                >
+                  {cfg.marker}
+                </div>
+              </Marker>
+            )
+          })}
         </Map>
       </div>
 
@@ -1720,6 +1914,77 @@ export default function Record() {
         </div>
       )}
 
+      {selectedCluster && !pingMode && (
+        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginBottom: 6,
+            }}
+          >
+            <span
+              style={{
+                ...clusterMarkerStyle,
+                width: 28,
+                height: 28,
+                fontSize: 13,
+                cursor: 'default',
+                background:
+                  CLUSTER_CONFIG[selectedCluster.level]?.color ||
+                  CLUSTER_CONFIG.clutter.color,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.32)',
+              }}
+            >
+              {CLUSTER_CONFIG[selectedCluster.level]?.marker || 'C'}
+            </span>
+            <span style={{ fontWeight: 800, fontSize: 14 }}>
+              {CLUSTER_CONFIG[selectedCluster.level]?.label ||
+                selectedCluster.level}
+            </span>
+          </div>
+          <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 4 }}>
+            {selectedCluster.pingCount} trash ping
+            {selectedCluster.pingCount !== 1 ? 's' : ''} in this area
+          </div>
+          {selectedCluster.description ? (
+            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 4 }}>
+              {selectedCluster.description}
+            </div>
+          ) : null}
+          <div style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>
+            Votes: {selectedCluster.goneVotes?.length || 0} /{' '}
+            {CLUSTER_CONFIG[selectedCluster.level]?.votesNeeded || 3}
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => handleClusterVote(selectedCluster._id)}
+              disabled={clusterVoting === selectedCluster._id}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(34,197,94,0.18)',
+                color: '#4ade80',
+              }}
+            >
+              {clusterVoting === selectedCluster._id ? '...' : 'Cleaned up'}
+            </button>
+            <button
+              onClick={() => setSelectedCluster(null)}
+              style={{
+                ...pingBtnBase,
+                flex: 1,
+                background: 'rgba(148,163,184,0.15)',
+                color: '#94a3b8',
+              }}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="record-status-wrap">
         <div className="record-topbar">
           {showControls && (
@@ -1936,6 +2201,9 @@ export default function Record() {
       {showPublishForm && recordedGeoJSON && (
         <RouteBuilderForm
           geojson={recordedGeoJSON}
+          title="Save Trail"
+          submitLabel="Save to device"
+          publishOnSubmit={false}
           onSuccess={handlePublishSuccess}
           onCancel={() => setShowPublishForm(false)}
         />

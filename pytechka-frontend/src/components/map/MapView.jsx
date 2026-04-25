@@ -93,7 +93,7 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
 const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
 const USER_FOLLOW_BASE_ZOOM = 14.2
 const USER_FOLLOW_TRAIL_ZOOM = 17.8
-const TRAIL_VISIBILITY_MIN_ZOOM = 9
+const TRAIL_VISIBILITY_MIN_ZOOM = 7
 const MAPBOX_GEOCODING_ENDPOINT =
   'https://api.mapbox.com/geocoding/v5/mapbox.places'
 const MAPBOX_DIRECTIONS_ENDPOINT =
@@ -305,15 +305,19 @@ const CLUSTER_CONFIG = {
 }
 
 const clusterMarkerStyle = {
-  width: 40,
-  height: 40,
+  width: 34,
+  height: 34,
   borderRadius: '50%',
   display: 'grid',
   placeItems: 'center',
-  fontSize: 22,
+  color: '#ffffff',
+  fontSize: 16,
+  fontWeight: 900,
+  lineHeight: 1,
   cursor: 'pointer',
-  border: '3px solid #fff',
-  boxShadow: '0 3px 12px rgba(0,0,0,0.45)',
+  border: '2px solid rgba(255, 255, 255, 0.9)',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.42)',
+  textShadow: '0 1px 2px rgba(0,0,0,0.45)',
 }
 
 const pingMarkerStyle = {
@@ -1483,8 +1487,12 @@ export default function MapView({
     setUnmarkedWarning('')
 
     const fetchTimeout = setTimeout(() => {
+      const trailParams = {
+        compact: true,
+        ...(normalizedSearch ? { search: normalizedSearch } : {}),
+      }
       const request = Promise.allSettled([
-        fetchMapTrails(normalizedSearch ? { search: normalizedSearch } : {}),
+        fetchMapTrails(trailParams),
         fetchMapTrailsGeojson(),
       ])
 
@@ -1499,7 +1507,7 @@ export default function MapView({
               : []
             : []
 
-          const mergedMap = new Map()
+          const mergedMap = new globalThis.Map()
           offlineTrails.forEach(t => mergedMap.set(t._id || t.id, t))
           apiTrails.forEach(t => mergedMap.set(t._id || t.id, t))
           const mergedTrails = Array.from(mergedMap.values())
@@ -1510,7 +1518,7 @@ export default function MapView({
           if (geojsonOk && trailsOk) {
              const apiGeojson = normalizeTrailGeojsonCollection(geojsonResult.value?.data)
              const offlineGeojson = buildTrailGeojsonFromTrails(offlineTrails)
-             const mergedFeatures = new Map()
+             const mergedFeatures = new globalThis.Map()
              
              apiGeojson.features.forEach(f => {
                if (f.properties?.id) mergedFeatures.set(f.properties.id, f)
@@ -3375,7 +3383,6 @@ export default function MapView({
                     style={{
                       ...clusterMarkerStyle,
                       background: cfg.color,
-                      border: `2px solid ${cfg.color}`,
                     }}
                     title={`${cfg.label}: ${cluster.description || ''}`}
                   >
@@ -4120,7 +4127,19 @@ export default function MapView({
               marginBottom: 6,
             }}
           >
-            <span style={{ fontSize: 22 }}>
+            <span
+              style={{
+                ...clusterMarkerStyle,
+                width: 28,
+                height: 28,
+                fontSize: 13,
+                cursor: 'default',
+                background:
+                  CLUSTER_CONFIG[selectedCluster.level]?.color ||
+                  CLUSTER_CONFIG.clutter.color,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.32)',
+              }}
+            >
               {CLUSTER_CONFIG[selectedCluster.level]?.marker || 'C'}
             </span>
             <span style={{ fontWeight: 800, fontSize: 14 }}>

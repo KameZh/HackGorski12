@@ -601,10 +601,13 @@
   border-radius: 12px;
   background: rgba(15, 23, 36, 0.84);
   padding: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 10px;
+}
+
+.my-trail-draft {
+  border-color: rgba(72, 169, 166, 0.46);
+  background: rgba(15, 23, 36, 0.92);
 }
 
 .my-trail-info {
@@ -633,6 +636,7 @@
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .my-trail-edit-btn,
@@ -749,6 +753,66 @@
   margin: 0;
   color: rgba(251, 254, 249, 0.62);
   font-size: 0.78rem;
+}
+
+.account-trail-map {
+  width: 100%;
+  height: 190px;
+  overflow: hidden;
+  border: 1px solid rgba(66, 129, 164, 0.28);
+  border-radius: 12px;
+  background: rgba(9, 14, 23, 0.7);
+}
+
+.account-trail-map-empty {
+  display: grid;
+  place-items: center;
+  color: #8ba6ba;
+  font-size: 0.82rem;
+  text-align: center;
+  padding: 14px;
+}
+
+.account-trail-start-marker {
+  min-width: 36px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #fbfef9;
+  border-radius: 999px;
+  background: #16a34a;
+  color: #fbfef9;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.38);
+}
+
+.account-trail-mark-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.account-trail-mark-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(15, 23, 35, 0.68);
+  color: #cbd5e1;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.account-trail-mark-chip i {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
 }
 
 @media (max-width: 680px) {

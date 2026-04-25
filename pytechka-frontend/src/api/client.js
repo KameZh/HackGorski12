@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { CapacitorHttp } from '@capacitor/core'
 
 const nativeApiBaseUrl = 'http://10.0.2.2:5174/api'
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL
 const androidApiBaseUrl = import.meta.env.VITE_ANDROID_API_BASE_URL
 const isLocalWebDev =
   !Capacitor.isNativePlatform() &&
@@ -10,16 +11,18 @@ const isLocalWebDev =
   ['localhost', '127.0.0.1'].includes(window.location.hostname)
 
 const apiBaseUrl = Capacitor.isNativePlatform()
-  ? import.meta.env.VITE_API_BASE_URL || androidApiBaseUrl || nativeApiBaseUrl
+  ? configuredApiBaseUrl || androidApiBaseUrl || nativeApiBaseUrl
   : isLocalWebDev
     ? '/api'
-    : import.meta.env.VITE_API_BASE_URL || '/api'
+    : configuredApiBaseUrl || '/api'
 
 const api = axios.create({
   baseURL: apiBaseUrl,
 })
 
-const shouldBypassNgrokWarning = String(apiBaseUrl).includes('ngrok-free.app')
+const shouldBypassNgrokWarning = /ngrok(-free)?\.(app|dev|io)/i.test(
+  String(apiBaseUrl),
+)
 
 function buildRequestUrl(url) {
   if (!url) return apiBaseUrl

@@ -10,9 +10,11 @@ import Explore from './pages/Explore'
 import Maps from './pages/Maps'
 import Record from './pages/Record'
 import Events from './pages/Events'
+import { useRecordingStore } from './store/recordingStore'
 
 function App() {
   const { getToken, isSignedIn } = useAuth()
+  const ensureWakeLock = useRecordingStore((state) => state.ensureWakeLock)
 
   setClerkTokenGetter(getToken)
 
@@ -21,6 +23,16 @@ function App() {
       getUserProfile().catch((err) => console.error('User sync failed:', err))
     }
   }, [isSignedIn, getToken])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') ensureWakeLock()
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [ensureWakeLock])
 
   return (
     <Routes>

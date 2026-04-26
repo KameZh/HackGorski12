@@ -10,6 +10,26 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
+const conditionReportSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, default: "Anonymous" },
+    surface: {
+      type: String,
+      enum: ["good", "muddy", "snow", "icy", "overgrown", "blocked", "mixed"],
+      default: "mixed",
+    },
+    waterSources: {
+      type: String,
+      enum: ["unknown", "available", "dry", "limited"],
+      default: "unknown",
+    },
+    hazards: { type: [String], default: [] },
+    notes: { type: String, default: "" },
+  },
+  { timestamps: true },
+);
+
 const trailMarkSchema = new mongoose.Schema(
   {
     name: { type: String, default: "" },
@@ -94,6 +114,7 @@ const trailSchema = new mongoose.Schema(
       default: [],
     },
     reviews: [reviewSchema],
+    conditionReports: [conditionReportSchema],
     averageAccuracy: { type: Number, default: 0 },
     ai: {
       status: {

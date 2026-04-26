@@ -37,6 +37,29 @@ const PHOTO_PING_CATEGORIES = new Set([
   "hazard",
   "memory",
 ]);
+const TRAIL_CONDITION_SURFACES = new Set([
+  "good",
+  "muddy",
+  "snow",
+  "icy",
+  "overgrown",
+  "blocked",
+  "mixed",
+]);
+const TRAIL_CONDITION_WATER = new Set([
+  "unknown",
+  "available",
+  "dry",
+  "limited",
+]);
+const TRAIL_CONDITION_HAZARDS = new Set([
+  "fallen_trees",
+  "landslide",
+  "flooded",
+  "missing_markers",
+  "dangerous_animals",
+  "trash",
+]);
 
 function normalizePhotoPingPayload(body = {}) {
   const photoUrl = String(body.photoUrl || body.webPath || "").trim();
@@ -291,6 +314,25 @@ function normalizeTrailMarks(trailMarks, geojson) {
 
 function normalizeStringValue(value) {
   return String(value || "").trim();
+}
+
+function normalizeTrailConditionPayload(body = {}) {
+  const surface = normalizeStringValue(body.surface).toLowerCase();
+  const waterSources = normalizeStringValue(body.waterSources).toLowerCase();
+  const hazards = Array.isArray(body.hazards)
+    ? body.hazards
+        .map((entry) => normalizeStringValue(entry).toLowerCase())
+        .filter((entry) => TRAIL_CONDITION_HAZARDS.has(entry))
+    : [];
+
+  return {
+    surface: TRAIL_CONDITION_SURFACES.has(surface) ? surface : "mixed",
+    waterSources: TRAIL_CONDITION_WATER.has(waterSources)
+      ? waterSources
+      : "unknown",
+    hazards: [...new Set(hazards)].slice(0, 8),
+    notes: normalizeStringValue(body.notes).slice(0, 500),
+  };
 }
 
 function inferColourTypeFromValues({
@@ -901,6 +943,69 @@ app.get("/api/trails/:id/start-readiness", async (req, res) => {
     res.status(500).json({ error: "Failed to validate trail start readiness" });
   }
 });
+
+app.get("/api/trails/:id/conditions", async (req, res) => {
+  try {
+    const trail =
+      (await Trail.findById(req.params.id).select("conditionReports").lean()) ||
+      (await OfficialTrail.findById(req.params.id)
+        .select("conditionReports")
+        .lean());
+
+    if (!trail) return res.status(404).json({ error: "Trail not found" });
+
+    const reports = Array.isArray(trail.conditionReports)
+      ? [...trail.conditionReports].sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime(),
+        )
+      : [];
+
+    res.json({ reports });
+  } catch (err) {
+    console.error("Trail conditions fetch error:", err);
+    res.status(500).json({ error: "Failed to fetch trail conditions" });
+  }
+});
+
+app.post(
+  "/api/trails/:id/conditions",
+  requireAuth(),
+  checkUser,
+  async (req, res) => {
+    try {
+      const trail =
+        (await Trail.findById(req.params.id)) ||
+        (await OfficialTrail.findById(req.params.id));
+
+      if (!trail) return res.status(404).json({ error: "Trail not found" });
+
+      const { userId } = getAuth(req);
+      const report = {
+        userId,
+        username: req.dbUser?.username || "Anonymous",
+        ...normalizeTrailConditionPayload(req.body),
+      };
+
+      trail.conditionReports = Array.isArray(trail.conditionReports)
+        ? trail.conditionReports
+        : [];
+      trail.conditionReports.push(report);
+
+      if (trail.conditionReports.length > 80) {
+        trail.conditionReports = trail.conditionReports.slice(-80);
+      }
+
+      await trail.save();
+      const saved = trail.conditionReports[trail.conditionReports.length - 1];
+      res.status(201).json(saved);
+    } catch (err) {
+      console.error("Trail condition report error:", err);
+      res.status(500).json({ error: "Failed to save trail condition report" });
+    }
+  },
+);
 
 app.post(
   "/api/trails/:id/complete",

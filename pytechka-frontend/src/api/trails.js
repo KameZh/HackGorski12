@@ -31,3 +31,11 @@ export const addTrailReview = (id, review) => {
 export const fetchTrailReviews = (id) => {
   return api.get(`/trails/${id}/reviews`)
 }
+
+export const fetchTrailConditions = (id) => {
+  return api.get(`/trails/${id}/conditions`)
+}
+
+export const addTrailCondition = (id, report) => {
+  return api.post(`/trails/${id}/conditions`, report)
+}

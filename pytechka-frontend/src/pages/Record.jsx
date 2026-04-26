@@ -13,9 +13,10 @@ import CameraButton from '../components/camera/CameraButton'
 import PhotoCaptureModal from '../components/camera/PhotoCaptureModal'
 import OfflineMapModal from '../components/map/OfflineMapModal'
 import { useMapStore } from '../store/mapStore'
+import { useRecordingStore } from '../store/recordingStore'
 import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
 import { completeTrailFromMap } from '../api/maps'
-import { fetchTrailById } from '../api/trails'
+import { addTrailCondition, fetchTrailById } from '../api/trails'
 import {
   createPing,
   createPhotoPing,
@@ -32,6 +33,7 @@ import {
   buildTrailGeojsonFromTrails,
 } from '../components/map/trailMapLayerUtils'
 import { useOfflineStore } from '../store/offlineStore'
+import { downloadGpx } from '../utils/gpx'
 import './Record.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
@@ -170,6 +172,8 @@ const pingPopupStyle = {
 
 const LIVE_RECORDING_NOTIFICATION_ID = 50001
 const LIVE_RECORDING_CHANNEL_ID = 'recording-live'
+const WRONG_TURN_DISTANCE_METERS = 85
+const ARRIVAL_DISTANCE_METERS = 45
 
 function formatDuration(totalSeconds) {
   const hours = Math.floor(totalSeconds / 3600)
@@ -239,6 +243,55 @@ function deriveTrailStartCoordinates(trail) {
   return [Number(coordinates[0][0]), Number(coordinates[0][1])]
 }
 
+const CONDITION_SURFACE_OPTIONS = [
+  ['good', 'Good'],
+  ['mixed', 'Mixed'],
+  ['muddy', 'Muddy'],
+  ['snow', 'Snow'],
+  ['icy', 'Icy'],
+  ['overgrown', 'Overgrown'],
+  ['blocked', 'Blocked'],
+]
+
+const CONDITION_WATER_OPTIONS = [
+  ['unknown', 'Unknown'],
+  ['available', 'Available'],
+  ['limited', 'Limited'],
+  ['dry', 'Dry'],
+]
+
+const CONDITION_HAZARD_OPTIONS = [
+  ['fallen_trees', 'Fallen trees'],
+  ['landslide', 'Landslide'],
+  ['flooded', 'Flooded'],
+  ['missing_markers', 'Missing markers'],
+  ['dangerous_animals', 'Animal risk'],
+  ['trash', 'Trash'],
+]
+
+function extractLineCoordinates(geojson) {
+  const parsed = parseTrailGeojson(geojson)
+  if (!parsed) return []
+
+  if (parsed.type === 'LineString') {
+    return Array.isArray(parsed.coordinates) ? parsed.coordinates : []
+  }
+  if (parsed.type === 'MultiLineString') {
+    return Array.isArray(parsed.coordinates)
+      ? parsed.coordinates.flatMap((line) => (Array.isArray(line) ? line : []))
+      : []
+  }
+  if (parsed.type === 'Feature') return extractLineCoordinates(parsed.geometry)
+  if (parsed.type === 'FeatureCollection') {
+    return Array.isArray(parsed.features)
+      ? parsed.features.flatMap((feature) =>
+          extractLineCoordinates(feature?.geometry)
+        )
+      : []
+  }
+  return []
+}
+
 function distanceMeters(p1, p2) {
   const R = 6371000
   const toRad = (deg) => (deg * Math.PI) / 180
@@ -254,23 +307,89 @@ function distanceMeters(p1, p2) {
   return R * c
 }
 
-function bearingDegrees(p1, p2) {
-  const toRad = (deg) => (deg * Math.PI) / 180
-  const toDeg = (rad) => (rad * 180) / Math.PI
-  const startLat = toRad(p1.latitude)
-  const endLat = toRad(p2.latitude)
-  const deltaLon = toRad(p2.longitude - p1.longitude)
-  const y = Math.sin(deltaLon) * Math.cos(endLat)
-  const x =
-    Math.cos(startLat) * Math.sin(endLat) -
-    Math.sin(startLat) * Math.cos(endLat) * Math.cos(deltaLon)
+function lonLatDistanceMeters(a, b) {
+  return distanceMeters(
+    { longitude: Number(a?.[0]), latitude: Number(a?.[1]) },
+    { longitude: Number(b?.[0]), latitude: Number(b?.[1]) }
+  )
+}
 
-  return (toDeg(Math.atan2(y, x)) + 360) % 360
+function pathLengthMeters(pathCoordinates) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return 0
+  let total = 0
+  for (let i = 1; i < pathCoordinates.length; i += 1) {
+    total += lonLatDistanceMeters(pathCoordinates[i - 1], pathCoordinates[i])
+  }
+  return total
+}
+
+function distanceAlongPathMeters(pathCoordinates, endIndex) {
+  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return 0
+  const safeEnd = Math.max(
+    0,
+    Math.min(pathCoordinates.length - 1, Number(endIndex) || 0)
+  )
+  let total = 0
+  for (let i = 1; i <= safeEnd; i += 1) {
+    total += lonLatDistanceMeters(pathCoordinates[i - 1], pathCoordinates[i])
+  }
+  return total
+}
+
+function getNearestPathPoint(pathCoordinates, location) {
+  if (!Array.isArray(pathCoordinates) || !pathCoordinates.length || !location) {
+    return null
+  }
+
+  let nearest = null
+  for (let i = 0; i < pathCoordinates.length; i += 1) {
+    const coord = pathCoordinates[i]
+    const distance = distanceMeters(
+      { longitude: Number(coord?.[0]), latitude: Number(coord?.[1]) },
+      { longitude: location.longitude, latitude: location.latitude }
+    )
+    if (!nearest || distance < nearest.distanceMeters) {
+      nearest = { index: i, coordinate: coord, distanceMeters: distance }
+    }
+  }
+  return nearest
+}
+
+function buildTrailSegments(trail, pointCount) {
+  const maxIndex = Math.max(0, Number(pointCount || 0) - 1)
+  const marks = Array.isArray(trail?.trailMarks) ? trail.trailMarks : []
+  const validMarks = marks
+    .map((mark, index) => {
+      const startIndex = Math.max(
+        0,
+        Math.min(maxIndex, Math.round(Number(mark?.startIndex || 0)))
+      )
+      const endIndex = Math.max(
+        startIndex,
+        Math.min(maxIndex, Math.round(Number(mark?.endIndex || maxIndex)))
+      )
+      return {
+        name: mark?.name || `Sector ${index + 1}`,
+        colourType: mark?.colourType || mark?.colour_type || 'unmarked',
+        startIndex,
+        endIndex,
+      }
+    })
+    .filter((mark) => mark.endIndex >= mark.startIndex)
+
+  if (validMarks.length) return validMarks
+  return [
+    {
+      name: 'Finish',
+      colourType: trail?.colour_type || 'unmarked',
+      startIndex: 0,
+      endIndex: maxIndex,
+    },
+  ]
 }
 
 export default function Record() {
   const mapRef = useRef(null)
-  const watchRef = useRef(null)
   const pendingCenterRef = useRef(null)
   const lastCompassLocationRef = useRef(null)
   const liveNotificationReadyRef = useRef(false)
@@ -288,10 +407,22 @@ export default function Record() {
   } = useMapStore()
 
   const [viewState, setViewState] = useState(INITIAL_VIEW)
-  const [points, setPoints] = useState([])
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [distance, setDistance] = useState(0)
-  const [isTracking, setIsTracking] = useState(false)
+  const {
+    points,
+    elapsedSeconds,
+    distance,
+    isTracking,
+    autoPaused,
+    splits,
+    currentElevation,
+    elevationGain,
+    currentSpeedKmh,
+    movementHeading,
+    geoError: recordingGeoError,
+    startTracking: startRecording,
+    pauseTracking,
+    reset: resetRecording,
+  } = useRecordingStore()
   const [geoError, setGeoError] = useState('')
   const [trails, setTrails] = useState([])
   const [trailsGeojson, setTrailsGeojson] = useState(
@@ -300,10 +431,6 @@ export default function Record() {
   const [loadingTrails, setLoadingTrails] = useState(true)
   const [trailsError, setTrailsError] = useState('')
   const [currentLocation, setCurrentLocation] = useState(null)
-  const [currentElevation, setCurrentElevation] = useState(0)
-  const [elevationGain, setElevationGain] = useState(0)
-  const [currentSpeedKmh, setCurrentSpeedKmh] = useState(0)
-  const [movementHeading, setMovementHeading] = useState(null)
   const [savedRoute, setSavedRoute] = useState(null)
   const [aiStatus, setAiStatus] = useState(null)
   const [aiResult, setAiResult] = useState(null)
@@ -320,6 +447,7 @@ export default function Record() {
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [clusterVoting, setClusterVoting] = useState(null)
   const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
+  const [navigationStatus, setNavigationStatus] = useState(null)
 
   // Photo capture state
   const [capturedPhoto, setCapturedPhoto] = useState(null)
@@ -335,6 +463,12 @@ export default function Record() {
   const [finishSubmitting, setFinishSubmitting] = useState(false)
   const [finishError, setFinishError] = useState('')
   const [finishSuccess, setFinishSuccess] = useState('')
+  const [finishCondition, setFinishCondition] = useState({
+    surface: 'mixed',
+    waterSources: 'unknown',
+    hazards: [],
+    notes: '',
+  })
 
   const { loadOfflineTrails, saveDraftTrail } = useOfflineStore()
 
@@ -400,11 +534,8 @@ export default function Record() {
   const steps = useMemo(() => Math.round(distance / 0.78), [distance])
 
   const clearWatch = useCallback(() => {
-    if (watchRef.current != null) {
-      navigator.geolocation.clearWatch(watchRef.current)
-      watchRef.current = null
-    }
-  }, [])
+    pauseTracking()
+  }, [pauseTracking])
 
   const applyTerrain = useCallback((map, enabled) => {
     if (enabled) {
@@ -490,105 +621,14 @@ export default function Record() {
     })
   }, [])
 
-  const onPosition = useCallback((position) => {
-    const nextElevation = Number.isFinite(position.coords.altitude)
-      ? position.coords.altitude
-      : null
-
-    const nextPoint = {
-      latitude: position.coords.latitude,
-      longitude: position.coords.longitude,
-      elevation: nextElevation,
-      recordedAt: Date.now(),
-    }
-
-    if (Number.isFinite(nextElevation)) {
-      setCurrentElevation(nextElevation)
-    }
-
-    const gpsHeading = Number(position.coords.heading)
-    if (Number.isFinite(gpsHeading) && gpsHeading >= 0) {
-      setMovementHeading(gpsHeading)
-    } else {
-      const previousCompassLocation = lastCompassLocationRef.current
-      if (previousCompassLocation) {
-        const movementMeters = distanceMeters(previousCompassLocation, nextPoint)
-        if (movementMeters >= 2) {
-          setMovementHeading(bearingDegrees(previousCompassLocation, nextPoint))
-        }
-      }
-    }
-    lastCompassLocationRef.current = nextPoint
-
-    setGeoError('')
-    setPoints((prev) => {
-      if (prev.length > 0) {
-        const increment = distanceMeters(prev[prev.length - 1], nextPoint)
-        const elapsedSinceLast =
-          (nextPoint.recordedAt - prev[prev.length - 1].recordedAt) / 1000
-
-        const gpsSpeedMps =
-          Number.isFinite(position.coords.speed) && position.coords.speed >= 0
-            ? position.coords.speed
-            : null
-
-        const derivedSpeedMps =
-          elapsedSinceLast > 0 ? increment / elapsedSinceLast : 0
-        const speedToUse = gpsSpeedMps ?? derivedSpeedMps
-
-        if (Number.isFinite(speedToUse)) {
-          setCurrentSpeedKmh(Math.max(0, speedToUse * 3.6))
-        }
-
-        if (Number.isFinite(increment) && increment > 0.4) {
-          setDistance((d) => d + increment)
-        }
-
-        const prevElevation = prev[prev.length - 1].elevation
-        if (Number.isFinite(prevElevation) && Number.isFinite(nextElevation)) {
-          const positiveDiff = nextElevation - prevElevation
-          if (positiveDiff > 0.7) {
-            setElevationGain((gain) => gain + positiveDiff)
-          }
-        }
-      }
-
-      return [...prev, nextPoint]
-    })
-
-    setViewState((old) => ({
-      ...old,
-      latitude: nextPoint.latitude,
-      longitude: nextPoint.longitude,
-      zoom: Math.max(old.zoom, 15.5),
-    }))
-  }, [])
-
-  const startWatch = useCallback(() => {
-    watchRef.current = navigator.geolocation.watchPosition(
-      onPosition,
-      () => {
-        setGeoError(
-          'Could not access location. Allow GPS permissions and try again.'
-        )
-      },
-      {
-        enableHighAccuracy: true,
-        maximumAge: 1000,
-        timeout: 10000,
-      }
-    )
-  }, [onPosition])
-
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
       setGeoError('Geolocation is not supported on this device.')
       return
     }
 
-    clearWatch()
-    setIsTracking(true)
-    lastCompassLocationRef.current = null
+    setGeoError('')
+    startRecording()
 
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
@@ -597,13 +637,11 @@ export default function Record() {
           longitude: coords.longitude,
           latitude: coords.latitude,
         })
-        startWatch()
       },
       () => {
         setGeoError(
           'Could not access location. Allow GPS permissions and try again.'
         )
-        startWatch()
       },
       {
         enableHighAccuracy: true,
@@ -611,30 +649,21 @@ export default function Record() {
         timeout: 10000,
       }
     )
-  }, [centerOnCurrentLocation, clearWatch, startWatch])
+  }, [centerOnCurrentLocation, startRecording])
 
   const stopTracking = useCallback(() => {
-    clearWatch()
-    setIsTracking(false)
-    setCurrentSpeedKmh(0)
-    lastCompassLocationRef.current = null
-  }, [clearWatch])
+    pauseTracking()
+  }, [pauseTracking])
 
   const resetActivity = useCallback(() => {
-    clearWatch()
-    setIsTracking(false)
-    setPoints([])
-    setElapsedSeconds(0)
-    setDistance(0)
-    setElevationGain(0)
-    setCurrentSpeedKmh(0)
-    setMovementHeading(null)
+    resetRecording()
     lastCompassLocationRef.current = null
     setGeoError('')
     setPingMode(false)
     setPingDesc('')
     setSelectedPing(null)
     setLoadedTrailActivity(null)
+    setNavigationStatus(null)
     setSelectedTrail(null)
     setShowPublishForm(false)
     setSavedRoute(null)
@@ -645,7 +674,13 @@ export default function Record() {
     setFinishComment('')
     setFinishError('')
     setFinishSuccess('')
-  }, [clearWatch, setSelectedTrail])
+    setFinishCondition({
+      surface: 'mixed',
+      waterSources: 'unknown',
+      hazards: [],
+      notes: '',
+    })
+  }, [resetRecording, setSelectedTrail])
 
   const recordedGeoJSON = useMemo(() => {
     if (points.length < 2) return null
@@ -670,22 +705,32 @@ export default function Record() {
 
   const saveTracking = useCallback(() => {
     clearWatch()
-    setIsTracking(false)
     if (points.length < 2) return
 
-    if (selectedTrail?._id || selectedTrail?.id) {
+    if (
+      selectedTrail?._id ||
+      selectedTrail?.id ||
+      loadedTrailActivity?.trailId
+    ) {
       setShowFinishModal(true)
       setFinishRating(0)
       setFinishComment('')
       setFinishError('')
       setFinishSuccess('')
+      setFinishCondition({
+        surface: 'mixed',
+        waterSources: 'unknown',
+        hazards: [],
+        notes: '',
+      })
     }
 
     setShowPublishForm(true)
-  }, [clearWatch, points, selectedTrail])
+  }, [clearWatch, points, selectedTrail, loadedTrailActivity])
 
   const submitTrailCompletion = useCallback(async () => {
-    const trailId = selectedTrail?._id || selectedTrail?.id
+    const trailId =
+      selectedTrail?._id || selectedTrail?.id || loadedTrailActivity?.trailId
     if (!trailId) {
       setFinishError('No selected trail to rate.')
       return
@@ -707,12 +752,37 @@ export default function Record() {
       const res = await completeTrailFromMap(trailId, payload)
       const data = res?.data || {}
 
+      const hasConditionReport =
+        finishCondition.surface !== 'mixed' ||
+        finishCondition.waterSources !== 'unknown' ||
+        finishCondition.hazards.length > 0 ||
+        finishCondition.notes.trim().length > 0
+
+      if (hasConditionReport) {
+        await addTrailCondition(trailId, {
+          ...finishCondition,
+          notes: finishCondition.notes.trim(),
+        })
+      }
+
       if (data.reviewAdded) {
-        setFinishSuccess('Trail completed and your rating was saved.')
+        setFinishSuccess(
+          hasConditionReport
+            ? 'Trail completed. Rating and condition report saved.'
+            : 'Trail completed and your rating was saved.'
+        )
       } else if (finishRating > 0 && data.alreadyReviewed) {
-        setFinishSuccess('Trail completed. You already reviewed it before.')
+        setFinishSuccess(
+          hasConditionReport
+            ? 'Trail completed. Condition report saved.'
+            : 'Trail completed. You already reviewed it before.'
+        )
       } else {
-        setFinishSuccess('Trail completion saved successfully.')
+        setFinishSuccess(
+          hasConditionReport
+            ? 'Trail completion and condition report saved.'
+            : 'Trail completion saved successfully.'
+        )
       }
 
       setTimeout(() => setShowFinishModal(false), 1000)
@@ -725,12 +795,31 @@ export default function Record() {
     }
   }, [
     selectedTrail,
+    loadedTrailActivity,
     elapsedSeconds,
     distance,
     elevationGain,
     finishRating,
     finishComment,
+    finishCondition,
   ])
+
+  const toggleFinishHazard = useCallback((hazard) => {
+    setFinishCondition((old) => ({
+      ...old,
+      hazards: old.hazards.includes(hazard)
+        ? old.hazards.filter((entry) => entry !== hazard)
+        : [...old.hazards, hazard],
+    }))
+  }, [])
+
+  const handleExportGpx = useCallback(() => {
+    const name =
+      loadedTrailActivity?.trailName ||
+      selectedTrail?.name ||
+      `Pytechka activity ${new Date().toISOString().slice(0, 10)}`
+    downloadGpx(points, name)
+  }, [loadedTrailActivity, selectedTrail, points])
 
   const handlePublishSuccess = useCallback(
     async (trail) => {
@@ -787,15 +876,37 @@ export default function Record() {
   }, [centerOnCurrentLocation])
 
   const startLoadedTrailActivity = useCallback(
-    (trail) => {
+    async (trail) => {
       if (!trail) return
 
       const trailId = trail._id || trail.id
       if (!trailId) return
 
-      setLoadedTrailActivity({ trailId, trailName: trail.name || 'Trail' })
+      let activityTrail = trail
+      try {
+        const res = await fetchTrailById(trailId)
+        if (res?.data) activityTrail = res.data
+      } catch {
+        activityTrail = trail
+      }
 
-      const startCoordinates = deriveTrailStartCoordinates(trail)
+      const pathCoordinates = extractLineCoordinates(activityTrail.geojson)
+      const segments = buildTrailSegments(activityTrail, pathCoordinates.length)
+      const totalDistanceMeters =
+        Number(activityTrail?.stats?.distance) || pathLengthMeters(pathCoordinates)
+      const endCoordinate = pathCoordinates[pathCoordinates.length - 1] || null
+
+      setLoadedTrailActivity({
+        trailId,
+        trailName: activityTrail.name || trail.name || 'Trail',
+        trail: activityTrail,
+        pathCoordinates,
+        segments,
+        totalDistanceMeters,
+        endCoordinate,
+      })
+
+      const startCoordinates = deriveTrailStartCoordinates(activityTrail)
       if (startCoordinates) {
         setViewState((old) => ({
           ...old,
@@ -811,7 +922,7 @@ export default function Record() {
         })
       }
 
-      setSelectedTrail(null)
+      setSelectedTrail(activityTrail)
       setPingMode(false)
     },
     [setSelectedTrail]
@@ -890,10 +1001,6 @@ export default function Record() {
 
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
-        const nextAltitude = Number.isFinite(position.coords.altitude)
-          ? position.coords.altitude
-          : null
-
         const nextLocation = {
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
@@ -901,28 +1008,7 @@ export default function Record() {
 
         setCurrentLocation(nextLocation)
 
-        const gpsHeading = Number(position.coords.heading)
-        if (Number.isFinite(gpsHeading) && gpsHeading >= 0) {
-          setMovementHeading(gpsHeading)
-        } else {
-          const previousCompassLocation = lastCompassLocationRef.current
-          if (previousCompassLocation) {
-            const movementMeters = distanceMeters(
-              previousCompassLocation,
-              nextLocation
-            )
-            if (movementMeters >= 2) {
-              setMovementHeading(
-                bearingDegrees(previousCompassLocation, nextLocation)
-              )
-            }
-          }
-        }
         lastCompassLocationRef.current = nextLocation
-
-        if (Number.isFinite(nextAltitude)) {
-          setCurrentElevation(nextAltitude)
-        }
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
@@ -992,11 +1078,10 @@ export default function Record() {
 
     return () => {
       active = false
-      clearWatch()
       setMode('explore')
       setSelectedTrail(null)
     }
-  }, [clearWatch, setMode, setSelectedTrail, loadOfflineTrails])
+  }, [setMode, setSelectedTrail, loadOfflineTrails])
 
 
   useEffect(() => {
@@ -1007,14 +1092,8 @@ export default function Record() {
   }, [applyTerrain, terrain3D])
 
   useEffect(() => {
-    if (!isTracking) return undefined
-
-    const interval = setInterval(() => {
-      setElapsedSeconds((prev) => prev + 1)
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [isTracking])
+    return undefined
+  }, [isTracking, autoPaused])
 
   useEffect(() => {
     if (!savedRoute?._id) return
@@ -1224,11 +1303,87 @@ export default function Record() {
     }
   }, [loadedTrailActivity])
 
+  useEffect(() => {
+    if (!loadedTrailActivity?.pathCoordinates?.length || !currentLocation) {
+      setNavigationStatus(null)
+      return
+    }
+
+    const nearest = getNearestPathPoint(
+      loadedTrailActivity.pathCoordinates,
+      currentLocation
+    )
+    if (!nearest) {
+      setNavigationStatus(null)
+      return
+    }
+
+    const coveredMeters = distanceAlongPathMeters(
+      loadedTrailActivity.pathCoordinates,
+      nearest.index
+    )
+    const totalMeters =
+      Number(loadedTrailActivity.totalDistanceMeters) ||
+      pathLengthMeters(loadedTrailActivity.pathCoordinates)
+    const progressPercent =
+      totalMeters > 0
+        ? Math.max(0, Math.min(100, (coveredMeters / totalMeters) * 100))
+        : 0
+    const nextSegment =
+      loadedTrailActivity.segments?.find(
+        (segment) => nearest.index <= Number(segment.endIndex)
+      ) || null
+
+    let distanceToNextMeters = null
+    if (nextSegment) {
+      const targetDistance = distanceAlongPathMeters(
+        loadedTrailActivity.pathCoordinates,
+        nextSegment.endIndex
+      )
+      distanceToNextMeters = Math.max(0, targetDistance - coveredMeters)
+    }
+
+    const finishDistanceMeters = loadedTrailActivity.endCoordinate
+      ? distanceMeters(
+          {
+            longitude: currentLocation.longitude,
+            latitude: currentLocation.latitude,
+          },
+          {
+            longitude: Number(loadedTrailActivity.endCoordinate[0]),
+            latitude: Number(loadedTrailActivity.endCoordinate[1]),
+          }
+        )
+      : null
+
+    setNavigationStatus({
+      offRoute: nearest.distanceMeters > WRONG_TURN_DISTANCE_METERS,
+      nearestDistanceMeters: nearest.distanceMeters,
+      progressPercent,
+      coveredMeters,
+      totalMeters,
+      nextSegment,
+      distanceToNextMeters,
+      arrived:
+        Number.isFinite(finishDistanceMeters) &&
+        finishDistanceMeters <= ARRIVAL_DISTANCE_METERS,
+    })
+  }, [loadedTrailActivity, currentLocation])
+
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
   const isActivityActive =
     isTracking || hasRecordingData || Boolean(loadedTrailActivity)
   const showControls = hasRecordingData || isTracking
+  const completionTrail =
+    selectedTrail ||
+    (loadedTrailActivity
+      ? {
+          _id: loadedTrailActivity.trailId,
+          id: loadedTrailActivity.trailId,
+          name: loadedTrailActivity.trailName,
+        }
+      : null)
 
   useEffect(() => {
     if (isActivityActive) return
@@ -2039,8 +2194,20 @@ export default function Record() {
             {trailsError}
           </div>
         )}
-        {geoError && (
-          <div className="record-info-box record-info-error">{geoError}</div>
+        {(geoError || recordingGeoError) && (
+          <div className="record-info-box record-info-error">
+            {geoError || recordingGeoError}
+          </div>
+        )}
+        {autoPaused && (
+          <div className="record-info-box">Auto-paused while standing still.</div>
+        )}
+        {navigationStatus?.offRoute && (
+          <div className="record-info-box record-info-error">
+            Wrong-turn warning: you are about{' '}
+            {Math.round(navigationStatus.nearestDistanceMeters)} m from the
+            loaded route.
+          </div>
         )}
       </div>
 
@@ -2060,7 +2227,7 @@ export default function Record() {
         mapCenter={viewState}
       />
 
-      {selectedTrail && !selectedHut && (
+      {selectedTrail && !selectedHut && !loadedTrailActivity && (
         <RoutePreviewCard onStartTrail={startLoadedTrailActivity} />
       )}
 
@@ -2150,6 +2317,55 @@ export default function Record() {
         </div>
       )}
 
+      {loadedTrailActivity && navigationStatus && (
+        <div className="record-navigation-panel">
+          <div className="record-navigation-head">
+            <span>{loadedTrailActivity.trailName}</span>
+            <strong>{Math.round(navigationStatus.progressPercent)}%</strong>
+          </div>
+          <div className="record-navigation-bar">
+            <span style={{ width: `${navigationStatus.progressPercent}%` }} />
+          </div>
+          <div className="record-navigation-grid">
+            <div>
+              <span>Route</span>
+              <strong>
+                {(navigationStatus.coveredMeters / 1000).toFixed(1)} /{' '}
+                {(navigationStatus.totalMeters / 1000).toFixed(1)} km
+              </strong>
+            </div>
+            <div>
+              <span>Next mark</span>
+              <strong>
+                {navigationStatus.nextSegment
+                  ? `${Math.round(
+                      navigationStatus.distanceToNextMeters || 0
+                    )} m`
+                  : '--'}
+              </strong>
+            </div>
+            <div>
+              <span>Status</span>
+              <strong>
+                {navigationStatus.arrived
+                  ? 'Arrived'
+                  : navigationStatus.offRoute
+                    ? 'Off route'
+                    : 'On route'}
+              </strong>
+            </div>
+          </div>
+          {navigationStatus.nextSegment ? (
+            <div className="record-navigation-sector">
+              {navigationStatus.nextSegment.name}
+              {navigationStatus.nextSegment.colourType
+                ? ` · ${navigationStatus.nextSegment.colourType}`
+                : ''}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="record-live-panel-wrap">
         <div className="record-live-panel">
           {!hasRecordingData && !isTracking ? (
@@ -2162,36 +2378,56 @@ export default function Record() {
               </button>
             </div>
           ) : (
-            <div className="record-actions-row record-actions-enter">
-              <button
-                onClick={saveTracking}
-                disabled={saving || points.length < 2}
-                className="record-action-btn record-save-btn"
-              >
-                {saving ? 'Saving...' : 'Save'}
-              </button>
-
-              {isTracking ? (
+            <div className="record-controls-stack record-actions-enter">
+              {splits.length > 0 ? (
+                <div className="record-splits-row">
+                  {splits.slice(-3).map((split) => (
+                    <div key={`${split.km}-${split.recordedAt}`}>
+                      <span>{split.km} km</span>
+                      <strong>{formatDuration(split.elapsedSeconds)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              <div className="record-actions-row">
                 <button
-                  onClick={stopTracking}
-                  className="record-primary-btn record-stop-btn"
+                  onClick={saveTracking}
+                  disabled={saving || points.length < 2}
+                  className="record-action-btn record-save-btn"
                 >
-                  Stop
+                  {saving ? 'Saving...' : 'Save'}
                 </button>
-              ) : (
-                <button
-                  onClick={startTracking}
-                  className="record-primary-btn record-resume-btn"
-                >
-                  Resume
-                </button>
-              )}
 
+                {isTracking ? (
+                  <button
+                    onClick={stopTracking}
+                    className="record-primary-btn record-stop-btn"
+                  >
+                    Pause
+                  </button>
+                ) : (
+                  <button
+                    onClick={startTracking}
+                    className="record-primary-btn record-resume-btn"
+                  >
+                    Resume
+                  </button>
+                )}
+
+                <button
+                  onClick={resetActivity}
+                  className="record-action-btn record-reset-btn"
+                >
+                  Reset
+                </button>
+              </div>
               <button
-                onClick={resetActivity}
-                className="record-action-btn record-reset-btn"
+                type="button"
+                onClick={handleExportGpx}
+                disabled={points.length < 2}
+                className="record-gpx-btn"
               >
-                Reset
+                Export GPX
               </button>
             </div>
           )}
@@ -2209,7 +2445,7 @@ export default function Record() {
         />
       )}
 
-      {showFinishModal && selectedTrail && (
+      {showFinishModal && completionTrail && (
         <div
           style={{
             position: 'absolute',
@@ -2241,7 +2477,7 @@ export default function Record() {
               TRAIL COMPLETED
             </div>
             <h3 style={{ margin: '4px 0 8px 0' }}>
-              Congrats! You finished {selectedTrail.name}.
+              Congrats! You finished {completionTrail.name}.
             </h3>
 
             <div
@@ -2302,6 +2538,76 @@ export default function Record() {
                 boxSizing: 'border-box',
               }}
             />
+
+            <div className="record-finish-condition">
+              <div className="record-finish-condition-title">
+                Trail conditions now
+              </div>
+              <div className="record-finish-condition-grid">
+                <label>
+                  Surface
+                  <select
+                    value={finishCondition.surface}
+                    onChange={(event) =>
+                      setFinishCondition((old) => ({
+                        ...old,
+                        surface: event.target.value,
+                      }))
+                    }
+                  >
+                    {CONDITION_SURFACE_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Water
+                  <select
+                    value={finishCondition.waterSources}
+                    onChange={(event) =>
+                      setFinishCondition((old) => ({
+                        ...old,
+                        waterSources: event.target.value,
+                      }))
+                    }
+                  >
+                    {CONDITION_WATER_OPTIONS.map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="record-finish-hazards">
+                {CONDITION_HAZARD_OPTIONS.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={
+                      finishCondition.hazards.includes(value) ? 'is-active' : ''
+                    }
+                    onClick={() => toggleFinishHazard(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={finishCondition.notes}
+                onChange={(event) =>
+                  setFinishCondition((old) => ({
+                    ...old,
+                    notes: event.target.value,
+                  }))
+                }
+                placeholder="Condition note for the next hikers (optional)"
+                rows={2}
+                maxLength={500}
+              />
+            </div>
 
             {finishError && (
               <div

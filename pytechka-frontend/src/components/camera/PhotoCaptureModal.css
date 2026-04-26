@@ -9,7 +9,8 @@
   align-items: center;
   justify-content: center;
   z-index: 1000;
-  padding: 20px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px
+    calc(env(safe-area-inset-bottom, 0px) + 88px);
 }
 
 .photo-capture-modal-content {
@@ -17,7 +18,7 @@
   border-radius: 16px;
   width: 100%;
   max-width: 400px;
-  max-height: 90vh;
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 112px);
   overflow-y: auto;
   border: 1px solid rgba(66, 129, 164, 0.5);
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
@@ -200,8 +201,11 @@
 .modal-actions {
   display: flex;
   gap: 12px;
-  padding: 16px 20px;
+  padding: 14px 20px calc(env(safe-area-inset-bottom, 0px) + 18px);
   border-top: 1px solid rgba(66, 129, 164, 0.3);
+  position: sticky;
+  bottom: 0;
+  background: rgba(17, 26, 40, 0.98);
 }
 
 .cancel-btn,

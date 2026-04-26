@@ -311,3 +311,189 @@
   text-align: center;
   font-style: italic;
 }
+
+.tdp-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(251, 254, 249, 0.74);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tdp-section-head strong {
+  color: #9fc9de;
+  font-weight: 800;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.tdp-elevation,
+.tdp-conditions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(66, 129, 164, 0.3);
+  background: rgba(15, 23, 36, 0.7);
+}
+
+.tdp-elevation-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 10px;
+  background: linear-gradient(
+    180deg,
+    rgba(72, 169, 166, 0.12),
+    rgba(66, 129, 164, 0.05)
+  );
+}
+
+.tdp-elevation-area {
+  fill: none;
+  stroke: rgba(72, 169, 166, 0.22);
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tdp-elevation-line {
+  fill: none;
+  stroke: #48a9a6;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.tdp-elevation-boundary {
+  stroke: rgba(250, 204, 21, 0.55);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.tdp-elevation-dot {
+  fill: #fbfef9;
+  stroke: #48a9a6;
+  stroke-width: 2;
+}
+
+.tdp-elevation-readout,
+.tdp-condition-meta,
+.tdp-muted {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  color: rgba(251, 254, 249, 0.68);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.tdp-condition-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tdp-condition-item {
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(66, 129, 164, 0.24);
+  background: rgba(20, 30, 46, 0.62);
+}
+
+.tdp-condition-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: #fbfef9;
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.tdp-condition-title small {
+  color: rgba(251, 254, 249, 0.48);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.tdp-condition-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tdp-condition-tags span,
+.tdp-condition-hazards button {
+  border-radius: 999px;
+  border: 1px solid rgba(66, 129, 164, 0.32);
+  background: rgba(66, 129, 164, 0.14);
+  color: rgba(251, 254, 249, 0.78);
+  padding: 5px 9px;
+  font-size: 0.74rem;
+  font-weight: 760;
+}
+
+.tdp-condition-notes {
+  margin: 8px 0 0;
+  color: rgba(251, 254, 249, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.tdp-condition-form {
+  display: grid;
+  gap: 9px;
+  padding-top: 2px;
+}
+
+.tdp-condition-form label {
+  display: grid;
+  gap: 5px;
+  color: rgba(251, 254, 249, 0.66);
+  font-size: 0.76rem;
+  font-weight: 780;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.tdp-condition-form select,
+.tdp-condition-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(66, 129, 164, 0.44);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(19, 27, 41, 0.92);
+  color: #fbfef9;
+  font: inherit;
+  outline: none;
+  resize: vertical;
+}
+
+.tdp-condition-hazards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.tdp-condition-hazards button {
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.tdp-condition-hazards button.is-active {
+  border-color: rgba(72, 169, 166, 0.74);
+  background: rgba(72, 169, 166, 0.22);
+  color: #a7f3d0;
+}

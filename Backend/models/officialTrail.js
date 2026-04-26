@@ -15,6 +15,26 @@ const trailMarkSchema = new mongoose.Schema(
   { _id: false },
 );
 
+const conditionReportSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    username: { type: String, default: "Anonymous" },
+    surface: {
+      type: String,
+      enum: ["good", "muddy", "snow", "icy", "overgrown", "blocked", "mixed"],
+      default: "mixed",
+    },
+    waterSources: {
+      type: String,
+      enum: ["unknown", "available", "dry", "limited"],
+      default: "unknown",
+    },
+    hazards: { type: [String], default: [] },
+    notes: { type: String, default: "" },
+  },
+  { timestamps: true },
+);
+
 const officialTrailSchema = new mongoose.Schema(
   {
     source: {
@@ -79,6 +99,7 @@ const officialTrailSchema = new mongoose.Schema(
       type: [trailMarkSchema],
       default: [],
     },
+    conditionReports: [conditionReportSchema],
     averageAccuracy: { type: Number, default: 0 },
   },
   {

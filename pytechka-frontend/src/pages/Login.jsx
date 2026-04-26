@@ -27,11 +27,13 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     if (!isLoaded || !signIn) return
 
+    const origin = window.location.origin
+
     try {
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: 'https://localhost/',
-        redirectCallbackUrl: 'https://localhost/sso-callback',
+        redirectUrl: `${origin}/sso-callback`,
+        redirectUrlComplete: `${origin}/`,
       })
     } catch (error) {
       console.error('Google sign-in redirect failed:', error)

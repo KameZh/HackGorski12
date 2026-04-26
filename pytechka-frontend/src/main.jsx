@@ -36,6 +36,7 @@ class ErrorBoundary extends React.Component {
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 const AUTH_REDIRECT_URL = '/'
 const ALLOWED_REDIRECT_ORIGINS = [
+  window.location.origin,
   'https://localhost',
   'http://localhost:5173',
   'http://localhost:4173',

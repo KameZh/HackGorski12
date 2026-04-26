@@ -196,9 +196,15 @@ export function extractLineGeometries(geojson) {
   return []
 }
 
+function getTrailGeometryCandidates(trail = {}) {
+  return [trail.geojson, trail.geom, trail.mapGeometry].filter(Boolean)
+}
+
 export function buildTrailGeojsonFromTrails(trails = []) {
   const features = trails.flatMap((trail) => {
-    const geometries = extractLineGeometries(trail.geojson)
+    const geometries = getTrailGeometryCandidates(trail).flatMap((geometry) =>
+      extractLineGeometries(geometry)
+    )
     if (!geometries.length) return []
 
     const source = String(trail.source || 'user').toLowerCase()

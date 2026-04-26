@@ -8,16 +8,21 @@ function lat2tile(lat, zoom) {
   return Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom)); 
 }
 
+function getTrailGeometry(trail) {
+  return trail?.geojson || trail?.geom || trail?.mapGeometry || null
+}
+
 /**
  * Proactively fetches Mapbox tiles covering the bounding box of a trail.
  * Since we have Workbox runtime caching configured for api.mapbox.com,
  * calling `fetch()` here will automatically store the tiles in the service worker cache.
  */
 export async function downloadMapTilesForTrail(trail, mapboxToken) {
-  if (!trail || !trail.geojson) return
+  const geometry = getTrailGeometry(trail)
+  if (!geometry || !mapboxToken) return
 
   // 1. Calculate the bounding box of the trail using Turf
-  const bbox = turf.bbox(trail.geojson)
+  const bbox = turf.bbox(geometry)
   const [minLng, minLat, maxLng, maxLat] = bbox
 
   // 2. Define the zoom levels to cache

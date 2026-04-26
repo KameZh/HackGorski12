@@ -536,7 +536,9 @@ function normalizeTrailGeojsonCollection(collection) {
 
 function buildTrailGeojsonFromTrails(trails = []) {
   const features = trails.flatMap((trail) => {
-    const geometries = extractLineGeometries(trail.geojson)
+    const geometries = [trail.geojson, trail.geom, trail.mapGeometry]
+      .filter(Boolean)
+      .flatMap((geometry) => extractLineGeometries(geometry))
     if (!geometries.length) return []
 
     const source = String(trail.source || 'user').toLowerCase()

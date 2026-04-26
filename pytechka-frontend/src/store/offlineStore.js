@@ -14,6 +14,15 @@ const draftsStore = localforage.createInstance({
   description: 'Stores recorded trails before publishing',
 })
 
+function normalizeOfflineTrail(trail) {
+  if (!trail || typeof trail !== 'object') return trail
+  return {
+    ...trail,
+    geojson: trail.geojson || trail.geom || trail.mapGeometry || null,
+    savedOfflineAt: trail.savedOfflineAt || new Date().toISOString(),
+  }
+}
+
 export const useOfflineStore = create((set, get) => ({
   offlineTrails: [],
   draftTrails: [],
@@ -107,15 +116,17 @@ export const useOfflineStore = create((set, get) => ({
       const id = trail._id || trail.id
       if (!id) return
 
-      await trailsStore.setItem(id, trail)
+      const offlineTrail = normalizeOfflineTrail(trail)
+      await trailsStore.setItem(id, offlineTrail)
       set((state) => {
         const existing = state.offlineTrails.filter(
           (t) => (t._id || t.id) !== id
         )
-        return { offlineTrails: [...existing, trail] }
+        return { offlineTrails: [...existing, offlineTrail] }
       })
     } catch (err) {
       console.error('Failed to save trail', err)
+      throw err
     }
   },
 
@@ -131,6 +142,7 @@ export const useOfflineStore = create((set, get) => ({
       }))
     } catch (err) {
       console.error('Failed to remove trail', err)
+      throw err
     }
   },
 
@@ -140,12 +152,13 @@ export const useOfflineStore = create((set, get) => ({
       for (const trail of trails) {
         const id = trail._id || trail.id
         if (id) {
-          await trailsStore.setItem(id, trail)
+          await trailsStore.setItem(id, normalizeOfflineTrail(trail))
         }
       }
       await get().loadOfflineTrails()
     } catch (err) {
       console.error('Failed to save multiple trails', err)
+      throw err
     }
   },
 
@@ -160,6 +173,7 @@ export const useOfflineStore = create((set, get) => ({
       await get().loadOfflineTrails()
     } catch (err) {
       console.error('Failed to remove multiple trails', err)
+      throw err
     }
   },
 
@@ -170,6 +184,7 @@ export const useOfflineStore = create((set, get) => ({
       set({ offlineTrails: [] })
     } catch (err) {
       console.error('Failed to clear offline trails', err)
+      throw err
     }
   },
 }))

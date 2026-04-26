@@ -6,6 +6,14 @@ import './OfflineMapModal.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
+function normalizeOfflineTrail(trail) {
+  if (!trail || typeof trail !== 'object') return trail
+  return {
+    ...trail,
+    geojson: trail.geojson || trail.geom || trail.mapGeometry || null,
+  }
+}
+
 const OfflineMapModal = ({ isOpen, onClose, mapCenter }) => {
   const { offlineTrails, saveMultipleTrails, removeMultipleTrails } = useOfflineStore()
   const [selectedIds, setSelectedIds] = useState(new Set())
@@ -28,7 +36,9 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter }) => {
         radiusKm: 40,
         proximityMode: 'start'
       }).then(res => {
-         const fetchedTrails = res.data || []
+         const fetchedTrails = Array.isArray(res.data)
+           ? res.data.map(normalizeOfflineTrail)
+           : []
          setTrailsList(fetchedTrails)
          
          const downloadedIds = new Set(offlineTrails.map((t) => String(t._id || t.id)))
@@ -69,8 +79,11 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter }) => {
 
   const handleDownload = async () => {
     setIsSaving(true)
+    setError(null)
     try {
-      const trailsToSave = trailsList.filter((t) => selectedIds.has(String(t._id || t.id)))
+      const trailsToSave = trailsList
+        .filter((t) => selectedIds.has(String(t._id || t.id)))
+        .map(normalizeOfflineTrail)
       const trailsToRemove = trailsList.filter((t) => !selectedIds.has(String(t._id || t.id)))
 
       setSaveProgressText('Saving trail data...')
@@ -83,6 +96,8 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter }) => {
       }
 
       onClose()
+    } catch (err) {
+      setError(err?.message || 'Could not save offline trails.')
     } finally {
       setIsSaving(false)
       setSaveProgressText('')

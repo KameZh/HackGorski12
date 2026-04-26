@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import { clerkMiddleware, requireAuth, getAuth } from "@clerk/express";
 import cors from "cors";
+import crypto from "crypto";
 import checkUser from "./middleware.js";
 import { connectDB, disconnectDB, isDatabaseReady } from "./connection.js";
 import Trail from "./models/trail.js";
@@ -29,6 +30,81 @@ const enableAIAnalysis =
   ).toLowerCase() === "true";
 const isVercelRuntime = Boolean(process.env.VERCEL);
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
+const apiResponseCache = new Map();
+const MAP_CACHE_TTL_MS = 10 * 60 * 1000;
+const LIVE_MAP_CACHE_TTL_MS = 45 * 1000;
+const MAP_CACHE_STALE_SECONDS = 5 * 60;
+
+function stableQueryString(query = {}) {
+  return Object.keys(query)
+    .filter((key) => key !== "ngrok-skip-browser-warning")
+    .sort()
+    .map((key) => {
+      const value = query[key];
+      return `${encodeURIComponent(key)}=${encodeURIComponent(
+        Array.isArray(value) ? value.join(",") : String(value),
+      )}`;
+    })
+    .join("&");
+}
+
+function getCacheKey(req) {
+  const query = stableQueryString(req.query);
+  return `${req.path}${query ? `?${query}` : ""}`;
+}
+
+function getEtag(payload) {
+  return `"${crypto
+    .createHash("sha1")
+    .update(JSON.stringify(payload))
+    .digest("base64url")}"`;
+}
+
+function invalidateApiCache(tags = []) {
+  if (!tags.length) {
+    apiResponseCache.clear();
+    return;
+  }
+
+  for (const [key, entry] of apiResponseCache.entries()) {
+    if (entry.tags?.some((tag) => tags.includes(tag))) {
+      apiResponseCache.delete(key);
+    }
+  }
+}
+
+async function sendCachedJson(req, res, { ttlMs, tags, loader }) {
+  const key = getCacheKey(req);
+  const now = Date.now();
+  const cached = apiResponseCache.get(key);
+  const maxAgeSeconds = Math.max(1, Math.floor(ttlMs / 1000));
+
+  res.set(
+    "Cache-Control",
+    `public, max-age=${maxAgeSeconds}, stale-while-revalidate=${MAP_CACHE_STALE_SECONDS}`,
+  );
+
+  if (cached && cached.expiresAt > now) {
+    res.set("X-Pytechka-Cache", "HIT");
+    res.set("ETag", cached.etag);
+    if (req.headers["if-none-match"] === cached.etag) {
+      return res.status(304).end();
+    }
+    return res.json(cached.payload);
+  }
+
+  const payload = await loader();
+  const etag = getEtag(payload);
+  apiResponseCache.set(key, {
+    payload,
+    etag,
+    tags,
+    expiresAt: now + ttlMs,
+  });
+  res.set("X-Pytechka-Cache", "MISS");
+  res.set("ETag", etag);
+  return res.json(payload);
+}
 const PHOTO_PING_CATEGORIES = new Set([
   "viewpoint",
   "trail_condition",
@@ -648,6 +724,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
     }
 
     await updateBadgeProgress(userId, { createdTrails: 1 });
+    invalidateApiCache(["trails"]);
 
     res.status(201).json(trail);
   } catch (err) {
@@ -703,81 +780,87 @@ app.post(
 
 app.get("/api/trails/geojson", async (req, res) => {
   try {
-    const userTrailFields =
-      "geojson geom mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
-    const officialTrailFields =
-      "mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
+    await sendCachedJson(req, res, {
+      ttlMs: MAP_CACHE_TTL_MS,
+      tags: ["trails"],
+      loader: async () => {
+        const userTrailFields =
+          "geojson geom mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
+        const officialTrailFields =
+          "mapGeometry name name_bg name_en ref source difficulty osm_colour osm_marking colour_type network stats";
 
-    const [userTrails, officialTrails] = await Promise.all([
-      Trail.find({}).select(userTrailFields).lean(),
-      OfficialTrail.find({ mapGeometry: { $ne: null } })
-        .select(officialTrailFields)
-        .lean(),
-    ]);
+        const [userTrails, officialTrails] = await Promise.all([
+          Trail.find({}).select(userTrailFields).lean(),
+          OfficialTrail.find({ mapGeometry: { $ne: null } })
+            .select(officialTrailFields)
+            .lean(),
+        ]);
 
-    const trails = [...userTrails, ...officialTrails];
+        const trails = [...userTrails, ...officialTrails];
 
-    const features = trails.flatMap((trail) => {
-      const storedGeometry =
-        trail.mapGeometry && typeof trail.mapGeometry === "object"
-          ? [trail.mapGeometry]
-          : trail.geom && typeof trail.geom === "object"
-            ? [simplifyMapGeometry(trail.geom)]
-            : [];
-      const geometries = extractLineGeometries(trail.geojson);
-      const geometryCandidates = storedGeometry.length
-        ? storedGeometry
-        : geometries;
+        const features = trails.flatMap((trail) => {
+          const storedGeometry =
+            trail.mapGeometry && typeof trail.mapGeometry === "object"
+              ? [trail.mapGeometry]
+              : trail.geom && typeof trail.geom === "object"
+                ? [simplifyMapGeometry(trail.geom)]
+                : [];
+          const geometries = extractLineGeometries(trail.geojson);
+          const geometryCandidates = storedGeometry.length
+            ? storedGeometry
+            : geometries;
 
-      if (!geometryCandidates.length) return [];
+          if (!geometryCandidates.length) return [];
 
-      const inferredColourType = inferColourTypeFromValues({
-        colourType: trail.colour_type,
-        osmColour: trail.osm_colour,
-        osmMarking: trail.osm_marking,
-      });
+          const inferredColourType = inferColourTypeFromValues({
+            colourType: trail.colour_type,
+            osmColour: trail.osm_colour,
+            osmMarking: trail.osm_marking,
+          });
 
-      const normalizedSource = normalizeStringValue(trail.source) || "user";
-      const source =
-        normalizedSource !== "user" &&
-        isFeaturedOfficialTrail({
-          ref: trail.ref,
-          name: trail.name,
-          name_bg: trail.name_bg,
-          name_en: trail.name_en,
-        })
-          ? "osm_featured"
-          : normalizedSource;
+          const normalizedSource = normalizeStringValue(trail.source) || "user";
+          const source =
+            normalizedSource !== "user" &&
+            isFeaturedOfficialTrail({
+              ref: trail.ref,
+              name: trail.name,
+              name_bg: trail.name_bg,
+              name_en: trail.name_en,
+            })
+              ? "osm_featured"
+              : normalizedSource;
 
-      return geometryCandidates.map((geometry) => ({
-        type: "Feature",
-        geometry,
-        properties: {
-          id: trail._id.toString(),
-          name:
-            normalizeStringValue(trail.name) ||
-            normalizeStringValue(trail.name_bg) ||
-            normalizeStringValue(trail.name_en) ||
-            normalizeStringValue(trail.ref) ||
-            "Unnamed trail",
-          name_bg: normalizeStringValue(trail.name_bg),
-          name_en: normalizeStringValue(trail.name_en),
-          ref: normalizeStringValue(trail.ref),
-          source,
-          difficulty: normalizeStringValue(trail.difficulty) || "moderate",
-          colour_type: inferredColourType,
-          osm_colour: normalizeStringValue(trail.osm_colour),
-          osm_marking: normalizeStringValue(trail.osm_marking),
-          network: normalizeStringValue(trail.network),
-          distance: trail.stats?.distance
-            ? Number((trail.stats.distance / 1000).toFixed(2))
-            : 0,
-          elevation_gain: Number(trail.stats?.elevationGain || 0),
-        },
-      }));
+          return geometryCandidates.map((geometry) => ({
+            type: "Feature",
+            geometry,
+            properties: {
+              id: trail._id.toString(),
+              name:
+                normalizeStringValue(trail.name) ||
+                normalizeStringValue(trail.name_bg) ||
+                normalizeStringValue(trail.name_en) ||
+                normalizeStringValue(trail.ref) ||
+                "Unnamed trail",
+              name_bg: normalizeStringValue(trail.name_bg),
+              name_en: normalizeStringValue(trail.name_en),
+              ref: normalizeStringValue(trail.ref),
+              source,
+              difficulty: normalizeStringValue(trail.difficulty) || "moderate",
+              colour_type: inferredColourType,
+              osm_colour: normalizeStringValue(trail.osm_colour),
+              osm_marking: normalizeStringValue(trail.osm_marking),
+              network: normalizeStringValue(trail.network),
+              distance: trail.stats?.distance
+                ? Number((trail.stats.distance / 1000).toFixed(2))
+                : 0,
+              elevation_gain: Number(trail.stats?.elevationGain || 0),
+            },
+          }));
+        });
+
+        return { type: "FeatureCollection", features };
+      },
     });
-
-    res.json({ type: "FeatureCollection", features });
   } catch (err) {
     console.error("GeoJSON endpoint error:", err);
     res.status(500).json({ error: "Failed to fetch trails geojson" });
@@ -786,98 +869,103 @@ app.get("/api/trails/geojson", async (req, res) => {
 
 app.get("/api/trails", async (req, res) => {
   try {
-    const { search, difficulty, activity, sort } = req.query;
-    const officialOnly =
-      String(req.query.officialOnly || "").toLowerCase() === "true";
-    const unmarkedOnly =
-      String(req.query.unmarkedOnly || "").toLowerCase() === "true";
-    const compact =
-      String(req.query.compact || "").toLowerCase() === "true" ||
-      String(req.query.includeGeometry || "").toLowerCase() === "false";
-    const centerLng = Number(req.query.centerLng);
-    const centerLat = Number(req.query.centerLat);
-    const radiusKm = Number(req.query.radiusKm);
-    const proximityMode = String(
-      req.query.proximityMode || "start",
-    ).toLowerCase();
-    const userFilter = {};
-    const officialFilter = {};
+    await sendCachedJson(req, res, {
+      ttlMs: MAP_CACHE_TTL_MS,
+      tags: ["trails"],
+      loader: async () => {
+        const { search, difficulty, activity, sort } = req.query;
+        const officialOnly =
+          String(req.query.officialOnly || "").toLowerCase() === "true";
+        const unmarkedOnly =
+          String(req.query.unmarkedOnly || "").toLowerCase() === "true";
+        const compact =
+          String(req.query.compact || "").toLowerCase() === "true" ||
+          String(req.query.includeGeometry || "").toLowerCase() === "false";
+        const centerLng = Number(req.query.centerLng);
+        const centerLat = Number(req.query.centerLat);
+        const radiusKm = Number(req.query.radiusKm);
+        const proximityMode = String(
+          req.query.proximityMode || "start",
+        ).toLowerCase();
+        const userFilter = {};
+        const officialFilter = {};
 
-    if (difficulty && difficulty !== "all") {
-      userFilter.difficulty = difficulty;
-      officialFilter.difficulty = difficulty;
-    }
-    if (unmarkedOnly) {
-      userFilter.colour_type = "unmarked";
-      officialFilter.colour_type = "unmarked";
-    }
+        if (difficulty && difficulty !== "all") {
+          userFilter.difficulty = difficulty;
+          officialFilter.difficulty = difficulty;
+        }
+        if (unmarkedOnly) {
+          userFilter.colour_type = "unmarked";
+          officialFilter.colour_type = "unmarked";
+        }
 
-    const searchFilter = buildTrailSearchFilter(search);
-    if (searchFilter) {
-      userFilter.$or = searchFilter;
-      officialFilter.$or = searchFilter;
-    }
+        const searchFilter = buildTrailSearchFilter(search);
+        if (searchFilter) {
+          userFilter.$or = searchFilter;
+          officialFilter.$or = searchFilter;
+        }
 
-    let sortOption = { createdAt: -1 };
-    if (sort === "popular") sortOption = { averageAccuracy: -1 };
-    if (sort === "newest" || sort === "new") sortOption = { createdAt: -1 };
+        let sortOption = { createdAt: -1 };
+        if (sort === "popular") sortOption = { averageAccuracy: -1 };
+        if (sort === "newest" || sort === "new") sortOption = { createdAt: -1 };
 
-    const userTrailsPromise = officialOnly
-      ? Promise.resolve([])
-      : Trail.find(userFilter)
+        const userTrailsPromise = officialOnly
+          ? Promise.resolve([])
+          : Trail.find(userFilter)
+              .sort(sortOption)
+              .select(
+                compact ? "-reviews -geojson -geom -mapGeometry" : "-reviews",
+              )
+              .lean();
+        const officialTrailsPromise = OfficialTrail.find(officialFilter)
           .sort(sortOption)
-          .select(compact ? "-reviews -geojson -geom -mapGeometry" : "-reviews")
+          .select(compact ? "-geojson -geom -mapGeometry" : "")
           .lean();
-    const officialTrailsPromise = OfficialTrail.find(officialFilter)
-      .sort(sortOption)
-      .select(compact ? "-geojson -geom -mapGeometry" : "")
-      .lean();
 
-    const [userTrails, officialTrails] = await Promise.all([
-      userTrailsPromise,
-      officialTrailsPromise,
-    ]);
+        const [userTrails, officialTrails] = await Promise.all([
+          userTrailsPromise,
+          officialTrailsPromise,
+        ]);
 
-    const normalized = [...userTrails, ...officialTrails].map(
-      normalizeTrailDocument,
-    );
+        const normalized = [...userTrails, ...officialTrails].map(
+          normalizeTrailDocument,
+        );
 
-    if (sort === "popular") {
-      normalized.sort(
-        (a, b) =>
-          Number(b.averageAccuracy || 0) - Number(a.averageAccuracy || 0),
-      );
-    } else {
-      normalized.sort(
-        (a, b) =>
-          new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime(),
-      );
-    }
+        if (sort === "popular") {
+          normalized.sort(
+            (a, b) =>
+              Number(b.averageAccuracy || 0) - Number(a.averageAccuracy || 0),
+          );
+        } else {
+          normalized.sort(
+            (a, b) =>
+              new Date(b.createdAt || 0).getTime() -
+              new Date(a.createdAt || 0).getTime(),
+          );
+        }
 
-    const hasAreaFilter =
-      Number.isFinite(centerLng) &&
-      Number.isFinite(centerLat) &&
-      Number.isFinite(radiusKm) &&
-      radiusKm > 0;
+        const hasAreaFilter =
+          Number.isFinite(centerLng) &&
+          Number.isFinite(centerLat) &&
+          Number.isFinite(radiusKm) &&
+          radiusKm > 0;
 
-    if (!hasAreaFilter) {
-      res.json(normalized);
-      return;
-    }
+        if (!hasAreaFilter) {
+          return normalized;
+        }
 
-    const centerCoords = [centerLng, centerLat];
-    const radiusMeters = Math.min(Math.max(radiusKm, 0.1), 100) * 1000;
-    const filtered = normalized.filter((trail) => {
-      const anchor =
-        proximityMode === "center"
-          ? trail.stats?.centerCoordinates
-          : trail.startCoordinates;
-      if (!Array.isArray(anchor) || anchor.length !== 2) return false;
-      return haversineMeters(centerCoords, anchor) <= radiusMeters;
+        const centerCoords = [centerLng, centerLat];
+        const radiusMeters = Math.min(Math.max(radiusKm, 0.1), 100) * 1000;
+        return normalized.filter((trail) => {
+          const anchor =
+            proximityMode === "center"
+              ? trail.stats?.centerCoordinates
+              : trail.startCoordinates;
+          if (!Array.isArray(anchor) || anchor.length !== 2) return false;
+          return haversineMeters(centerCoords, anchor) <= radiusMeters;
+        });
+      },
     });
-
-    res.json(filtered);
   } catch (err) {
     console.error("Trails list error:", err);
     res.status(500).json({ error: "Failed to fetch trails" });
@@ -998,6 +1086,7 @@ app.post(
       }
 
       await trail.save();
+      invalidateApiCache(["trails"]);
       const saved = trail.conditionReports[trail.conditionReports.length - 1];
       res.status(201).json(saved);
     } catch (err) {
@@ -1051,10 +1140,12 @@ app.post(
         });
         trail.recalcAverageAccuracy();
         await trail.save();
+        invalidateApiCache(["trails"]);
         reviewAdded = true;
       }
 
       await updateBadgeProgress(userId, { trailCompletions: 1 });
+      if (reviewAdded) invalidateApiCache(["trails"]);
 
       res.json({
         success: true,
@@ -1085,8 +1176,11 @@ app.get("/api/trails/:id", async (req, res) => {
 
 app.get("/api/huts", async (req, res) => {
   try {
-    const huts = await Hut.find({}).lean();
-    res.json(huts);
+    await sendCachedJson(req, res, {
+      ttlMs: MAP_CACHE_TTL_MS,
+      tags: ["huts"],
+      loader: () => Hut.find({}).lean(),
+    });
   } catch (err) {
     console.error("Huts list error:", err);
     res.status(500).json({ error: "Failed to fetch huts" });
@@ -1123,6 +1217,7 @@ app.put("/api/trails/:id", requireAuth(), async (req, res) => {
     }
 
     await trail.save();
+    invalidateApiCache(["trails"]);
     res.json(trail);
   } catch (err) {
     console.error(err);
@@ -1141,6 +1236,7 @@ app.delete("/api/trails/:id", requireAuth(), async (req, res) => {
     }
 
     await Trail.findByIdAndDelete(req.params.id);
+    invalidateApiCache(["trails"]);
     res.json({ success: true });
   } catch (err) {
     console.error(err);
@@ -1191,6 +1287,7 @@ app.post(
 
       trail.recalcAverageAccuracy();
       await trail.save();
+      invalidateApiCache(["trails"]);
 
       res.status(201).json(trail);
     } catch (err) {
@@ -1293,6 +1390,8 @@ async function detectTrashClusters(newPing) {
           : `Warning: ${nearby.length} trash reports nearby. This area may need cleanup soon.`,
     });
   }
+
+  invalidateApiCache(["clusters"]);
 }
 
 async function createPhotoPingHandler(req, res) {
@@ -1332,6 +1431,7 @@ async function createPhotoPingHandler(req, res) {
       coordinates,
       expiresAt: null,
     });
+    invalidateApiCache(["pings"]);
 
     return res.status(201).json(ping);
   } catch (err) {
@@ -1361,10 +1461,15 @@ app.post("/api/photo-pings", requireAuth(), createPhotoPingHandler);
 
 app.get("/api/photo-pings", async (req, res) => {
   try {
-    const filter = { resolved: { $ne: true } };
-    if (req.query.trailId) filter.trailId = String(req.query.trailId);
-    const photoPings = await PhotoPing.find(filter).sort({ createdAt: -1 });
-    res.json(photoPings);
+    await sendCachedJson(req, res, {
+      ttlMs: LIVE_MAP_CACHE_TTL_MS,
+      tags: ["pings"],
+      loader: () => {
+        const filter = { resolved: { $ne: true } };
+        if (req.query.trailId) filter.trailId = String(req.query.trailId);
+        return PhotoPing.find(filter).sort({ createdAt: -1 }).lean();
+      },
+    });
   } catch (err) {
     console.error("Photo pings list error:", err);
     res.status(500).json({ error: "Failed to fetch photo pings" });
@@ -1426,6 +1531,7 @@ app.post(
     detectTrashClusters(ping).catch((err) =>
       console.error("Cluster detection error:", err),
     );
+    invalidateApiCache(["pings", "clusters"]);
 
     res.status(201).json(ping);
   } catch (err) {
@@ -1448,13 +1554,18 @@ app.post(
 
 app.get("/api/pings", async (req, res) => {
   try {
-    const filter = {
-      resolved: { $ne: true },
-      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-    };
-    if (req.query.trailId) filter.trailId = req.query.trailId;
-    const pings = await Ping.find(filter).sort({ createdAt: -1 });
-    res.json(pings);
+    await sendCachedJson(req, res, {
+      ttlMs: LIVE_MAP_CACHE_TTL_MS,
+      tags: ["pings"],
+      loader: () => {
+        const filter = {
+          resolved: { $ne: true },
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+        };
+        if (req.query.trailId) filter.trailId = req.query.trailId;
+        return Ping.find(filter).sort({ createdAt: -1 }).lean();
+      },
+    });
   } catch (err) {
     console.error("Pings list error:", err);
     res.status(500).json({ error: "Failed to fetch pings" });
@@ -1478,6 +1589,7 @@ app.post("/api/pings/:id/vote", requireAuth(), async (req, res) => {
       ping.resolved = true;
     }
     await ping.save();
+    invalidateApiCache(["pings", "clusters"]);
     res.json(ping);
   } catch (err) {
     console.error(err);
@@ -1504,14 +1616,19 @@ app.delete("/api/pings/:id", requireAuth(), async (req, res) => {
 
 app.get("/api/clusters", async (req, res) => {
   try {
-    const clusters = await TrashCluster.find({ resolved: { $ne: true } })
-      .sort({
-        createdAt: -1,
-      })
-      .lean();
+    await sendCachedJson(req, res, {
+      ttlMs: LIVE_MAP_CACHE_TTL_MS,
+      tags: ["clusters"],
+      loader: async () => {
+        const clusters = await TrashCluster.find({ resolved: { $ne: true } })
+          .sort({
+            createdAt: -1,
+          })
+          .lean();
 
-    const withVoters = await attachClusterVoterProfiles(clusters);
-    res.json(withVoters);
+        return attachClusterVoterProfiles(clusters);
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch clusters" });
@@ -1544,6 +1661,7 @@ app.post(
         );
       }
       await cluster.save();
+      invalidateApiCache(["pings", "clusters"]);
 
       const freshCluster = await TrashCluster.findById(cluster._id).lean();
       const withVoters = await attachClusterVoterProfiles(freshCluster);

@@ -1,11 +1,25 @@
 import api from './client'
+import { cachedGet, clearRequestCache } from './requestCache'
+
+const TRAILS_CACHE_TTL_MS = 10 * 60 * 1000
+const HUTS_CACHE_TTL_MS = 10 * 60 * 1000
 
 export const fetchMapTrails = (params = {}) => {
-  return api.get('/trails', { params, timeout: 60000 })
+  return cachedGet(
+    api,
+    '/trails',
+    { params, timeout: 60000 },
+    { ttlMs: TRAILS_CACHE_TTL_MS }
+  )
 }
 
 export const fetchMapTrailsGeojson = () => {
-  return api.get('/trails/geojson', { timeout: 60000 })
+  return cachedGet(
+    api,
+    '/trails/geojson',
+    { timeout: 60000 },
+    { ttlMs: TRAILS_CACHE_TTL_MS }
+  )
 }
 
 export const fetchMapTrailsByArea = ({
@@ -26,7 +40,7 @@ export const fetchMapTrailsByArea = ({
       : {}),
   }
 
-  return api.get('/trails', { params })
+  return cachedGet(api, '/trails', { params }, { ttlMs: TRAILS_CACHE_TTL_MS })
 }
 
 export const fetchTrailStartReadiness = (trailId, params = {}) => {
@@ -38,5 +52,10 @@ export const completeTrailFromMap = (trailId, payload = {}) => {
 }
 
 export const fetchHuts = () => {
-  return api.get('/huts')
+  return cachedGet(api, '/huts', {}, { ttlMs: HUTS_CACHE_TTL_MS })
+}
+
+export const clearMapDataCache = () => {
+  clearRequestCache('/trails')
+  clearRequestCache('/huts')
 }

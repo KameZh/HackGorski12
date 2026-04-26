@@ -1,11 +1,22 @@
 import api from './client'
+import { cachedGet, clearRequestCache } from './requestCache'
 
-export const createPing = (data) => {
-  return api.post('/pings', data)
+const LIVE_MAP_CACHE_TTL_MS = 45000
+
+function clearLiveMapCache() {
+  clearRequestCache('/pings')
+  clearRequestCache('/photo-pings')
+  clearRequestCache('/clusters')
 }
 
-export const createPhotoPing = (data) => {
-  return api.post('/photo-pings', {
+export const createPing = async (data) => {
+  const response = await api.post('/pings', data)
+  clearLiveMapCache()
+  return response
+}
+
+export const createPhotoPing = async (data) => {
+  const response = await api.post('/photo-pings', {
     type: 'photo',
     ...(data.trailId ? { trailId: data.trailId } : {}),
     description: data.description || '',
@@ -13,12 +24,14 @@ export const createPhotoPing = (data) => {
     photoCategory: data.photoCategory || 'memory',
     coordinates: data.coordinates,
   })
+  clearLiveMapCache()
+  return response
 }
 
 export const fetchPings = async (params = {}) => {
   const [pingsResult, photosResult] = await Promise.allSettled([
-    api.get('/pings', { params }),
-    api.get('/photo-pings', { params }),
+    cachedGet(api, '/pings', { params }, { ttlMs: LIVE_MAP_CACHE_TTL_MS }),
+    cachedGet(api, '/photo-pings', { params }, { ttlMs: LIVE_MAP_CACHE_TTL_MS }),
   ])
 
   const pings =
@@ -38,18 +51,24 @@ export const fetchPings = async (params = {}) => {
   }
 }
 
-export const votePingGone = (id) => {
-  return api.post(`/pings/${id}/vote`)
+export const votePingGone = async (id) => {
+  const response = await api.post(`/pings/${id}/vote`)
+  clearLiveMapCache()
+  return response
 }
 
-export const deletePing = (id) => {
-  return api.delete(`/pings/${id}`)
+export const deletePing = async (id) => {
+  const response = await api.delete(`/pings/${id}`)
+  clearLiveMapCache()
+  return response
 }
 
 export const fetchClusters = () => {
-  return api.get('/clusters')
+  return cachedGet(api, '/clusters', {}, { ttlMs: LIVE_MAP_CACHE_TTL_MS })
 }
 
-export const voteClusterGone = (id) => {
-  return api.post(`/clusters/${id}/vote`)
+export const voteClusterGone = async (id) => {
+  const response = await api.post(`/clusters/${id}/vote`)
+  clearLiveMapCache()
+  return response
 }

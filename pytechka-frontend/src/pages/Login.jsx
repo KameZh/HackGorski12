@@ -1,4 +1,5 @@
 import { SignIn, useSignIn } from '@clerk/clerk-react'
+import { buildAuthRedirectUrl } from '../utils/authRedirect'
 import './Auth.css'
 
 const clerkAppearance = {
@@ -30,13 +31,11 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     if (!isLoaded || !signIn) return
 
-    const origin = window.location.origin
-
     try {
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: `${origin}/sso-callback`,
-        redirectUrlComplete: `${origin}/`,
+        redirectUrl: buildAuthRedirectUrl('/sso-callback'),
+        redirectUrlComplete: buildAuthRedirectUrl('/'),
       })
     } catch (error) {
       console.error('Google sign-in redirect failed:', error)

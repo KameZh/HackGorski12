@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { ClerkProvider } from '@clerk/clerk-react'
 import { registerSW } from 'virtual:pwa-register'
+import { getAuthRedirectOrigin } from './utils/authRedirect'
 import './index.css'
 import App from './App.jsx'
 
@@ -35,8 +36,10 @@ class ErrorBoundary extends React.Component {
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
 const AUTH_REDIRECT_URL = '/'
+const AUTH_REDIRECT_ORIGIN = getAuthRedirectOrigin()
 const ALLOWED_REDIRECT_ORIGINS = [
   window.location.origin,
+  AUTH_REDIRECT_ORIGIN,
   'https://localhost',
   'http://localhost:5173',
   'http://localhost:4173',
@@ -109,7 +112,7 @@ createRoot(root).render(
       signInForceRedirectUrl={AUTH_REDIRECT_URL}
       signUpFallbackRedirectUrl={AUTH_REDIRECT_URL}
       signUpForceRedirectUrl={AUTH_REDIRECT_URL}
-      allowedRedirectOrigins={ALLOWED_REDIRECT_ORIGINS}
+      allowedRedirectOrigins={[...new Set(ALLOWED_REDIRECT_ORIGINS)]}
     >
       <ErrorBoundary>
         <BrowserRouter>

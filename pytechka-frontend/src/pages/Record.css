@@ -53,14 +53,15 @@
 
 .record-camera-button {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 142px);
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
   right: 64px;
   z-index: 20;
+  transition: top 0.22s ease;
 }
 
 .record-ping-button {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 142px);
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
   right: 12px;
   z-index: 20;
   width: 44px;
@@ -76,7 +77,12 @@
   transition:
     background 0.2s ease,
     color 0.2s ease,
+    top 0.22s ease,
     transform 0.1s ease;
+}
+
+.record-map-action-shifted {
+  top: calc(env(safe-area-inset-top, 0px) + 142px);
 }
 
 .record-ping-button.active {
@@ -194,14 +200,18 @@
 
 .record-info-wrap {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 212px);
   left: 12px;
   right: 68px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 184px);
   display: flex;
   flex-direction: column;
   gap: 8px;
   pointer-events: none;
-  z-index: 16;
+  z-index: 24;
+}
+
+.record-info-wrap-active {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 232px);
 }
 
 .record-info-box {
@@ -220,6 +230,76 @@
   background: rgba(239, 68, 68, 0.15);
   color: #fca5a5;
 }
+
+.record-legend-button {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(66, 129, 164, 0.45);
+  background: rgba(18, 26, 40, 0.92);
+  color: #9fc9de;
+  box-shadow: 0 10px 22px rgba(0, 1, 0, 0.32);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.record-legend-button.active {
+  background: linear-gradient(180deg, #48a9a6, #4281a4);
+  color: #fbfef9;
+}
+
+.record-legend-panel {
+  position: absolute;
+  left: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 232px);
+  width: min(84vw, 256px);
+  z-index: 45;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(15, 23, 35, 0.92);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.38);
+  backdrop-filter: blur(10px);
+  padding: 10px;
+  display: grid;
+  gap: 7px;
+}
+
+.record-legend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.record-legend-head button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: rgba(148, 163, 184, 0.16);
+  color: #cbd5e1;
+}
+
+.record-legend-row {
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.record-legend-row > span:first-child {
+  height: 0;
+}
+
 .record-live-panel-wrap {
   position: absolute;
   left: 12px;

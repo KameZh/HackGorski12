@@ -25,12 +25,14 @@ const styles = {
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: 'max(96px, calc(env(safe-area-inset-bottom, 0px) + 72px))',
+    bottom: 'max(124px, calc(env(safe-area-inset-bottom, 0px) + 112px))',
     zIndex: 30,
   },
   card: {
     borderRadius: 22,
     overflow: 'hidden',
+    maxHeight:
+      'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 150px)',
     background: 'rgba(15, 23, 35, 0.95)',
     border: '1px solid rgba(56, 189, 248, 0.28)',
     boxShadow: '0 18px 36px rgba(0, 1, 0, 0.34)',

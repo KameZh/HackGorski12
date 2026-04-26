@@ -1,7 +1,7 @@
 #explore-page.explore-page {
   position: relative;
-  min-height: 100vh;
-  padding-bottom: 90px;
+  min-height: 100dvh;
+  padding-bottom: var(--app-bottom-nav-space);
   background:
     radial-gradient(
       900px 420px at 15% -12%,

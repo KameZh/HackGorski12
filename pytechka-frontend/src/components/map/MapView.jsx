@@ -90,7 +90,8 @@ const MAPBOX_TILESET_LINE_WIDTH = Number(
   import.meta.env.VITE_MAPBOX_TILESET_LINE_WIDTH || 3
 )
 
-const MAPS_BOTTOM_CARD_OFFSET = '5.5rem'
+const MAPS_BOTTOM_CARD_OFFSET =
+  'max(7.25rem, calc(env(safe-area-inset-bottom, 0px) + 112px))'
 const USER_FOLLOW_BASE_ZOOM = 14.2
 const USER_FOLLOW_TRAIL_ZOOM = 17.8
 const TRAIL_VISIBILITY_MIN_ZOOM = 7
@@ -363,6 +364,9 @@ const pingPopupStyle = {
   left: '50%',
   transform: 'translateX(-50%)',
   padding: '14px 16px',
+  maxHeight:
+    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 154px)',
+  overflowY: 'auto',
 }
 
 const pingBtnBase = {
@@ -1866,12 +1870,14 @@ export default function MapView({
   }, [startPanelTrail, userLocation])
 
   const handlePingSubmit = useCallback(async () => {
-    if (!pendingPing || !activeTrailSession) return
+    if (!pendingPing) return
 
     setPingSubmitting(true)
     try {
       const res = await createPing({
-        trailId: pendingPing.trailId || activeTrailSession.trailId,
+        ...(pendingPing.trailId || activeTrailSession?.trailId
+          ? { trailId: pendingPing.trailId || activeTrailSession.trailId }
+          : {}),
         type: pingType,
         description: pingDesc,
         coordinates: pendingPing.coordinates,
@@ -1893,24 +1899,17 @@ export default function MapView({
 
   const handlePhotoCapture = useCallback(
     (photo) => {
-      if (!activeTrailSession) {
-        setGeoError('Start a trail first. Photos are saved during an activity.')
-        return
-      }
-
       setCapturedPhoto(photo)
       setShowPhotoModal(true)
       setSelectedPing(null)
     },
-    [activeTrailSession]
+    []
   )
 
   const handlePhotoSubmit = useCallback(
     async (photoData) => {
-      if (!activeTrailSession) return
-
       try {
-        const trailId = asMongoObjectId(activeTrailSession.trailId)
+        const trailId = asMongoObjectId(activeTrailSession?.trailId)
         const res = await createPhotoPing({
           ...(trailId ? { trailId } : {}),
           description: photoData.description,
@@ -2225,15 +2224,8 @@ export default function MapView({
       const { lng, lat } = e.lngLat
 
       if (pingMode) {
-        if (!activeTrailSession) {
-          setGeoError(
-            'Start a trail first. Pings are available only during an active trail.'
-          )
-          return
-        }
-
         let snapped = [lng, lat]
-        const trailId = activeTrailSession.trailId
+        const trailId = activeTrailSession?.trailId
 
         const activeTrail = trailsById.get(String(trailId))
         const activeGeometry =
@@ -4025,7 +4017,21 @@ export default function MapView({
       ) : null}
 
       {selectedPing && !pendingPing ? (
-        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+        <div
+          style={{
+            ...pingPopupStyle,
+            padding: '12px 14px',
+            ...(selectedPing.photoUrl
+              ? {
+                  bottom:
+                    'calc(env(safe-area-inset-bottom, 0px) + 7.25rem)',
+                  maxHeight:
+                    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 150px)',
+                  overflowY: 'auto',
+                }
+              : {}),
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -4076,9 +4082,10 @@ export default function MapView({
                 alt={selectedPing.description || 'Photo'}
                 style={{
                   width: '100%',
-                  maxHeight: '200px',
-                  objectFit: 'cover',
+                  maxHeight: 'min(42vh, 320px)',
+                  objectFit: 'contain',
                   borderRadius: 8,
+                  background: 'rgba(2, 6, 23, 0.78)',
                 }}
               />
             </div>
@@ -4774,12 +4781,57 @@ export default function MapView({
         currentTrails={trails}
       />
 
-      {activeTrailSession ? (
-        <CameraButton
-          onPhotoCapture={handlePhotoCapture}
-          className="maps-camera-button"
-        />
-      ) : null}
+      <div className="maps-activity-actions">
+        <>
+          <button
+            onClick={() => {
+              setPingMode((v) => !v)
+              setPendingPing(null)
+              setSelectedPing(null)
+            }}
+            className={`maps-ping-button ${pingMode ? 'active' : ''}`}
+            type="button"
+            aria-label={pingMode ? 'Cancel ping' : 'Add ping'}
+            title={pingMode ? 'Cancel ping' : 'Add ping'}
+          >
+            {pingMode ? (
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            ) : (
+              <svg
+                width="21"
+                height="21"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 21s7-5.4 7-12a7 7 0 0 0-14 0c0 6.6 7 12 7 12z" />
+                <circle cx="12" cy="9" r="2.4" />
+              </svg>
+            )}
+          </button>
+          <CameraButton
+            onPhotoCapture={handlePhotoCapture}
+            className="maps-camera-button"
+          />
+        </>
+      </div>
 
       <PhotoCaptureModal
         photo={capturedPhoto}

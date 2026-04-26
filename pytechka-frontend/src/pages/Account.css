@@ -2,7 +2,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  min-height: 100dvh;
   background:
     radial-gradient(
       840px 360px at 16% -8%,
@@ -16,12 +16,12 @@
     ),
     linear-gradient(180deg, #10151f 0%, #191923 55%, #111824 100%);
   color: #fbfef9;
-  padding-bottom: 80px;
+  padding-bottom: var(--app-bottom-nav-space);
 }
 
 .account-scroll {
   flex: 1;
-  padding: 14px 14px 14px;
+  padding: 14px 14px calc(var(--app-bottom-nav-space) + 18px);
   padding-top: max(168px, calc(env(safe-area-inset-top, 0px) + 108px));
   max-width: 520px;
   margin: 0 auto;

@@ -1,7 +1,11 @@
 import { useRef, useState } from 'react'
 import './CameraButton.css'
 
-export default function CameraButton({ onPhotoCapture, className = '' }) {
+export default function CameraButton({
+  onPhotoCapture,
+  className = '',
+  beforeCapture = null,
+}) {
   const [isCapturing, setIsCapturing] = useState(false)
   const fileInputRef = useRef(null)
 
@@ -69,6 +73,9 @@ export default function CameraButton({ onPhotoCapture, className = '' }) {
 
   const handleCapture = async () => {
     if (isCapturing) return
+    if (typeof beforeCapture === 'function' && beforeCapture() === false) {
+      return
+    }
 
     setIsCapturing(true)
     try {

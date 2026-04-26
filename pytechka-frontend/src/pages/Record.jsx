@@ -168,6 +168,9 @@ const pingPopupStyle = {
   backdropFilter: 'blur(8px)',
   padding: '14px 16px',
   color: '#e2e8f0',
+  maxHeight:
+    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 300px)',
+  overflowY: 'auto',
 }
 
 const LIVE_RECORDING_NOTIFICATION_ID = 50001
@@ -446,6 +449,7 @@ export default function Record() {
   const [clusters, setClusters] = useState([])
   const [selectedCluster, setSelectedCluster] = useState(null)
   const [clusterVoting, setClusterVoting] = useState(null)
+  const [isLegendVisible, setIsLegendVisible] = useState(false)
   const [loadedTrailActivity, setLoadedTrailActivity] = useState(null)
   const [navigationStatus, setNavigationStatus] = useState(null)
 
@@ -1162,14 +1166,7 @@ export default function Record() {
   }, [])
 
   const handlePingSubmit = useCallback(async () => {
-    const activityActive =
-      isTracking ||
-      points.length > 0 ||
-      elapsedSeconds > 0 ||
-      distance > 0 ||
-      Boolean(loadedTrailActivity)
-
-    if (!activityActive || !currentLocation) return
+    if (!currentLocation) return
     setPingSubmitting(true)
     try {
       let nearestTrailId = loadedTrailActivity?.trailId || null
@@ -1216,10 +1213,6 @@ export default function Record() {
       setPingSubmitting(false)
     }
   }, [
-    isTracking,
-    points,
-    elapsedSeconds,
-    distance,
     currentLocation,
     pingType,
     pingDesc,
@@ -1252,20 +1245,11 @@ export default function Record() {
   // Handle photo capture from camera button
   const handlePhotoCapture = useCallback(
     (photo) => {
-      const activityActive =
-        isTracking ||
-        points.length > 0 ||
-        elapsedSeconds > 0 ||
-        distance > 0 ||
-        Boolean(loadedTrailActivity)
-
-      if (!activityActive) return
-
       setCapturedPhoto(photo)
       setShowPhotoModal(true)
       setSelectedPing(null)
     },
-    [isTracking, points.length, elapsedSeconds, distance, loadedTrailActivity]
+    []
   )
 
   // Handle photo submission
@@ -1372,8 +1356,6 @@ export default function Record() {
 
   const hasRecordingData =
     points.length > 0 || elapsedSeconds > 0 || distance > 0
-  const isActivityActive =
-    isTracking || hasRecordingData || Boolean(loadedTrailActivity)
   const showControls = hasRecordingData || isTracking
   const completionTrail =
     selectedTrail ||
@@ -1384,12 +1366,6 @@ export default function Record() {
           name: loadedTrailActivity.trailName,
         }
       : null)
-
-  useEffect(() => {
-    if (isActivityActive) return
-    setShowPhotoModal(false)
-    setCapturedPhoto(null)
-  }, [isActivityActive])
 
   const liveNotificationBody = useMemo(() => {
     return [
@@ -1404,11 +1380,6 @@ export default function Record() {
     elevationGain,
     currentSpeedKmh,
   ])
-
-  useEffect(() => {
-    if (isActivityActive) return
-    setPingMode(false)
-  }, [isActivityActive])
 
   useEffect(() => {
     let released = false
@@ -1824,21 +1795,17 @@ export default function Record() {
       <LiveCompass
         mapBearing={viewState.bearing}
         movementHeading={movementHeading}
-        top={
-          showControls
-            ? 'calc(env(safe-area-inset-top, 0px) + 156px)'
-            : undefined
-        }
+        top={`calc(env(safe-area-inset-top, 0px) + ${showControls ? 142 : 12}px)`}
         left={12}
         zIndex={19}
       />
 
-      {isActivityActive ? (
-        <CameraButton
-          onPhotoCapture={handlePhotoCapture}
-          className="record-camera-button"
-        />
-      ) : null}
+      <CameraButton
+        onPhotoCapture={handlePhotoCapture}
+        className={`record-camera-button ${
+          showControls ? 'record-map-action-shifted' : ''
+        }`}
+      />
 
       {/* Photo capture modal */}
       <PhotoCaptureModal
@@ -1851,52 +1818,52 @@ export default function Record() {
         onSubmit={handlePhotoSubmit}
       />
 
-      {isActivityActive ? (
-        <button
-          onClick={() => {
-            setPingMode((v) => !v)
-            setSelectedPing(null)
-          }}
-          className={`record-ping-button ${pingMode ? 'active' : ''}`}
-          type="button"
-          aria-label={pingMode ? 'Cancel ping' : 'Add ping'}
-          title={pingMode ? 'Cancel ping' : 'Add ping'}
-        >
-          {pingMode ? (
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          ) : (
-            <svg
-              width="21"
-              height="21"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M12 21s7-5.4 7-12a7 7 0 0 0-14 0c0 6.6 7 12 7 12z" />
-              <circle cx="12" cy="9" r="2.4" />
-            </svg>
-          )}
-        </button>
-      ) : null}
+      <button
+        onClick={() => {
+          setPingMode((v) => !v)
+          setSelectedPing(null)
+        }}
+        className={`record-ping-button ${pingMode ? 'active' : ''} ${
+          showControls ? 'record-map-action-shifted' : ''
+        }`}
+        type="button"
+        aria-label={pingMode ? 'Cancel ping' : 'Add ping'}
+        title={pingMode ? 'Cancel ping' : 'Add ping'}
+      >
+        {pingMode ? (
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        ) : (
+          <svg
+            width="21"
+            height="21"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M12 21s7-5.4 7-12a7 7 0 0 0-14 0c0 6.6 7 12 7 12z" />
+            <circle cx="12" cy="9" r="2.4" />
+          </svg>
+        )}
+      </button>
 
-      {pingMode && isActivityActive && (
+      {pingMode && (
         <div style={pingPopupStyle}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 10 }}>
             New Ping at your location
@@ -1992,7 +1959,19 @@ export default function Record() {
       )}
 
       {selectedPing && !pingMode && (
-        <div style={{ ...pingPopupStyle, padding: '12px 14px' }}>
+        <div
+          style={{
+            ...pingPopupStyle,
+            padding: '12px 14px',
+            ...(selectedPing.photoUrl
+              ? {
+                  maxHeight:
+                    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 250px)',
+                  overflowY: 'auto',
+                }
+              : {}),
+          }}
+        >
           <div
             style={{
               display: 'flex',
@@ -2043,9 +2022,10 @@ export default function Record() {
                 alt={selectedPing.description || 'Photo'}
                 style={{
                   width: '100%',
-                  maxHeight: '200px',
-                  objectFit: 'cover',
+                  maxHeight: 'min(42vh, 320px)',
+                  objectFit: 'contain',
                   borderRadius: 8,
+                  background: 'rgba(2, 6, 23, 0.78)',
                 }}
               />
             </div>
@@ -2140,9 +2120,9 @@ export default function Record() {
         </div>
       )}
 
-      <div className="record-status-wrap">
-        <div className="record-topbar">
-          {showControls && (
+      {showControls ? (
+        <div className="record-status-wrap">
+          <div className="record-topbar">
             <div className="record-stats-grid record-top-stats-enter">
               <div className="record-top-stat">
                 <span className="record-top-stat-value">
@@ -2181,11 +2161,15 @@ export default function Record() {
                 <span className="record-top-stat-label">km/h</span>
               </div>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      ) : null}
 
-      <div className="record-info-wrap">
+      <div
+        className={`record-info-wrap ${
+          showControls ? 'record-info-wrap-active' : ''
+        }`}
+      >
         {loadingTrails && (
           <div className="record-info-box">Loading trails...</div>
         )}
@@ -2211,6 +2195,53 @@ export default function Record() {
         )}
       </div>
 
+      {isLegendVisible ? (
+        <div className="record-legend-panel">
+          <div className="record-legend-head">
+            <span>Legend</span>
+            <button
+              type="button"
+              onClick={() => setIsLegendVisible(false)}
+              aria-label="Hide legend"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          {[
+            ['Red marking', '#dc2626', false, 3],
+            ['Blue marking', '#2563eb', false, 3],
+            ['Green marking', '#22c55e', false, 3],
+            ['Yellow marking', '#FFD700', false, 3],
+            ['Black marking', '#0f172a', false, 3],
+            ['Unmarked section', '#000000', true, 2],
+            ['E3 Kom-Emine', '#dc2626', false, 5],
+            ['E4', '#2563eb', false, 5],
+            ['E8', '#7c3aed', false, 5],
+          ].map(([label, color, dashed, width]) => (
+            <div className="record-legend-row" key={label}>
+              <span
+                style={{
+                  borderTop: `${width}px ${dashed ? 'dashed' : 'solid'} ${color}`,
+                }}
+              />
+              <span>{label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <MapControls
         onCenterMe={handleCenterMe}
         onZoomIn={handleZoomIn}
@@ -2219,7 +2250,31 @@ export default function Record() {
         showResetViewButton={false}
         onToggleOffline={() => setOfflineModalOpen(true)}
         showOfflineButton={true}
-      />
+      >
+        <button
+          type="button"
+          className={`record-legend-button ${isLegendVisible ? 'active' : ''}`}
+          onClick={() => setIsLegendVisible((visible) => !visible)}
+          title={isLegendVisible ? 'Hide legend' : 'Show legend'}
+          aria-label={isLegendVisible ? 'Hide legend' : 'Show legend'}
+          aria-pressed={isLegendVisible}
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="18" x2="20" y2="18" />
+          </svg>
+        </button>
+      </MapControls>
 
       <OfflineMapModal
         isOpen={offlineModalOpen}

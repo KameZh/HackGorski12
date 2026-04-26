@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useMapStore } from '../../store/mapStore'
 
 const styles = {
@@ -20,12 +21,230 @@ const styles = {
     display: 'grid',
     placeItems: 'center',
     cursor: 'pointer',
+    background: 'rgba(18, 26, 40, 0.9)',
+    color: '#9fc9de',
   },
   zoomStack: {
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
   },
+  settingsPanel: {
+    position: 'absolute',
+    right: 56,
+    top: 0,
+    width: 250,
+    borderRadius: 16,
+    border: '1px solid rgba(66, 129, 164, 0.46)',
+    background: 'rgba(17, 26, 40, 0.96)',
+    color: '#e2e8f0',
+    boxShadow: '0 18px 38px rgba(0, 1, 0, 0.38)',
+    backdropFilter: 'blur(12px)',
+    padding: 12,
+    display: 'grid',
+    gap: 10,
+  },
+  settingsTitle: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 850,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  settingRow: {
+    display: 'grid',
+    gridTemplateColumns: '1fr auto',
+    alignItems: 'center',
+    gap: 10,
+    minHeight: 38,
+  },
+  settingLabel: {
+    display: 'grid',
+    gap: 2,
+    fontSize: 13,
+    fontWeight: 750,
+  },
+  settingHint: {
+    color: '#8aa7b8',
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  miniButton: {
+    minHeight: 34,
+    borderRadius: 10,
+    border: '1px solid rgba(66, 129, 164, 0.36)',
+    background: 'rgba(15, 23, 35, 0.72)',
+    color: '#cfe8f3',
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: 'pointer',
+    padding: '0 10px',
+  },
+}
+
+function ToggleSwitch({ active, onClick, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      style={{
+        width: 46,
+        height: 26,
+        borderRadius: 999,
+        border: active
+          ? '1px solid rgba(72, 169, 166, 0.85)'
+          : '1px solid rgba(148, 163, 184, 0.34)',
+        background: active
+          ? 'linear-gradient(135deg, #48a9a6, #4281a4)'
+          : 'rgba(15, 23, 35, 0.9)',
+        cursor: 'pointer',
+        padding: 3,
+        display: 'flex',
+        justifyContent: active ? 'flex-end' : 'flex-start',
+      }}
+    >
+      <span
+        style={{
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          background: '#fbfef9',
+          display: 'block',
+        }}
+      />
+    </button>
+  )
+}
+
+function IconSettings() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.9l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.9-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1-1.56 1.7 1.7 0 0 0-1.9.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.9 1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.56-1 1.7 1.7 0 0 0-.34-1.9l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.9.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.9-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.9V9c0 .68.4 1.29 1.02 1.56.2.09.42.14.65.14H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51.3z" />
+    </svg>
+  )
+}
+
+function IconCenter() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+      <circle cx="12" cy="12" r="7" />
+    </svg>
+  )
+}
+
+function IconTarget() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="4" />
+    </svg>
+  )
+}
+
+function IconDownload() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  )
+}
+
+function IconReset() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 1 0 3-6.708" />
+      <path d="M3 4v5h5" />
+    </svg>
+  )
+}
+
+function IconZoomIn() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="8" x2="12" y2="16" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  )
+}
+
+function IconZoomOut() {
+  return (
+    <svg
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <line x1="8" y1="12" x2="16" y2="12" />
+    </svg>
+  )
 }
 
 export default function MapControls({
@@ -42,6 +261,7 @@ export default function MapControls({
   showOfflineButton = false,
   children,
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const {
     mapStyle,
     terrain3D,
@@ -51,168 +271,141 @@ export default function MapControls({
     toggleHillshadeRelief,
   } = useMapStore()
 
-  const inactiveButton = {
-    ...styles.buttonBase,
-    background: 'rgba(18, 26, 40, 0.9)',
-    color: '#9fc9de',
-  }
-
   return (
     <div id="map-controls" style={styles.controlsWrap}>
       <button
-        id="map-style-toggle"
-        title={
-          mapStyle === 'outdoors-v12'
-            ? 'Switch to Satellite'
-            : 'Switch to Outdoors'
-        }
-        onClick={toggleMapStyle}
-        className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
-        style={{
-          ...inactiveButton,
-        }}
-      >
-        {mapStyle === 'outdoors-v12' ? (
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="10" />
-            <line x1="2" y1="12" x2="22" y2="12" />
-            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-          </svg>
-        ) : (
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21" />
-            <line x1="9" y1="3" x2="9" y2="18" />
-            <line x1="15" y1="6" x2="15" y2="21" />
-          </svg>
-        )}
-      </button>
-
-      <button
-        id="map-terrain-toggle"
-        title={terrain3D ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-        onClick={toggleTerrain}
-        className={`w-11 h-11 rounded-2xl backdrop-blur-sm shadow-lg flex items-center justify-center transition-all active:scale-95 ${
-          terrain3D
-            ? 'bg-emerald-500 text-white'
-            : 'bg-white/90 text-gray-700 hover:bg-white'
-        }`}
+        id="map-settings-toggle"
+        title="Map settings"
+        onClick={() => setSettingsOpen((open) => !open)}
         style={{
           ...styles.buttonBase,
-          background: terrain3D
+          background: settingsOpen
             ? 'linear-gradient(180deg, #48a9a6, #4281a4)'
-            : 'rgba(18, 26, 40, 0.9)',
-          color: terrain3D ? '#fbfef9' : '#9fc9de',
+            : styles.buttonBase.background,
+          color: settingsOpen ? '#fbfef9' : styles.buttonBase.color,
         }}
+        aria-label="Open map settings"
+        aria-expanded={settingsOpen}
       >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="m8 3 4 8 5-5 5 15H2L8 3z" />
-        </svg>
+        <IconSettings />
       </button>
 
-      <button
-        id="map-relief-toggle"
-        title={hillshadeRelief ? 'Hide relief shading' : 'Show relief shading'}
-        onClick={toggleHillshadeRelief}
-        style={{
-          ...styles.buttonBase,
-          background: hillshadeRelief
-            ? 'linear-gradient(180deg, #334155, #0f766e)'
-            : 'rgba(18, 26, 40, 0.9)',
-          color: hillshadeRelief ? '#fbfef9' : '#9fc9de',
-        }}
-        aria-label="Toggle relief shading"
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <path d="M3 17c3-5 5-8 8-8s4 4 7 4c1 0 2-.4 3-1" />
-          <path d="M3 21c3-4 5-6 8-6s4 3 7 3c1 0 2-.2 3-.8" />
-          <path d="M3 13c2-4 4-6 7-6 4 0 5 4 8 4 1 0 2-.3 3-1" />
-        </svg>
-      </button>
+      {settingsOpen ? (
+        <div id="map-settings-panel" style={styles.settingsPanel}>
+          <h3 style={styles.settingsTitle}>Map settings</h3>
 
-      {onTogglePitch ? (
-        <button
-          id="map-pitch-toggle"
-          title="Toggle tilted 3D view"
-          onClick={() => onTogglePitch?.()}
-          style={inactiveButton}
-          aria-label="Toggle tilted 3D view"
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+          <div style={styles.settingRow}>
+            <div style={styles.settingLabel}>
+              <span>Satellite map</span>
+              <span style={styles.settingHint}>
+                {mapStyle === 'outdoors-v12'
+                  ? 'Outdoors active'
+                  : 'Satellite active'}
+              </span>
+            </div>
+            <ToggleSwitch
+              active={mapStyle !== 'outdoors-v12'}
+              onClick={toggleMapStyle}
+              label="Toggle satellite map"
+            />
+          </div>
+
+          <div style={styles.settingRow}>
+            <div style={styles.settingLabel}>
+              <span>Relief shading</span>
+              <span style={styles.settingHint}>Makes terrain easier to read</span>
+            </div>
+            <ToggleSwitch
+              active={hillshadeRelief}
+              onClick={toggleHillshadeRelief}
+              label="Toggle relief shading"
+            />
+          </div>
+
+          <div style={styles.settingRow}>
+            <div style={styles.settingLabel}>
+              <span>3D terrain</span>
+              <span style={styles.settingHint}>Shows mountain shape</span>
+            </div>
+            <ToggleSwitch
+              active={terrain3D}
+              onClick={toggleTerrain}
+              label="Toggle 3D terrain"
+            />
+          </div>
+
+          {onTogglePitch ? (
+            <div style={styles.settingRow}>
+              <div style={styles.settingLabel}>
+                <span>Tilted view</span>
+                <span style={styles.settingHint}>Quick perspective angle</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onTogglePitch?.()}
+                style={styles.miniButton}
+              >
+                Toggle
+              </button>
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: 8,
+            }}
           >
-            <path d="M3 16 12 4l9 12" />
-            <path d="M6 16h12" />
-            <path d="M8 20h8" />
-          </svg>
-        </button>
+            {showOfflineButton ? (
+              <button
+                type="button"
+                onClick={() => onToggleOffline?.()}
+                style={styles.miniButton}
+              >
+                Offline area
+              </button>
+            ) : null}
+            {showResetViewButton ? (
+              <button
+                type="button"
+                onClick={() => onResetView?.()}
+                style={styles.miniButton}
+              >
+                Reset view
+              </button>
+            ) : null}
+            {showAreaInsightsButton ? (
+              <button
+                type="button"
+                onClick={() => onToggleAreaInsights?.()}
+                style={{
+                  ...styles.miniButton,
+                  gridColumn:
+                    showOfflineButton || showResetViewButton
+                      ? '1 / -1'
+                      : undefined,
+                  borderColor: areaInsightsEnabled
+                    ? 'rgba(72, 169, 166, 0.72)'
+                    : 'rgba(66, 129, 164, 0.36)',
+                  color: areaInsightsEnabled ? '#a7f3d0' : '#cfe8f3',
+                }}
+              >
+                {areaInsightsEnabled ? 'Hide area insights' : 'Show area insights'}
+              </button>
+            ) : null}
+          </div>
+        </div>
       ) : null}
 
       <button
         id="map-center-me"
         title="Center on my location"
         onClick={onCenterMe}
-        className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
-        style={{
-          ...inactiveButton,
-        }}
+        style={styles.buttonBase}
+        aria-label="Center on my location"
       >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <circle cx="12" cy="12" r="3" />
-          <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
-          <circle cx="12" cy="12" r="7" />
-        </svg>
+        <IconCenter />
       </button>
 
       {showAreaInsightsButton ? (
@@ -228,24 +421,12 @@ export default function MapControls({
             ...styles.buttonBase,
             background: areaInsightsEnabled
               ? 'linear-gradient(180deg, #48a9a6, #4281a4)'
-              : 'rgba(18, 26, 40, 0.9)',
-            color: areaInsightsEnabled ? '#fbfef9' : '#9fc9de',
+              : styles.buttonBase.background,
+            color: areaInsightsEnabled ? '#fbfef9' : styles.buttonBase.color,
           }}
           aria-label="Toggle area insights panel"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <circle cx="12" cy="12" r="4" />
-          </svg>
+          <IconTarget />
         </button>
       ) : null}
 
@@ -254,23 +435,10 @@ export default function MapControls({
           id="map-offline-toggle"
           title="Download area offline"
           onClick={() => onToggleOffline?.()}
-          style={inactiveButton}
+          style={styles.buttonBase}
           aria-label="Download offline maps"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
+          <IconDownload />
         </button>
       ) : null}
 
@@ -279,22 +447,10 @@ export default function MapControls({
           id="map-reset-view"
           title="Reset map view"
           onClick={() => onResetView?.()}
-          style={inactiveButton}
+          style={styles.buttonBase}
           aria-label="Reset map view"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3 12a9 9 0 1 0 3-6.708" />
-            <path d="M3 4v5h5" />
-          </svg>
+          <IconReset />
         </button>
       ) : null}
 
@@ -303,51 +459,20 @@ export default function MapControls({
           id="map-zoom-in"
           title="Zoom in"
           onClick={() => onZoomIn?.()}
-          className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
-          style={{
-            ...inactiveButton,
-          }}
+          style={styles.buttonBase}
           aria-label="Zoom in"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <line x1="12" y1="8" x2="12" y2="16" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-          </svg>
+          <IconZoomIn />
         </button>
 
         <button
           id="map-zoom-out"
           title="Zoom out"
           onClick={() => onZoomOut?.()}
-          className="w-11 h-11 rounded-2xl bg-white/90 backdrop-blur-sm shadow-lg flex items-center justify-center text-gray-700 hover:bg-white active:scale-95 transition-all"
-          style={{
-            ...inactiveButton,
-          }}
+          style={styles.buttonBase}
           aria-label="Zoom out"
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="12" cy="12" r="9" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-          </svg>
+          <IconZoomOut />
         </button>
       </div>
 

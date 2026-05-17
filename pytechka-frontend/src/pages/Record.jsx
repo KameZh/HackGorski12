@@ -1726,7 +1726,7 @@ export default function Record() {
                     <div
                       style={{
                         ...photoMarkerStyle,
-                        borderColor: categoryMeta.color,
+                        border: `2px solid ${categoryMeta.color}`,
                       }}
                       title={`${categoryMeta.label}: ${ping.description || 'No description'}`}
                     >

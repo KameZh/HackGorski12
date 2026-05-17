@@ -394,9 +394,9 @@ export default function MapControls({
                     showOfflineButton || showResetViewButton
                       ? '1 / -1'
                       : undefined,
-                  borderColor: areaInsightsEnabled
-                    ? 'rgba(72, 169, 166, 0.72)'
-                    : 'rgba(66, 129, 164, 0.36)',
+                  border: areaInsightsEnabled
+                    ? '1px solid rgba(72, 169, 166, 0.72)'
+                    : styles.miniButton.border,
                   color: areaInsightsEnabled ? '#a7f3d0' : '#cfe8f3',
                 }}
               >

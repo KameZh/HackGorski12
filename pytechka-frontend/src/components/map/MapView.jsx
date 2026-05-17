@@ -4808,7 +4808,7 @@ export default function MapView({
                       <div
                         style={{
                           ...photoMarkerStyle,
-                          borderColor: categoryMeta.color,
+                          border: `2px solid ${categoryMeta.color}`,
                         }}
                         title={`${categoryMeta.label}: ${ping.description || 'No description'}`}
                       >
@@ -6114,7 +6114,7 @@ export default function MapView({
                 ...styles.infoBox,
                 fontSize: 11,
                 padding: '6px 8px',
-                borderColor: 'rgba(148,163,184,0.24)',
+                border: '1px solid rgba(148,163,184,0.24)',
                 background: 'rgba(12,19,30,0.72)',
               }}
             >
@@ -6128,7 +6128,7 @@ export default function MapView({
                 ...styles.infoBox,
                 fontSize: 11,
                 padding: '6px 8px',
-                borderColor: 'rgba(148,163,184,0.24)',
+                border: '1px solid rgba(148,163,184,0.24)',
                 background: 'rgba(12,19,30,0.72)',
               }}
             >
@@ -6144,7 +6144,7 @@ export default function MapView({
                 ...styles.infoBox,
                 fontSize: 11,
                 padding: '6px 8px',
-                borderColor: 'rgba(148,163,184,0.24)',
+                border: '1px solid rgba(148,163,184,0.24)',
                 background: 'rgba(12,19,30,0.72)',
               }}
             >
@@ -6748,12 +6748,12 @@ export default function MapView({
                 ...styles.infoBox,
                 marginTop: 8,
                 padding: '9px 10px',
-                borderColor:
+                border:
                   startSafety.level === 'high'
-                    ? 'rgba(239,68,68,0.55)'
+                    ? '1px solid rgba(239,68,68,0.55)'
                     : startSafety.level === 'medium'
-                      ? 'rgba(245,158,11,0.55)'
-                      : 'rgba(34,197,94,0.45)',
+                      ? '1px solid rgba(245,158,11,0.55)'
+                      : '1px solid rgba(34,197,94,0.45)',
               }}
             >
               <div

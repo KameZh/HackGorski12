@@ -81,7 +81,7 @@ const styles = {
   activeTab: {
     background: 'linear-gradient(180deg, #2563eb, #1d4ed8)',
     color: '#fff',
-    borderColor: 'rgba(191,219,254,0.34)',
+    border: '1px solid rgba(191,219,254,0.34)',
     boxShadow: '0 8px 18px rgba(30, 64, 175, 0.28)',
   },
   scroll: {

@@ -214,16 +214,53 @@
 
 .explore-filter-panel {
   margin-top: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   border: 1px solid rgba(66, 129, 164, 0.32);
-  background: rgba(15, 23, 35, 0.7);
-  padding: 12px;
+  background: rgba(15, 23, 35, 0.78);
+  padding: 0;
+  overflow: hidden;
+}
+
+.explore-filter-summary {
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.explore-filter-summary::-webkit-details-marker {
+  display: none;
+}
+
+.explore-filter-summary span {
+  color: #fbfef9;
+  font-size: 0.9rem;
+  font-weight: 850;
+}
+
+.explore-filter-summary strong {
+  border-radius: 999px;
+  border: 1px solid rgba(72, 169, 166, 0.4);
+  background: rgba(72, 169, 166, 0.14);
+  color: #8de0dc;
+  padding: 5px 9px;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.explore-filter-panel[open] .explore-filter-summary {
+  border-bottom: 1px solid rgba(66, 129, 164, 0.22);
 }
 
 .explore-filter-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+  padding: 12px 12px 0;
 }
 
 .explore-chip-toggle-row {
@@ -231,6 +268,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  padding: 0 12px 12px;
 }
 
 .explore-filter-chip-btn {
@@ -305,11 +343,12 @@
 }
 
 .explore-active-summary {
-  margin-top: 10px;
+  margin: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 7px;
+  padding: 0 12px 12px;
 }
 
 .explore-chip {
@@ -350,11 +389,11 @@
 
 .explore-map-panel {
   margin-bottom: 16px;
-  border-radius: 16px;
+  border-radius: 18px;
   border: 1px solid rgba(66, 129, 164, 0.35);
-  background: rgba(18, 27, 41, 0.88);
+  background: rgba(14, 22, 34, 0.72);
   overflow: hidden;
-  box-shadow: 0 16px 34px rgba(0, 1, 0, 0.3);
+  box-shadow: 0 12px 28px rgba(0, 1, 0, 0.24);
 }
 
 .explore-map-head {
@@ -379,12 +418,16 @@
   margin-top: 6px;
   display: flex;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
 }
 
 .explore-action-grid-map .explore-action-card {
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  padding: 10px;
+  padding: 9px 13px;
+  border-radius: 999px;
+  background: rgba(18, 29, 43, 0.86);
 }
 
 .explore-action-grid-map .explore-action-title {
@@ -651,7 +694,7 @@
   }
 
   .explore-action-grid-map .explore-action-card {
-    flex: 0 0 220px;
+    flex: 0 0 auto;
   }
 
   .explore-filter-grid {

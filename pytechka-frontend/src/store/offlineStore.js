@@ -14,6 +14,12 @@ const draftsStore = localforage.createInstance({
   description: 'Stores recorded trails before publishing',
 })
 
+const mapDataStore = localforage.createInstance({
+  name: 'PytechkaOffline',
+  storeName: 'map_data',
+  description: 'Stores huts, pings, photos, clusters, and map metadata offline',
+})
+
 function normalizeOfflineTrail(trail) {
   if (!trail || typeof trail !== 'object') return trail
   return {
@@ -25,8 +31,14 @@ function normalizeOfflineTrail(trail) {
 
 export const useOfflineStore = create((set, get) => ({
   offlineTrails: [],
+  offlineHuts: [],
+  offlinePings: [],
+  offlineClusters: [],
+  offlineEvents: [],
+  offlineMapPacks: [],
   draftTrails: [],
   isLoaded: false,
+  mapDataLoaded: false,
   draftsLoaded: false,
 
   // Load all trails from local storage into memory
@@ -40,6 +52,85 @@ export const useOfflineStore = create((set, get) => ({
     } catch (err) {
       console.error('Failed to load offline trails', err)
       set({ isLoaded: true }) // Set loaded even on fail to stop loading spinners
+    }
+  },
+
+  loadOfflineMapData: async () => {
+    try {
+      const [
+        offlineHuts,
+        offlinePings,
+        offlineClusters,
+        offlineEvents,
+        offlineMapPacks,
+      ] = await Promise.all([
+        mapDataStore.getItem('huts'),
+        mapDataStore.getItem('pings'),
+        mapDataStore.getItem('clusters'),
+        mapDataStore.getItem('events'),
+        mapDataStore.getItem('mapPacks'),
+      ])
+      set({
+        offlineHuts: Array.isArray(offlineHuts) ? offlineHuts : [],
+        offlinePings: Array.isArray(offlinePings) ? offlinePings : [],
+        offlineClusters: Array.isArray(offlineClusters) ? offlineClusters : [],
+        offlineEvents: Array.isArray(offlineEvents) ? offlineEvents : [],
+        offlineMapPacks: Array.isArray(offlineMapPacks) ? offlineMapPacks : [],
+        mapDataLoaded: true,
+      })
+    } catch (err) {
+      console.error('Failed to load offline map data', err)
+      set({ mapDataLoaded: true })
+    }
+  },
+
+  saveOfflineMapData: async ({
+    huts,
+    pings,
+    clusters,
+    events,
+    mapPack,
+  } = {}) => {
+    try {
+      const writes = []
+      if (Array.isArray(huts)) writes.push(mapDataStore.setItem('huts', huts))
+      if (Array.isArray(pings)) writes.push(mapDataStore.setItem('pings', pings))
+      if (Array.isArray(clusters)) {
+        writes.push(mapDataStore.setItem('clusters', clusters))
+      }
+      if (Array.isArray(events)) writes.push(mapDataStore.setItem('events', events))
+      if (mapPack) {
+        const current = (await mapDataStore.getItem('mapPacks')) || []
+        const next = [
+          ...current.filter((entry) => entry.id !== mapPack.id),
+          {
+            ...mapPack,
+            savedAt: mapPack.savedAt || new Date().toISOString(),
+          },
+        ]
+        writes.push(mapDataStore.setItem('mapPacks', next))
+      }
+      await Promise.all(writes)
+      await get().loadOfflineMapData()
+    } catch (err) {
+      console.error('Failed to save offline map data', err)
+      throw err
+    }
+  },
+
+  clearOfflineMapData: async () => {
+    try {
+      await mapDataStore.clear()
+      set({
+        offlineHuts: [],
+        offlinePings: [],
+        offlineClusters: [],
+        offlineEvents: [],
+        offlineMapPacks: [],
+      })
+    } catch (err) {
+      console.error('Failed to clear offline map data', err)
+      throw err
     }
   },
 

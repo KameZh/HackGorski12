@@ -15,6 +15,11 @@ import { useRecordingStore } from './store/recordingStore'
 function App() {
   const { getToken, isSignedIn } = useAuth()
   const ensureWakeLock = useRecordingStore((state) => state.ensureWakeLock)
+  const authReturnPath =
+    typeof window !== 'undefined' &&
+    window.sessionStorage.getItem('pytechka.pendingPlannerRoute')
+      ? '/maps'
+      : '/'
 
   setClerkTokenGetter(getToken)
 
@@ -49,10 +54,10 @@ function App() {
           <AuthenticateWithRedirectCallback
             signInUrl="/login"
             signUpUrl="/signup"
-            signInFallbackRedirectUrl="/"
-            signInForceRedirectUrl="/"
-            signUpFallbackRedirectUrl="/"
-            signUpForceRedirectUrl="/"
+            signInFallbackRedirectUrl={authReturnPath}
+            signInForceRedirectUrl={authReturnPath}
+            signUpFallbackRedirectUrl={authReturnPath}
+            signUpForceRedirectUrl={authReturnPath}
           />
         }
       />
@@ -62,10 +67,10 @@ function App() {
           <AuthenticateWithRedirectCallback
             signInUrl="/login"
             signUpUrl="/signup"
-            signInFallbackRedirectUrl="/"
-            signInForceRedirectUrl="/"
-            signUpFallbackRedirectUrl="/"
-            signUpForceRedirectUrl="/"
+            signInFallbackRedirectUrl={authReturnPath}
+            signInForceRedirectUrl={authReturnPath}
+            signUpFallbackRedirectUrl={authReturnPath}
+            signUpForceRedirectUrl={authReturnPath}
           />
         }
       />
@@ -75,10 +80,10 @@ function App() {
           <AuthenticateWithRedirectCallback
             signInUrl="/login"
             signUpUrl="/signup"
-            signInFallbackRedirectUrl="/"
-            signInForceRedirectUrl="/"
-            signUpFallbackRedirectUrl="/"
-            signUpForceRedirectUrl="/"
+            signInFallbackRedirectUrl={authReturnPath}
+            signInForceRedirectUrl={authReturnPath}
+            signUpFallbackRedirectUrl={authReturnPath}
+            signUpForceRedirectUrl={authReturnPath}
           />
         }
       />

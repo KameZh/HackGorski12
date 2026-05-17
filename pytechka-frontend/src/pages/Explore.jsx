@@ -426,7 +426,13 @@ export default function Explore() {
             </div>
 
             <div className="explore-map-controls">
-              <div className="explore-filter-panel">
+              <details className="explore-filter-panel">
+                <summary className="explore-filter-summary">
+                  <span>Filters</span>
+                  <strong>
+                    {hasActiveFilters ? 'Active filters' : 'All routes'}
+                  </strong>
+                </summary>
                 <div className="explore-filter-grid">
                   <label className="explore-filter-field">
                     <span className="explore-filter-label">Activity</span>
@@ -536,7 +542,7 @@ export default function Explore() {
                     </button>
                   </div>
                 ) : null}
-              </div>
+              </details>
 
               <div className="explore-action-grid explore-action-grid-map">
                 <button

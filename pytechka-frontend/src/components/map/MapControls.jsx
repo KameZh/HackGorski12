@@ -5,8 +5,7 @@ const styles = {
   controlsWrap: {
     position: 'absolute',
     right: 12,
-    top: '50%',
-    transform: 'translateY(-50%)',
+    top: 'calc(50% - 172px)',
     display: 'flex',
     flexDirection: 'column',
     gap: 8,
@@ -30,19 +29,22 @@ const styles = {
     gap: 8,
   },
   settingsPanel: {
-    position: 'absolute',
-    right: 56,
-    top: 0,
-    width: 250,
-    borderRadius: 16,
+    position: 'fixed',
+    left: 10,
+    right: 10,
+    bottom: 'calc(var(--app-bottom-nav-space, 86px) + env(safe-area-inset-bottom, 0px) + 12px)',
+    maxHeight: 'min(68dvh, 520px)',
+    overflowY: 'auto',
+    borderRadius: 22,
     border: '1px solid rgba(66, 129, 164, 0.46)',
     background: 'rgba(17, 26, 40, 0.96)',
     color: '#e2e8f0',
     boxShadow: '0 18px 38px rgba(0, 1, 0, 0.38)',
     backdropFilter: 'blur(12px)',
-    padding: 12,
+    padding: '16px 14px 18px',
     display: 'grid',
     gap: 10,
+    zIndex: 80,
   },
   settingsTitle: {
     margin: 0,
@@ -259,6 +261,7 @@ export default function MapControls({
   showAreaInsightsButton = false,
   onToggleOffline,
   showOfflineButton = false,
+  onOverlayOpen,
   children,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -276,7 +279,13 @@ export default function MapControls({
       <button
         id="map-settings-toggle"
         title="Map settings"
-        onClick={() => setSettingsOpen((open) => !open)}
+        onClick={() => {
+          setSettingsOpen((open) => {
+            const next = !open
+            if (next) onOverlayOpen?.('settings')
+            return next
+          })
+        }}
         style={{
           ...styles.buttonBase,
           background: settingsOpen

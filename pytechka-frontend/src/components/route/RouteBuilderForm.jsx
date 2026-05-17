@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
 import { lineString, nearestPointOnLine, point as turfPoint } from '@turf/turf'
@@ -152,14 +152,26 @@ export default function RouteBuilderForm({
   publishOnSubmit = true,
   title = 'Publish Trail',
   submitLabel,
+  initialValues = {},
+  storageKey,
 }) {
-  const [name, setName] = useState('')
-  const [region, setRegion] = useState('')
-  const [difficulty, setDifficulty] = useState('moderate')
-  const [description, setDescription] = useState('')
-  const [equipment, setEquipment] = useState('')
-  const [resources, setResources] = useState('')
-  const [trailMarks, setTrailMarks] = useState([])
+  const [name, setName] = useState(() => initialValues.name || '')
+  const [region, setRegion] = useState(() => initialValues.region || '')
+  const [difficulty, setDifficulty] = useState(
+    () => initialValues.difficulty || 'moderate'
+  )
+  const [description, setDescription] = useState(
+    () => initialValues.description || ''
+  )
+  const [equipment, setEquipment] = useState(
+    () => initialValues.equipment || ''
+  )
+  const [resources, setResources] = useState(
+    () => initialValues.resources || ''
+  )
+  const [trailMarks, setTrailMarks] = useState(() =>
+    Array.isArray(initialValues.trailMarks) ? initialValues.trailMarks : []
+  )
   const [markEditorOpen, setMarkEditorOpen] = useState(false)
   const [markDraft, setMarkDraft] = useState([])
   const [selectedMarkColor, setSelectedMarkColor] = useState('red')
@@ -169,6 +181,71 @@ export default function RouteBuilderForm({
   const [error, setError] = useState('')
 
   const pathCoordinates = useMemo(() => parseLineCoordinates(geojson), [geojson])
+  const autosaveLoadedRef = useRef(false)
+
+  const formStorageKey = useMemo(() => {
+    if (storageKey) return storageKey
+    const first = pathCoordinates[0] || []
+    const last = pathCoordinates[pathCoordinates.length - 1] || []
+    return [
+      'pytechka.route-form',
+      title,
+      pathCoordinates.length,
+      Number(first[0] || 0).toFixed(5),
+      Number(first[1] || 0).toFixed(5),
+      Number(last[0] || 0).toFixed(5),
+      Number(last[1] || 0).toFixed(5),
+    ].join(':')
+  }, [pathCoordinates, storageKey, title])
+
+  useEffect(() => {
+    if (autosaveLoadedRef.current || typeof window === 'undefined') return
+    autosaveLoadedRef.current = true
+    try {
+      const raw = window.localStorage.getItem(formStorageKey)
+      const saved = raw ? JSON.parse(raw) : null
+      if (!saved || typeof saved !== 'object') return
+      setName(saved.name ?? name)
+      setRegion(saved.region ?? region)
+      setDifficulty(saved.difficulty ?? difficulty)
+      setDescription(saved.description ?? description)
+      setEquipment(saved.equipment ?? equipment)
+      setResources(saved.resources ?? resources)
+      if (Array.isArray(saved.trailMarks)) setTrailMarks(saved.trailMarks)
+    } catch {
+      /* Autosave restore is best-effort. */
+    }
+  }, [description, difficulty, equipment, formStorageKey, name, region, resources])
+
+  useEffect(() => {
+    if (!autosaveLoadedRef.current || typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(
+        formStorageKey,
+        JSON.stringify({
+          name,
+          region,
+          difficulty,
+          description,
+          equipment,
+          resources,
+          trailMarks,
+          savedAt: new Date().toISOString(),
+        })
+      )
+    } catch {
+      /* Autosave is best-effort. */
+    }
+  }, [
+    description,
+    difficulty,
+    equipment,
+    formStorageKey,
+    name,
+    region,
+    resources,
+    trailMarks,
+  ])
 
   const routeFeatureCollection = useMemo(() => {
     if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
@@ -322,13 +399,16 @@ export default function RouteBuilderForm({
         description: description.trim(),
         equipment: equipment.trim(),
         resources: resources.trim(),
+        stats: initialValues.stats,
         trailMarks: normalizeTrailMarksForSave(trailMarks),
       }
 
       if (publishOnSubmit) {
         const res = await publishTrail(payload)
+        window.localStorage?.removeItem(formStorageKey)
         onSuccess?.(res.data)
       } else {
+        window.localStorage?.removeItem(formStorageKey)
         onSuccess?.(payload)
       }
     } catch (err) {
@@ -343,7 +423,7 @@ export default function RouteBuilderForm({
     }
   }
 
-  return (
+  const formContent = (
     <div className="rbf-overlay" onClick={onCancel}>
       <div className="rbf-panel" onClick={(e) => e.stopPropagation()}>
         <div className="rbf-header">
@@ -764,4 +844,6 @@ export default function RouteBuilderForm({
       ) : null}
     </div>
   )
+
+  return createPortal(formContent, document.body)
 }

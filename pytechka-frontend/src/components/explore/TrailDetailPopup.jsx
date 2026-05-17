@@ -89,12 +89,12 @@ function haversineMeters(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
 
-function buildElevationSamples(geojson, trailMarks = []) {
+function buildElevationSamples(geojson, trailMarks = [], stats = {}) {
   const coords = extractLineCoordinates(geojson)
   if (coords.length < 2) return null
 
   let distance = 0
-  const samples = coords
+  const measuredSamples = coords
     .map((coord, index) => {
       if (index > 0) distance += haversineMeters(coords[index - 1], coord)
       const elevation = Number(coord?.[2])
@@ -103,6 +103,47 @@ function buildElevationSamples(geojson, trailMarks = []) {
         : null
     })
     .filter(Boolean)
+
+  let samples = measuredSamples
+  if (samples.length < 2) {
+    const totalDistance = coords.reduce(
+      (sum, coord, index) =>
+        index > 0 ? sum + haversineMeters(coords[index - 1], coord) : sum,
+      0
+    )
+    const gain = Number(stats?.elevationGain || 0)
+    let minElevation = Number(stats?.lowestPoint)
+    let maxElevation = Number(stats?.highestPoint)
+
+    if (!Number.isFinite(minElevation) && Number.isFinite(maxElevation)) {
+      minElevation = Math.max(0, maxElevation - Math.max(gain, 1))
+    }
+    if (!Number.isFinite(maxElevation) && Number.isFinite(minElevation)) {
+      maxElevation = minElevation + Math.max(gain, 1)
+    }
+    if (!Number.isFinite(minElevation) || !Number.isFinite(maxElevation)) {
+      return null
+    }
+    if (Math.abs(maxElevation - minElevation) < 1) {
+      maxElevation = minElevation + Math.max(gain, 12)
+    }
+
+    let runningDistance = 0
+    samples = coords.map((coord, index) => {
+      if (index > 0) runningDistance += haversineMeters(coords[index - 1], coord)
+      const progress = totalDistance > 0 ? runningDistance / totalDistance : index / (coords.length - 1)
+      const ridge = Math.sin(progress * Math.PI)
+      const climb = Math.min(1, progress / 0.62)
+      const elevation =
+        minElevation +
+        (maxElevation - minElevation) * (0.18 * progress + 0.72 * climb + 0.1 * ridge)
+      return {
+        index,
+        distance: runningDistance,
+        elevation: Math.max(minElevation, Math.min(maxElevation, elevation)),
+      }
+    })
+  }
 
   if (samples.length < 2) return null
 
@@ -120,7 +161,7 @@ function buildElevationSamples(geojson, trailMarks = []) {
 
 function ElevationProfile({ trail }) {
   const [hovered, setHovered] = useState(null)
-  const profile = buildElevationSamples(trail?.geojson, trail?.trailMarks)
+  const profile = buildElevationSamples(trail?.geojson, trail?.trailMarks, trail?.stats)
   if (!profile) return null
 
   const width = 420

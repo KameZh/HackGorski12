@@ -28,6 +28,15 @@ export default function Maps() {
     const rawStartLng = params.get('startLng')
     const rawStartLat = params.get('startLat')
     const trailId = String(params.get('trailId') || '').trim()
+    const draftId = String(params.get('draftId') || '').trim()
+
+    if (draftId && rawStartLng == null && rawStartLat == null) {
+      return {
+        startCoordinates: null,
+        trailId: null,
+        draftId,
+      }
+    }
 
     if (rawStartLng == null || rawStartLat == null) {
       return null
@@ -47,6 +56,7 @@ export default function Maps() {
     return {
       startCoordinates: [startLng, startLat],
       trailId: trailId || null,
+      draftId: draftId || null,
     }
   }, [location.search])
 
@@ -109,6 +119,21 @@ export default function Maps() {
     [searchQuery]
   )
 
+  useEffect(() => {
+    const query = searchQuery.trim()
+    if (!query) return undefined
+    const matchesSuggestion = mapSearchSuggestions.some(
+      (suggestion) => suggestion.toLowerCase() === query.toLowerCase()
+    )
+    if (!matchesSuggestion) return undefined
+
+    const timeout = window.setTimeout(() => {
+      setSearchRequest({ id: Date.now(), query })
+    }, 120)
+
+    return () => window.clearTimeout(timeout)
+  }, [mapSearchSuggestions, searchQuery])
+
   return (
     <div id="maps-page" className="maps-page">
       <div className="maps-glow maps-glow-top" />
@@ -152,7 +177,7 @@ export default function Maps() {
               <input
                 id="maps-search-input"
                 type="text"
-                placeholder="Search locations and routes..."
+                placeholder="Search peaks, lakes, places, and routes..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchFocused(true)}

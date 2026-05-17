@@ -6,20 +6,18 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
+    "scrape:huts": "node scripts/scrapeHuts.js",
     "import:osm-trails": "node scripts/importOsmTrails.js",
     "backfill:official-trails": "node scripts/backfillOfficialTrailFields.js",
+    "backfill:user-trail-telemetry": "node scripts/backfillUserTrailTelemetry.js",
     "backfill:map-geometry": "node scripts/backfillMapGeometry.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@azure-rest/ai-inference": "latest",
-    "@azure/core-auth": "latest",
-    "@azure/core-sse": "latest",
     "@clerk/clerk-sdk-node": "^4.13.23",
     "@clerk/express": "^2.0.7",
-    "@google/generative-ai": "^0.24.1",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",

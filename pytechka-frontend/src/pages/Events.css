@@ -343,21 +343,19 @@
 
 .events-detail-sheet {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--app-bottom-nav-space) + 10px);
   z-index: 44;
-  max-height: min(78vh, 760px);
+  max-height: min(68dvh, calc(100dvh - var(--app-bottom-nav-space) - 92px));
   overflow-y: auto;
-  border-top-left-radius: 22px;
-  border-top-right-radius: 22px;
+  border-radius: 22px;
   border: 1px solid rgba(66, 129, 164, 0.42);
-  border-bottom: 0;
   background:
     linear-gradient(180deg, rgba(19, 28, 43, 0.96), rgba(12, 18, 30, 0.98)),
     linear-gradient(145deg, rgba(66, 129, 164, 0.15), rgba(72, 169, 166, 0.12));
-  box-shadow: 0 -20px 38px rgba(0, 1, 0, 0.44);
-  padding: 14px 14px calc(14px + env(safe-area-inset-bottom));
+  box-shadow: 0 18px 38px rgba(0, 1, 0, 0.44);
+  padding: 14px;
   animation: events-sheet-in 260ms ease;
 }
 

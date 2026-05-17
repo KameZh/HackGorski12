@@ -6,12 +6,13 @@ import { LocalNotifications } from '@capacitor/local-notifications'
 import BottomNav from '../components/layout/Bottomnav'
 import MapControls from '../components/map/MapControls'
 import LiveCompass from '../components/map/LiveCompass'
+import EmergencyButton from '../components/map/EmergencyButton'
+import HutMarkerButton from '../components/map/HutMarkerButton'
 import RoutePreviewCard from '../components/layout/RoutePreviewCard'
 import HutPreviewCard from '../components/layout/HutPreviewCard'
 import RouteBuilderForm from '../components/route/RouteBuilderForm'
 import CameraButton from '../components/camera/CameraButton'
 import PhotoCaptureModal from '../components/camera/PhotoCaptureModal'
-import OfflineMapModal from '../components/map/OfflineMapModal'
 import { useMapStore } from '../store/mapStore'
 import { useRecordingStore } from '../store/recordingStore'
 import { fetchMapTrails, fetchMapTrailsGeojson, fetchHuts } from '../api/maps'
@@ -144,6 +145,9 @@ const photoMarkerStyle = {
   background: '#8b5cf6',
 }
 
+const RECORD_DRAWER_BOTTOM_GAP =
+  'calc(var(--app-bottom-nav-space, 86px) + 10px)'
+
 const pingBtnBase = {
   padding: '9px 14px',
   borderRadius: 10,
@@ -156,21 +160,23 @@ const pingBtnBase = {
 
 const pingPopupStyle = {
   position: 'absolute',
-  bottom: 'calc(env(safe-area-inset-bottom, 0px) + 218px)',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  width: 'min(90vw, 340px)',
+  left: 0,
+  right: 0,
+  bottom: RECORD_DRAWER_BOTTOM_GAP,
+  width: 'auto',
+  margin: '0 10px',
   zIndex: 45,
   border: '1px solid rgba(66, 129, 164, 0.5)',
-  borderRadius: 14,
+  borderRadius: 22,
   background: 'rgba(17, 26, 40, 0.95)',
   boxShadow: '0 12px 28px rgba(0,1,0,0.4)',
   backdropFilter: 'blur(8px)',
-  padding: '14px 16px',
+  padding: '16px 18px 18px',
   color: '#e2e8f0',
   maxHeight:
-    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 300px)',
+    'min(68dvh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--app-bottom-nav-space, 86px) - 132px))',
   overflowY: 'auto',
+  animation: 'map-drawer-in 180ms ease-out both',
 }
 
 const LIVE_RECORDING_NOTIFICATION_ID = 50001
@@ -456,10 +462,17 @@ export default function Record() {
   // Photo capture state
   const [capturedPhoto, setCapturedPhoto] = useState(null)
   const [showPhotoModal, setShowPhotoModal] = useState(false)
-  const [offlineModalOpen, setOfflineModalOpen] = useState(false)
 
   const [huts, setHuts] = useState([])
   const [selectedHut, setSelectedHut] = useState(null)
+  const [selectedHutPanel, setSelectedHutPanel] = useState('info')
+
+  const closeRecordOverlays = useCallback((keep = '') => {
+    if (keep !== 'selectedPing') setSelectedPing(null)
+    if (keep !== 'selectedCluster') setSelectedCluster(null)
+    if (keep !== 'selectedHut') setSelectedHut(null)
+    if (keep !== 'legend') setIsLegendVisible(false)
+  }, [])
 
   const [showFinishModal, setShowFinishModal] = useState(false)
   const [finishRating, setFinishRating] = useState(0)
@@ -474,7 +487,14 @@ export default function Record() {
     notes: '',
   })
 
-  const { loadOfflineTrails, saveDraftTrail } = useOfflineStore()
+  const {
+    offlineHuts,
+    offlinePings,
+    offlineClusters,
+    loadOfflineTrails,
+    loadOfflineMapData,
+    saveDraftTrail,
+  } = useOfflineStore()
 
 
   const resolvedMapStyle =
@@ -1030,6 +1050,7 @@ export default function Record() {
 
       // Step 1: immediately show whatever is in offline storage
       await loadOfflineTrails()
+      await loadOfflineMapData()
       const cachedTrails = useOfflineStore.getState().offlineTrails
       if (cachedTrails.length > 0) {
         setTrails([...cachedTrails])
@@ -1085,7 +1106,7 @@ export default function Record() {
       setMode('explore')
       setSelectedTrail(null)
     }
-  }, [setMode, setSelectedTrail, loadOfflineTrails])
+  }, [setMode, setSelectedTrail, loadOfflineMapData, loadOfflineTrails])
 
 
   useEffect(() => {
@@ -1125,45 +1146,48 @@ export default function Record() {
 
   useEffect(() => {
     let active = true
+    if (offlinePings.length) setPings(offlinePings)
     fetchPings()
       .then((res) => {
         if (active) setPings(Array.isArray(res.data) ? res.data : [])
       })
       .catch(() => {
-        if (active) setPings([])
+        if (active) setPings(offlinePings)
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [offlinePings])
 
   useEffect(() => {
     let active = true
+    if (offlineClusters.length) setClusters(offlineClusters)
     fetchClusters()
       .then((res) => {
         if (active) setClusters(Array.isArray(res.data) ? res.data : [])
       })
       .catch(() => {
-        if (active) setClusters([])
+        if (active) setClusters(offlineClusters)
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [offlineClusters])
 
   useEffect(() => {
     let active = true
+    if (offlineHuts.length) setHuts(offlineHuts)
     fetchHuts()
       .then((res) => {
         if (active) setHuts(Array.isArray(res.data) ? res.data : [])
       })
       .catch(() => {
-        if (active) setHuts([])
+        if (active) setHuts(offlineHuts)
       })
     return () => {
       active = false
     }
-  }, [])
+  }, [offlineHuts])
 
   const handlePingSubmit = useCallback(async () => {
     if (!currentLocation) return
@@ -1245,11 +1269,11 @@ export default function Record() {
   // Handle photo capture from camera button
   const handlePhotoCapture = useCallback(
     (photo) => {
+      closeRecordOverlays('')
       setCapturedPhoto(photo)
       setShowPhotoModal(true)
-      setSelectedPing(null)
     },
-    []
+    [closeRecordOverlays]
   )
 
   // Handle photo submission
@@ -1655,28 +1679,22 @@ export default function Record() {
                   longitude={lng}
                   latitude={lat}
                   anchor="bottom"
-                  onClick={(e) => {
-                    e.originalEvent.stopPropagation()
-                    setSelectedHut(isSelected ? null : hut)
-                    setSelectedPing(null)
-                  }}
                 >
-                  <div
+                  <HutMarkerButton
                     title={hut.name}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      background: '#166534',
-                      color: '#f8fafc',
-                      display: 'grid',
-                      placeItems: 'center',
-                      border: '2px solid #bbf7d0',
-                      boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    selected={isSelected}
+                    activePanel={selectedHutPanel}
+                    onToggle={() => {
+                      closeRecordOverlays(isSelected ? '' : 'selectedHut')
+                      setSelectedHut(isSelected ? null : hut)
+                      setSelectedHutPanel('info')
                     }}
-                  >
-                    ⌂
-                  </div>
+                    onPanelChange={(panel) => {
+                      closeRecordOverlays('selectedHut')
+                      setSelectedHut(hut)
+                      setSelectedHutPanel(panel)
+                    }}
+                  />
                 </Marker>
               )
             })}
@@ -1699,10 +1717,10 @@ export default function Record() {
                     anchor="center"
                     onClick={(e) => {
                       e.originalEvent.stopPropagation()
+                      closeRecordOverlays('selectedPing')
                       setSelectedPing(
                         selectedPing?._id === ping._id ? null : ping
                       )
-                      setSelectedCluster(null)
                     }}
                   >
                     <div
@@ -1734,10 +1752,10 @@ export default function Record() {
                   anchor="center"
                   onClick={(e) => {
                     e.originalEvent.stopPropagation()
+                    closeRecordOverlays('selectedPing')
                     setSelectedPing(
                       selectedPing?._id === ping._id ? null : ping
                     )
-                    setSelectedCluster(null)
                   }}
                 >
                   <div
@@ -1770,11 +1788,10 @@ export default function Record() {
                 style={{ zIndex: selectedCluster?._id === cluster._id ? 12 : 8 }}
                 onClick={(e) => {
                   e.originalEvent.stopPropagation()
+                  closeRecordOverlays('selectedCluster')
                   setSelectedCluster(
                     selectedCluster?._id === cluster._id ? null : cluster
                   )
-                  setSelectedPing(null)
-                  setSelectedHut(null)
                 }}
               >
                 <div
@@ -1798,6 +1815,11 @@ export default function Record() {
         top={`calc(env(safe-area-inset-top, 0px) + ${showControls ? 142 : 12}px)`}
         left={12}
         zIndex={19}
+      />
+      <EmergencyButton
+        top={`calc(env(safe-area-inset-top, 0px) + ${showControls ? 236 : 106}px)`}
+        left={22}
+        zIndex={20}
       />
 
       <CameraButton
@@ -1962,11 +1984,10 @@ export default function Record() {
         <div
           style={{
             ...pingPopupStyle,
-            padding: '12px 14px',
             ...(selectedPing.photoUrl
               ? {
                   maxHeight:
-                    'calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 250px)',
+                    'min(72dvh, calc(100dvh - env(safe-area-inset-top, 0px) - var(--app-bottom-nav-space, 86px) - 112px))',
                   overflowY: 'auto',
                 }
               : {}),
@@ -2248,13 +2269,17 @@ export default function Record() {
         onZoomOut={handleZoomOut}
         onTogglePitch={handleTogglePitch}
         showResetViewButton={false}
-        onToggleOffline={() => setOfflineModalOpen(true)}
-        showOfflineButton={true}
+        showOfflineButton={false}
+        onOverlayOpen={() => closeRecordOverlays('')}
       >
         <button
           type="button"
           className={`record-legend-button ${isLegendVisible ? 'active' : ''}`}
-          onClick={() => setIsLegendVisible((visible) => !visible)}
+          onClick={() => {
+            const willOpen = !isLegendVisible
+            if (willOpen) closeRecordOverlays('legend')
+            setIsLegendVisible(willOpen)
+          }}
           title={isLegendVisible ? 'Hide legend' : 'Show legend'}
           aria-label={isLegendVisible ? 'Hide legend' : 'Show legend'}
           aria-pressed={isLegendVisible}
@@ -2276,12 +2301,6 @@ export default function Record() {
         </button>
       </MapControls>
 
-      <OfflineMapModal
-        isOpen={offlineModalOpen}
-        onClose={() => setOfflineModalOpen(false)}
-        mapCenter={viewState}
-      />
-
       {selectedTrail && !selectedHut && !loadedTrailActivity && (
         <RoutePreviewCard onStartTrail={startLoadedTrailActivity} />
       )}
@@ -2290,7 +2309,8 @@ export default function Record() {
         <HutPreviewCard
           hut={selectedHut}
           onClose={() => setSelectedHut(null)}
-          bottomOffset="calc(env(safe-area-inset-bottom, 0px) + 228px)"
+          panel={selectedHutPanel}
+          onPanelChange={setSelectedHutPanel}
         />
       )}
 
@@ -2299,20 +2319,20 @@ export default function Record() {
           {(aiStatus === 'pending' || aiStatus === 'processing') && (
             <div className="record-ai-loading">
               <div className="record-ai-spinner" />
-              <span>AI is analyzing your route...</span>
+              <span>Analyzing your route...</span>
             </div>
           )}
 
           {aiStatus === 'error' && (
             <div className="record-ai-error">
-              <span> AI analysis failed</span>
+              <span>Route analysis failed</span>
               {aiResult?.error && <p>{aiResult.error}</p>}
             </div>
           )}
 
           {aiStatus === 'done' && aiResult && (
             <div className="record-ai-results">
-              <h3 className="record-ai-title">🧠 AI Trail Analysis</h3>
+              <h3 className="record-ai-title">Route Analysis</h3>
 
               {aiResult.overallDifficulty && (
                 <div

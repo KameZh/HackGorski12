@@ -15,7 +15,68 @@ function cleanHtml(html) {
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
     .trim();
+}
+
+function normalizeUrl(url) {
+  if (!url) return "";
+  const cleaned = url.replace(/&amp;/g, "&").trim();
+  if (cleaned.startsWith("//")) return `https:${cleaned}`;
+  if (cleaned.startsWith("/")) return `${BASE_URL}${cleaned}`;
+  if (cleaned.startsWith("http://") || cleaned.startsWith("https://")) return cleaned;
+  return "";
+}
+
+function extractImageUrls(html) {
+  if (!html) return [];
+  const urls = new Set();
+  const imgRegex = /<img\b[^>]*(?:src|data-src)=["']([^"']+)["'][^>]*>/gi;
+  let match;
+
+  while ((match = imgRegex.exec(html)) !== null) {
+    const url = normalizeUrl(match[1]);
+    const lower = url.toLowerCase();
+    if (
+      url &&
+      /\.(jpe?g|png|webp)(?:[?#].*)?$/i.test(url) &&
+      !lower.includes("logo") &&
+      !lower.includes("ajax") &&
+      !lower.includes("spinner") &&
+      !lower.includes("transparent")
+    ) {
+      urls.add(url);
+    }
+  }
+
+  return Array.from(urls);
+}
+
+function normalizePhoneNumber(raw) {
+  if (!raw) return "";
+  const hasPlus = raw.includes("+");
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 12) return "";
+  if (/^(\d)\1+$/.test(digits)) return "";
+  if (digits.startsWith("359")) return `+${digits}`;
+  if (hasPlus && digits) return `+${digits}`;
+  return digits;
+}
+
+function extractPhoneNumbers(text) {
+  if (!text) return [];
+  const phones = new Set();
+  const phoneRegex = /(?:\+?\s*359|0)(?:[\s()./-]*\d){6,12}/g;
+  let match;
+
+  while ((match = phoneRegex.exec(text)) !== null) {
+    const normalized = normalizePhoneNumber(match[0]);
+    if (normalized) phones.add(normalized);
+  }
+
+  return Array.from(phones);
 }
 
 /**
@@ -122,6 +183,8 @@ async function scrapeHuts() {
         if (contactsMatch) {
           contacts = cleanHtml(contactsMatch[1]);
         }
+        const phoneNumbers = extractPhoneNumbers(`${contacts} ${textContent}`);
+        const imageUrls = extractImageUrls(detailHtml);
 
         // Try to gather comments/reviews
         const reviews = [];
@@ -141,6 +204,8 @@ async function scrapeHuts() {
           location: coordinates, // [lng, lat]
           description: description,
           contacts: contacts,
+          phoneNumbers,
+          imageUrls,
           reviews: reviews,
           averageRating: rating
         };

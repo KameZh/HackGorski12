@@ -1,17 +1,12 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useCallback, useId, useRef, useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth, useClerk, useUser } from '@clerk/clerk-react'
-import Map, { Layer, Marker, Source } from 'react-map-gl/mapbox'
-import 'mapbox-gl/dist/mapbox-gl.css'
 import api from '../api/client'
 import { updateTrail, deleteTrail, publishTrail } from '../api/trails'
 import BottomNav from '../components/layout/Bottomnav'
+import OfflineMapModal from '../components/map/OfflineMapModal'
 import { useOfflineStore } from '../store/offlineStore'
 import './Account.css'
-
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const MAPBOX_STYLE_URL =
-  import.meta.env.VITE_MAPBOX_STYLE_URL || 'mapbox://styles/mapbox/outdoors-v12'
 
 const BADGE_TIERS = {
   trailers: [
@@ -86,58 +81,231 @@ function parseLineCoordinates(geojson) {
   return []
 }
 
-function buildLineFeatureCollection(pathCoordinates) {
-  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
+function formatTrailDistance(stats = {}) {
+  const meters = Number(stats.distance || 0)
+  if (!Number.isFinite(meters) || meters <= 0) return '--'
+  const km = meters / 1000
+  return `${km >= 10 ? km.toFixed(1) : km.toFixed(2)} km`
+}
+
+function formatTrailElevation(stats = {}) {
+  const gain = Number(stats.elevationGain || 0)
+  if (!Number.isFinite(gain) || gain <= 0) return '--'
+  return `${Math.round(gain)} m`
+}
+
+function formatTrailHigh(stats = {}, highestPoint = '') {
+  const high = Number(stats.highestPoint || 0)
+  if (Number.isFinite(high) && high > 0) return `${Math.round(high)} m`
+  return highestPoint || '--'
+}
+
+function formatTrailTime(stats = {}) {
+  const seconds = Number(stats.duration || 0)
+  if (!Number.isFinite(seconds) || seconds <= 0) return '--'
+  const minutes = Math.max(1, Math.round(seconds / 60))
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest ? `${hours} h ${rest} min` : `${hours} h`
+}
+
+function TrailStatsStrip({ trail }) {
+  return (
+    <div className="account-trail-stats-strip">
+      <span>
+        <small>Distance</small>
+        <strong>{formatTrailDistance(trail?.stats)}</strong>
+      </span>
+      <span>
+        <small>Gain</small>
+        <strong>{formatTrailElevation(trail?.stats)}</strong>
+      </span>
+      <span>
+        <small>High</small>
+        <strong>{formatTrailHigh(trail?.stats, trail?.highestPoint)}</strong>
+      </span>
+      <span>
+        <small>Time</small>
+        <strong>{formatTrailTime(trail?.stats)}</strong>
+      </span>
+    </div>
+  )
+}
+
+function BadgeRing({ progress, maxGoal, label }) {
+  const percent = Math.max(0, Math.min(100, (Number(progress || 0) / maxGoal) * 100))
+  return (
+    <div
+      className="badge-ring"
+      style={{
+        '--badge-progress': `${percent > 0 ? Math.max(3, percent) : 0}%`,
+      }}
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={maxGoal}
+      aria-valuenow={Math.min(Number(progress || 0), maxGoal)}
+      aria-label={label}
+    >
+      <div className="badge-ring-inner">
+        <strong>{progress}</strong>
+        <span>of {maxGoal}</span>
+      </div>
+    </div>
+  )
+}
+
+function TrailCarouselCard({
+  trail,
+  type,
+  publishingDraftId,
+  onOpenDraft,
+  onPublishDraft,
+  onDiscardDraft,
+  onOpenTrail,
+  onEditTrail,
+  onDeleteTrail,
+}) {
+  const id = trail.localId || trail._id || trail.id
+  return (
+    <article className="account-trail-carousel-card">
+      <div className="account-carousel-head">
+        <span className="my-trail-name">{trail.name || 'Unnamed trail'}</span>
+        <span className="my-trail-meta">
+          {type === 'draft' ? 'Saved on device' : 'Published'} ·{' '}
+          {trail.difficulty || 'moderate'}
+        </span>
+      </div>
+      <AccountTrailMap trail={trail} />
+      <TrailStatsStrip trail={trail} />
+      <div className="account-carousel-actions">
+        {type === 'draft' ? (
+          <>
+            <button
+              className="my-trail-save-btn"
+              onClick={() => onOpenDraft(trail)}
+              disabled={publishingDraftId === id}
+            >
+              Open
+            </button>
+            <button
+              className="my-trail-save-btn"
+              onClick={() => onPublishDraft(trail)}
+              disabled={publishingDraftId === id}
+            >
+              {publishingDraftId === id ? 'Publishing...' : 'Publish'}
+            </button>
+            <button
+              className="my-trail-delete-btn"
+              onClick={() => onDiscardDraft(id)}
+              disabled={publishingDraftId === id}
+            >
+              Discard
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="my-trail-save-btn" onClick={() => onOpenTrail?.(trail)}>
+              Open
+            </button>
+            <button className="my-trail-edit-btn" onClick={() => onEditTrail(trail)}>
+              Edit
+            </button>
+            <button className="my-trail-delete-btn" onClick={() => onDeleteTrail(id)}>
+              Delete
+            </button>
+          </>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function trailNeedsTelemetryRepair(trail) {
+  if (!trail?.geojson) return false
+  const stats = trail.stats || {}
+  const hasDistance = Number(stats.distance || 0) > 0
+  const hasHighest = Number(stats.highestPoint || 0) > 0 || Boolean(trail.highestPoint)
+  const hasDuration = Number(stats.duration || 0) > 0
+  return !hasDistance || !hasHighest || !hasDuration
+}
+
+function createPreviewProjection(coordinates, width = 340, height = 176, padding = 24) {
+  if (!Array.isArray(coordinates) || coordinates.length < 2) return null
+  const lngs = coordinates.map((point) => Number(point[0]))
+  const lats = coordinates.map((point) => Number(point[1]))
+  const minLng = Math.min(...lngs)
+  const maxLng = Math.max(...lngs)
+  const minLat = Math.min(...lats)
+  const maxLat = Math.max(...lats)
+  const lngSpan = Math.max(0.000001, maxLng - minLng)
+  const latSpan = Math.max(0.000001, maxLat - minLat)
+  const usableWidth = width - padding * 2
+  const usableHeight = height - padding * 2
+  const scale = Math.min(usableWidth / lngSpan, usableHeight / latSpan)
+  const routeWidth = lngSpan * scale
+  const routeHeight = latSpan * scale
+  const offsetX = (width - routeWidth) / 2
+  const offsetY = (height - routeHeight) / 2
+
+  const projectPoint = (point) => {
+      const x = offsetX + (Number(point[0]) - minLng) * scale
+      const y = height - (offsetY + (Number(point[1]) - minLat) * scale)
+    return {
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+    }
+  }
+
+  const toPath = (points) =>
+    (Array.isArray(points) ? points : [])
+      .map((point) => {
+        const projected = projectPoint(point)
+        return `${projected.x},${projected.y}`
+      })
+      .join(' ')
+
   return {
-    type: 'FeatureCollection',
-    features: [
-      {
-        type: 'Feature',
-        properties: {},
-        geometry: { type: 'LineString', coordinates: pathCoordinates },
-      },
-    ],
+    toPath,
+    start: projectPoint(coordinates[0]),
+    end: projectPoint(coordinates[coordinates.length - 1]),
   }
 }
 
-function buildTrailMarkFeatureCollection(pathCoordinates, trailMarks) {
-  if (!Array.isArray(pathCoordinates) || pathCoordinates.length < 2) return null
-  const maxIndex = pathCoordinates.length - 1
-  const features = (Array.isArray(trailMarks) ? trailMarks : [])
-    .map((segment, index) => {
-      const startIndex = Math.max(0, Math.min(maxIndex, Number(segment?.startIndex || 0)))
-      const endIndex = Math.max(startIndex, Math.min(maxIndex, Number(segment?.endIndex || maxIndex)))
-      const coordinates = pathCoordinates.slice(startIndex, endIndex + 1)
-      if (coordinates.length < 2) return null
-      return {
-        type: 'Feature',
-        properties: {
-          id: String(index),
-          colour_type: String(segment?.colourType || 'unmarked'),
-        },
-        geometry: { type: 'LineString', coordinates },
-      }
-    })
-    .filter(Boolean)
-  return features.length ? { type: 'FeatureCollection', features } : null
-}
-
 function AccountTrailMap({ trail }) {
+  const previewId = useId().replace(/:/g, '')
+  const bgId = `${previewId}-bg`
+  const gridId = `${previewId}-grid`
+  const shadowId = `${previewId}-shadow`
   const pathCoordinates = useMemo(
     () => parseLineCoordinates(trail?.geojson),
     [trail?.geojson]
   )
-  const base = useMemo(
-    () => buildLineFeatureCollection(pathCoordinates),
+  const projection = useMemo(
+    () => createPreviewProjection(pathCoordinates),
     [pathCoordinates]
   )
-  const sectors = useMemo(
-    () => buildTrailMarkFeatureCollection(pathCoordinates, trail?.trailMarks),
-    [pathCoordinates, trail?.trailMarks]
-  )
-  const start = pathCoordinates[0]
+  const previewPath = projection?.toPath(pathCoordinates) || ''
+  const sectorPaths = useMemo(() => {
+    if (!projection) return []
+    const maxIndex = pathCoordinates.length - 1
+    return (Array.isArray(trail?.trailMarks) ? trail.trailMarks : [])
+      .map((segment, index) => {
+        const startIndex = Math.max(0, Math.min(maxIndex, Number(segment?.startIndex || 0)))
+        const endIndex = Math.max(startIndex, Math.min(maxIndex, Number(segment?.endIndex || maxIndex)))
+        const coordinates = pathCoordinates.slice(startIndex, endIndex + 1)
+        const points = projection.toPath(coordinates)
+        if (!points) return null
+        return {
+          id: `${trail?._id || trail?.localId || 'draft'}-${index}`,
+          points,
+          color: TRAIL_MARK_COLORS[segment?.colourType] || TRAIL_MARK_COLORS.unmarked,
+        }
+      })
+      .filter(Boolean)
+  }, [pathCoordinates, projection, trail?.trailMarks, trail?._id, trail?.localId])
 
-  if (!MAPBOX_TOKEN || !base || !start) {
+  if (!previewPath) {
     return (
       <div className="account-trail-map account-trail-map-empty">
         Trail map is unavailable for this route.
@@ -147,66 +315,62 @@ function AccountTrailMap({ trail }) {
 
   return (
     <div className="account-trail-map">
-      <Map
-        initialViewState={{
-          longitude: Number(start[0]),
-          latitude: Number(start[1]),
-          zoom: 14.2,
-        }}
-        mapboxAccessToken={MAPBOX_TOKEN}
-        mapStyle={MAPBOX_STYLE_URL}
-        attributionControl={false}
-        interactive={false}
-        style={{ width: '100%', height: '100%' }}
+      <svg
+        className="account-trail-preview"
+        viewBox="0 0 340 176"
+        role="img"
+        aria-label={`${trail?.name || 'Trail'} preview`}
       >
-        <Source id={`account-trail-base-${trail._id || trail.localId}`} type="geojson" data={base}>
-          <Layer
-            id={`account-trail-base-shadow-${trail._id || trail.localId}`}
-            type="line"
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-color': '#020617', 'line-width': 7, 'line-opacity': 0.7 }}
+        <defs>
+          <linearGradient id={bgId} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(72,169,166,0.16)" />
+            <stop offset="48%" stopColor="rgba(15,23,42,0.2)" />
+            <stop offset="100%" stopColor="rgba(66,129,164,0.16)" />
+          </linearGradient>
+          <pattern id={gridId} width="28" height="28" patternUnits="userSpaceOnUse">
+            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(141,224,220,0.07)" strokeWidth="1" />
+          </pattern>
+          <filter id={shadowId} x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="4" stdDeviation="5" floodColor="#000" floodOpacity="0.42" />
+          </filter>
+        </defs>
+        <rect width="340" height="176" rx="14" fill={`url(#${bgId})`} />
+        <rect width="340" height="176" rx="14" fill={`url(#${gridId})`} />
+        <polyline
+          points={previewPath}
+          fill="none"
+          stroke="rgba(2,6,23,0.88)"
+          strokeWidth="9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter={`url(#${shadowId})`}
+        />
+        <polyline
+          points={previewPath}
+          fill="none"
+          stroke="#48a9a6"
+          strokeWidth="5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {sectorPaths.map((segment) => (
+          <polyline
+            key={segment.id}
+            points={segment.points}
+            fill="none"
+            stroke={segment.color}
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           />
-          <Layer
-            id={`account-trail-base-line-${trail._id || trail.localId}`}
-            type="line"
-            layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-            paint={{ 'line-color': '#48a9a6', 'line-width': 4, 'line-opacity': 0.9 }}
-          />
-        </Source>
-        {sectors ? (
-          <Source id={`account-trail-sectors-${trail._id || trail.localId}`} type="geojson" data={sectors}>
-            <Layer
-              id={`account-trail-sectors-line-${trail._id || trail.localId}`}
-              type="line"
-              layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{
-                'line-color': [
-                  'match',
-                  ['get', 'colour_type'],
-                  'red',
-                  TRAIL_MARK_COLORS.red,
-                  'blue',
-                  TRAIL_MARK_COLORS.blue,
-                  'green',
-                  TRAIL_MARK_COLORS.green,
-                  'yellow',
-                  TRAIL_MARK_COLORS.yellow,
-                  'white',
-                  TRAIL_MARK_COLORS.white,
-                  'black',
-                  TRAIL_MARK_COLORS.black,
-                  TRAIL_MARK_COLORS.unmarked,
-                ],
-                'line-width': 6,
-                'line-opacity': 0.98,
-              }}
-            />
-          </Source>
+        ))}
+        {projection?.start ? (
+          <circle cx={projection.start.x} cy={projection.start.y} r="6" fill="#22c55e" stroke="#fbfef9" strokeWidth="2" />
         ) : null}
-        <Marker longitude={Number(start[0])} latitude={Number(start[1])} anchor="center">
-          <div className="account-trail-start-marker">Start</div>
-        </Marker>
-      </Map>
+        {projection?.end ? (
+          <circle cx={projection.end.x} cy={projection.end.y} r="5" fill="#82c0de" stroke="#fbfef9" strokeWidth="2" />
+        ) : null}
+      </svg>
     </div>
   )
 }
@@ -266,12 +430,38 @@ export default function Home() {
   const [editSaving, setEditSaving] = useState(false)
   const [publishingDraftId, setPublishingDraftId] = useState(null)
   const [draftError, setDraftError] = useState('')
+  const [offlineModalOpen, setOfflineModalOpen] = useState(false)
+  const [expandedDrawers, setExpandedDrawers] = useState({
+    badges: false,
+    offline: false,
+    drafts: false,
+    published: false,
+  })
   const navigate = useNavigate()
   const {
     draftTrails,
+    offlineTrails,
+    offlineHuts,
+    offlinePings,
+    offlineClusters,
+    offlineEvents,
+    offlineMapPacks,
     loadDraftTrails,
+    loadOfflineTrails,
+    loadOfflineMapData,
+    clearOfflineMapData,
+    clearAll,
     removeDraftTrail,
+    updateDraftTrail,
   } = useOfflineStore()
+  const draftTelemetryRepairingRef = useRef(new Set())
+
+  const toggleDrawer = (key) => {
+    setExpandedDrawers((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
 
   const describeApiError = (err) => {
     const status = err?.response?.status ? `HTTP ${err.response.status}` : ''
@@ -281,6 +471,14 @@ export default function Home() {
 
     return [status, code, message].filter(Boolean).join(' - ')
   }
+
+  const refreshMyTrails = useCallback(async () => {
+    if (!isSignedIn) return
+    const token = await getToken()
+    const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+    const res = await api.get('/trails/mine', { headers })
+    setMyTrails(Array.isArray(res.data) ? res.data : [])
+  }, [getToken, isSignedIn])
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -332,8 +530,69 @@ export default function Home() {
   }, [isSignedIn, getToken])
 
   useEffect(() => {
-    if (isSignedIn) loadDraftTrails()
-  }, [isSignedIn, loadDraftTrails])
+    if (!isSignedIn) return undefined
+
+    let lastRefresh = 0
+    const refreshIfVisible = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastRefresh < 2500) return
+      lastRefresh = now
+      refreshMyTrails().catch((err) => {
+        setTrailsError(describeApiError(err))
+      })
+    }
+
+    window.addEventListener('focus', refreshIfVisible)
+    document.addEventListener('visibilitychange', refreshIfVisible)
+    return () => {
+      window.removeEventListener('focus', refreshIfVisible)
+      document.removeEventListener('visibilitychange', refreshIfVisible)
+    }
+  }, [isSignedIn, refreshMyTrails])
+
+  useEffect(() => {
+    if (isSignedIn) {
+      loadDraftTrails()
+      loadOfflineTrails()
+      loadOfflineMapData()
+    }
+  }, [isSignedIn, loadDraftTrails, loadOfflineMapData, loadOfflineTrails])
+
+  useEffect(() => {
+    if (!isSignedIn || !draftTrails.length) return
+
+    draftTrails.forEach((draft) => {
+      const id = draft?.localId
+      if (!id || !trailNeedsTelemetryRepair(draft)) return
+      if (draftTelemetryRepairingRef.current.has(id)) return
+
+      draftTelemetryRepairingRef.current.add(id)
+      api
+        .post('/trails/telemetry', {
+          geojson: draft.geojson,
+          stats: draft.stats || {},
+        })
+        .then((res) => {
+          const stats = res.data?.stats
+          if (!stats) return
+          return updateDraftTrail(id, {
+            stats: {
+              ...(draft.stats || {}),
+              ...stats,
+            },
+            highestPoint: res.data?.highestPoint || draft.highestPoint || '',
+            difficulty: draft.difficulty || res.data?.difficulty || 'moderate',
+          })
+        })
+        .catch((err) => {
+          console.error('Failed to repair local draft telemetry:', err)
+        })
+        .finally(() => {
+          draftTelemetryRepairingRef.current.delete(id)
+        })
+    })
+  }, [draftTrails, isSignedIn, updateDraftTrail])
 
   const handleEditOpen = (trail) => {
     const maxPointIndex = Math.max(0, Number(trail?.stats?.pointCount || 0) - 1)
@@ -440,6 +699,7 @@ export default function Home() {
         description: draft.description,
         equipment: draft.equipment,
         resources: draft.resources,
+        stats: draft.stats,
         trailMarks: normalizeTrailMarksInput(
           draft.trailMarks,
           Math.max(0, Number(draft.stats?.pointCount || 0) - 1)
@@ -456,6 +716,31 @@ export default function Home() {
 
   const handleDiscardDraft = async (draftId) => {
     await removeDraftTrail(draftId)
+  }
+
+  const handleOpenDraftOnMap = (draft) => {
+    if (!draft?.localId) return
+    const coordinates = parseLineCoordinates(draft.geojson)
+    const firstPoint = coordinates[0]
+    const params = new URLSearchParams({ draftId: draft.localId })
+    if (Array.isArray(firstPoint) && firstPoint.length === 2) {
+      params.set('startLng', String(firstPoint[0]))
+      params.set('startLat', String(firstPoint[1]))
+    }
+    navigate(`/maps?${params.toString()}`)
+  }
+
+  const handleOpenPublishedOnMap = (trail) => {
+    const trailId = trail?._id || trail?.id
+    if (!trailId) return
+    const coordinates = parseLineCoordinates(trail.geojson)
+    const firstPoint = coordinates[0]
+    const params = new URLSearchParams({ trailId })
+    if (Array.isArray(firstPoint) && firstPoint.length === 2) {
+      params.set('startLng', String(firstPoint[0]))
+      params.set('startLat', String(firstPoint[1]))
+    }
+    navigate(`/maps?${params.toString()}`)
   }
 
   const handleLogout = async () => {
@@ -546,6 +831,10 @@ export default function Home() {
     0
   )
   const totalSteps = Math.round(totalDistance / 0.762) // avg stride ~0.762m
+  const totalElevation = myTrails.reduce(
+    (sum, t) => sum + (t.stats?.elevationGain || 0),
+    0
+  )
 
   const formatDistance = (m) => {
     if (m >= 1000) return `${(m / 1000).toFixed(1)} km`
@@ -560,6 +849,20 @@ export default function Home() {
     return `${m} min`
   }
 
+  const activityChart = [
+    { label: 'Distance', value: totalDistance / 1000, display: formatDistance(totalDistance), color: '#48a9a6' },
+    { label: 'Elevation', value: totalElevation / 100, display: `${Math.round(totalElevation)} m`, color: '#82c0de' },
+    { label: 'Time', value: totalDuration / 3600, display: formatTime(totalDuration), color: '#74aed0' },
+  ]
+  const chartMax = Math.max(1, ...activityChart.map((entry) => entry.value))
+  const activityRingPercent = Math.max(
+    4,
+    Math.min(100, (totalDistance / 250000) * 100)
+  )
+  const averageTrailDistance = myTrails.length
+    ? totalDistance / myTrails.length
+    : 0
+
   const badgeCards = [
     {
       key: 'trailers',
@@ -570,7 +873,7 @@ export default function Home() {
     },
     {
       key: 'contribution',
-      title: 'Contribution',
+      title: 'Contributors',
       progress: Math.max(badgeProgress?.createdTrails || 0, myTrails.length),
       tier: pickTier('contribution', Math.max(badgeProgress?.createdTrails || 0, myTrails.length)),
       nextGoal: getNextGoal('contribution', Math.max(badgeProgress?.createdTrails || 0, myTrails.length)),
@@ -625,18 +928,62 @@ export default function Home() {
           </div>
         </div>
 
-        <div className="account-section account-badges-section">
+        <section className="account-section account-drawer account-badges-section">
           <h3 className="account-section-title">Badges</h3>
-          <div className="account-badges-box">
-            <div className="badge-grid">
-              {badgeCards.map((card) => (
-                <div key={card.key} className="badge-card">
+          <div className="account-badges-box account-drawer-surface">
+            {!expandedDrawers.badges ? (
+              <>
+                <div className="badge-summary-row">
+                  {badgeCards.map((card) => {
+                    const tiers = [...(BADGE_TIERS[card.key] || [])].sort(
+                      (a, b) => a.min - b.min
+                    )
+                    const maxGoal = tiers[tiers.length - 1]?.min || 20
+                    return (
+                      <button
+                        key={card.key}
+                        type="button"
+                        className="badge-mini-card"
+                        onClick={() => toggleDrawer('badges')}
+                      >
+                        <span className="badge-mini-title">{card.title}</span>
+                        <BadgeRing
+                          progress={card.progress}
+                          maxGoal={maxGoal}
+                          label={`${card.title} badge progress`}
+                        />
+                        <span
+                          className={`badge-mini-tier ${card.tier ? '' : 'empty'}`}
+                          style={card.tier ? { color: card.tier.color } : undefined}
+                        >
+                          {card.tier?.name || 'Earn it'}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('badges')}
+                >
+                  Show all
+                </button>
+              </>
+            ) : (
+              <div className="account-drawer-expand">
+                <div className="badge-grid">
+                  {badgeCards.map((card) => (
+                    <div key={card.key} className="badge-card">
                   {(() => {
-                    const isOverMaxGoal = card.progress >= 20
-                    const progressTarget = card.nextGoal || 20
-                    const progressPercent = Math.max(
+                    const tiers = [...(BADGE_TIERS[card.key] || [])].sort(
+                      (a, b) => a.min - b.min
+                    )
+                    const maxGoal = tiers[tiers.length - 1]?.min || 20
+                    const progressTarget = card.nextGoal || maxGoal
+                    const ringPercent = Math.max(
                       0,
-                      Math.min(100, (card.progress / progressTarget) * 100)
+                      Math.min(100, (card.progress / maxGoal) * 100)
                     )
 
                     return (
@@ -656,76 +1003,280 @@ export default function Home() {
                             </span>
                           )}
                         </div>
-                        <div className="badge-progress">
-                          <div className="badge-progress-head">
-                            <span className="badge-count">{card.progress}</span>
-                            <span className="badge-hint">
+                        <div className="badge-chart">
+                          <BadgeRing
+                            progress={card.progress}
+                            maxGoal={maxGoal}
+                            label={`${card.title} badge progress`}
+                          />
+
+                          <div className="badge-rank-chart">
+                            <div className="badge-rank-head">
+                              <span className="badge-hint">
                               {card.nextGoal
                                 ? `${Math.max(0, card.nextGoal - card.progress)} to next goal`
                                 : 'Top goal reached'}
-                            </span>
+                              </span>
+                              <strong>Goal {progressTarget}</strong>
+                            </div>
+                            <div className="badge-rank-bars">
+                              {tiers.map((tier) => {
+                                const tierPercent = Math.max(
+                                  0,
+                                  Math.min(100, (card.progress / tier.min) * 100)
+                                )
+                                const reached = card.progress >= tier.min
+                                return (
+                                  <div
+                                    key={`${card.key}-${tier.name}`}
+                                    className={`badge-rank-step ${reached ? 'reached' : ''}`}
+                                  >
+                                    <div className="badge-rank-label">
+                                      <span>{tier.name}</span>
+                                      <small>{tier.min}</small>
+                                    </div>
+                                    <div className="badge-rank-track">
+                                      <span
+                                        className="badge-rank-fill"
+                                        style={{
+                                          width: `${tierPercent}%`,
+                                          background: reached
+                                            ? tier.color
+                                            : 'linear-gradient(90deg, #4281a4, #48a9a6)',
+                                        }}
+                                      />
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
                           </div>
-
-                          {!isOverMaxGoal ? (
-                            <>
-                              <div
-                                className="badge-progress-track"
-                                role="progressbar"
-                                aria-valuemin={0}
-                                aria-valuemax={progressTarget}
-                                aria-valuenow={Math.min(
-                                  card.progress,
-                                  progressTarget
-                                )}
-                                aria-label={`${card.title} progress`}
-                              >
-                                <span
-                                  className="badge-progress-fill"
-                                  style={{ width: `${progressPercent}%` }}
-                                />
-                              </div>
-                              <div className="badge-progress-target">
-                                Goal: {progressTarget}
-                              </div>
-                            </>
-                          ) : null}
                         </div>
                       </>
                     )
                   })()}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('badges')}
+                >
+                  Hide
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div className="account-section">
+          <h3 className="account-section-title">Overall Activity</h3>
+          <div className="account-activity-panel">
+            <div className="activity-hero">
+              <div
+                className="activity-ring"
+                style={{ '--activity-progress': `${activityRingPercent}%` }}
+                aria-label="Distance progress"
+              >
+                <div className="activity-ring-inner">
+                  <span>Total</span>
+                  <strong>{formatDistance(totalDistance)}</strong>
+                </div>
+              </div>
+              <div className="activity-hero-copy">
+                <span className="activity-kicker">Lifetime trail log</span>
+                <strong>{myTrails.length} saved routes</strong>
+                <span>
+                  Avg. {formatDistance(averageTrailDistance)} per trail
+                </span>
+              </div>
+            </div>
+
+            <div className="account-stats-row">
+              <div className="account-stat">
+                <span className="stat-icon stat-steps">Steps</span>
+                <span className="stat-value">{totalSteps.toLocaleString()}</span>
+              </div>
+              <div className="account-stat">
+                <span className="stat-icon stat-time">Time</span>
+                <span className="stat-value">{formatTime(totalDuration)}</span>
+              </div>
+              <div className="account-stat">
+                <span className="stat-icon stat-elevation">Elevation</span>
+                <span className="stat-value">{Math.round(totalElevation)} m</span>
+              </div>
+            </div>
+
+            <div className="account-activity-chart" aria-label="Activity chart">
+              {activityChart.map((entry) => (
+                <div className="activity-chart-row" key={entry.label}>
+                  <div className="activity-chart-head">
+                    <span>{entry.label}</span>
+                    <strong>{entry.display}</strong>
+                  </div>
+                  <div className="activity-chart-track">
+                    <span
+                      className="activity-chart-fill"
+                      style={{
+                        width: `${Math.max(8, Math.min(100, (entry.value / chartMax) * 100))}%`,
+                        background: entry.color,
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="account-section">
-          <h3 className="account-section-title">Overall Activity</h3>
-          <div className="account-stats-row">
-            <div className="account-stat">
-              <span className="stat-icon stat-steps">Steps</span>
-              <span className="stat-value">{totalSteps.toLocaleString()}</span>
+        <section className="account-section account-drawer">
+          <h3 className="account-section-title">Offline Maps</h3>
+          <div className="account-offline-box account-drawer-surface">
+            <div className="account-offline-grid">
+              <span>{offlineTrails.length} trails</span>
+              <span>{offlineHuts.length} huts</span>
+              <span>{offlinePings.length} photos/pings</span>
+              <span>{offlineClusters.length + offlineEvents.length} reports/events</span>
+              <span>{offlineMapPacks.length} map packs</span>
             </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-time">Time</span>
-              <span className="stat-value">{formatTime(totalDuration)}</span>
+            <div className="account-offline-summary">
+              {offlineMapPacks.length > 0 ? (
+                <div>
+                  <strong>Map packs:</strong>{' '}
+                  {offlineMapPacks
+                    .slice(-3)
+                    .reverse()
+                    .map((pack) =>
+                      `${pack.name || 'Saved map'}${
+                        Number(pack.cachedTiles) > 0
+                          ? ` (${pack.cachedTiles} tiles)`
+                          : ''
+                      }`
+                    )
+                    .join(', ')}
+                </div>
+              ) : (
+                <div>
+                  <strong>Map packs:</strong> none saved yet
+                </div>
+              )}
+              {offlineTrails.length > 0 ? (
+                <div>
+                  <strong>Recent trails:</strong>{' '}
+                  {offlineTrails
+                    .slice(0, 4)
+                    .map((trail) => trail.name || trail.name_bg || 'Unnamed trail')
+                    .join(', ')}
+                </div>
+              ) : null}
             </div>
-            <div className="account-stat">
-              <span className="stat-icon stat-dist">Distance</span>
-              <span className="stat-value">
-                {formatDistance(totalDistance)}
-              </span>
-            </div>
-          </div>
-        </div>
 
-        <div className="account-section" style={{ marginTop: '1rem' }}>
+            {expandedDrawers.offline ? (
+              <div className="account-drawer-expand">
+                <div className="account-offline-details">
+                  <div className="account-offline-detail-card">
+                    <span>Ready for offline route finding</span>
+                    <strong>{offlineTrails.length + draftTrails.length}</strong>
+                    <small>saved trails and local drafts</small>
+                  </div>
+                  <div className="account-offline-detail-card">
+                    <span>Field references</span>
+                    <strong>{offlineHuts.length + offlinePings.length}</strong>
+                    <small>huts, photos, and map notes</small>
+                  </div>
+                  <div className="account-offline-detail-card">
+                    <span>Community updates</span>
+                    <strong>{offlineClusters.length + offlineEvents.length}</strong>
+                    <small>reports and event markers</small>
+                  </div>
+                </div>
+                <div className="account-offline-list">
+                  <strong>Saved map packs</strong>
+                  {offlineMapPacks.length > 0 ? (
+                    offlineMapPacks
+                      .slice()
+                      .reverse()
+                      .map((pack, index) => (
+                        <span key={`${pack.id || pack.name || 'pack'}-${index}`}>
+                          {pack.name || 'Saved map'} · {Number(pack.cachedTiles || 0)} tiles
+                        </span>
+                      ))
+                  ) : (
+                    <span>No map packs downloaded yet.</span>
+                  )}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="account-offline-actions">
+              <button
+                type="button"
+                className="account-btn account-btn-primary"
+                onClick={() => setOfflineModalOpen(true)}
+              >
+                Manage offline downloads
+              </button>
+              <button
+                type="button"
+                className="account-btn account-btn-secondary"
+                onClick={async () => {
+                  await clearAll()
+                  await clearOfflineMapData()
+                }}
+              >
+                Clear map data
+              </button>
+            </div>
+            <button
+              type="button"
+              className="account-drawer-toggle"
+              onClick={() => toggleDrawer('offline')}
+            >
+              {expandedDrawers.offline ? 'Hide' : 'Show all'}
+            </button>
+          </div>
+        </section>
+
+        <section className="account-section account-drawer">
           <h3 className="account-section-title">Local Trail Drafts</h3>
           {draftError ? (
             <div className="account-badges-box" style={{ color: '#fca5a5' }}>
               {draftError}
             </div>
           ) : null}
+          <div className="account-drawer-surface">
+            {!expandedDrawers.drafts ? (
+              <>
+                {draftTrails.length > 0 ? (
+                  <div className="account-trail-carousel">
+                    {draftTrails.map((trail) => (
+                      <TrailCarouselCard
+                        key={trail.localId}
+                        trail={trail}
+                        type="draft"
+                        publishingDraftId={publishingDraftId}
+                        onOpenDraft={handleOpenDraftOnMap}
+                        onPublishDraft={handlePublishDraft}
+                        onDiscardDraft={handleDiscardDraft}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="account-badges-box">
+                    No local recorded trails waiting to publish.
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('drafts')}
+                >
+                  Show all
+                </button>
+              </>
+            ) : (
+              <div className="account-drawer-expand">
           <div className="my-trails-list">
             {draftTrails.length > 0 ? (
               draftTrails.map((trail) => (
@@ -738,6 +1289,7 @@ export default function Home() {
                     </span>
                   </div>
                   <AccountTrailMap trail={trail} />
+                  <TrailStatsStrip trail={trail} />
                   {Array.isArray(trail.trailMarks) && trail.trailMarks.length > 0 ? (
                     <div className="account-trail-mark-row">
                       {trail.trailMarks.map((segment, index) => (
@@ -758,6 +1310,13 @@ export default function Home() {
                     </div>
                   ) : null}
                   <div className="my-trail-actions">
+                    <button
+                      className="my-trail-save-btn"
+                      onClick={() => handleOpenDraftOnMap(trail)}
+                      disabled={publishingDraftId === trail.localId}
+                    >
+                      Open / Start
+                    </button>
                     <button
                       className="my-trail-save-btn"
                       onClick={() => handlePublishDraft(trail)}
@@ -783,10 +1342,51 @@ export default function Home() {
               </div>
             )}
           </div>
-        </div>
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('drafts')}
+                >
+                  Hide
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
 
-        <div className="account-section" style={{ marginTop: '1rem' }}>
+        <section className="account-section account-drawer">
           <h3 className="account-section-title">Published Trails</h3>
+          <div className="account-drawer-surface">
+            {!expandedDrawers.published ? (
+              <>
+                {myTrails.length > 0 ? (
+                  <div className="account-trail-carousel">
+                    {myTrails.map((trail) => (
+                      <TrailCarouselCard
+                        key={trail._id}
+                        trail={trail}
+                        type="published"
+                        onOpenTrail={handleOpenPublishedOnMap}
+                        onEditTrail={handleEditOpen}
+                        onDeleteTrail={handleDeleteTrail}
+                      />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="account-badges-box">
+                    No trails loaded from the backend yet.
+                  </div>
+                )}
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('published')}
+                >
+                  Show all
+                </button>
+              </>
+            ) : (
+              <div className="account-drawer-expand">
           <div className="my-trails-list">
             {myTrails.length > 0 ? (
               myTrails.map((trail) => (
@@ -983,6 +1583,7 @@ export default function Home() {
                         </span>
                       </div>
                       <AccountTrailMap trail={trail} />
+                      <TrailStatsStrip trail={trail} />
                       {Array.isArray(trail.trailMarks) && trail.trailMarks.length > 0 ? (
                         <div className="account-trail-mark-row">
                           {trail.trailMarks.map((segment, index) => (
@@ -1026,7 +1627,17 @@ export default function Home() {
               </div>
             )}
           </div>
-        </div>
+                <button
+                  type="button"
+                  className="account-drawer-toggle"
+                  onClick={() => toggleDrawer('published')}
+                >
+                  Hide
+                </button>
+              </div>
+            )}
+          </div>
+        </section>
 
         <div className="account-actions">
           <button className="account-btn-settings" onClick={handleOpenProfile}>
@@ -1140,6 +1751,12 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <OfflineMapModal
+        isOpen={offlineModalOpen}
+        onClose={() => setOfflineModalOpen(false)}
+        mode="account"
+      />
 
       <BottomNav />
     </div>

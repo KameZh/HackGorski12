@@ -12,7 +12,11 @@ import PhotoPing from "./models/photoPing.js";
 import TrashCluster from "./models/trashCluster.js";
 import User from "./models/user.js";
 import Hut from "./models/hut.js";
-import { calculateStats, processRouteAI } from "./services/aiAnalysis.js";
+import {
+  calculateEnrichedStats,
+  inferDifficultyFromStats,
+  processRouteAnalysis,
+} from "./services/routeAnalysis.js";
 import { isFeaturedOfficialTrail } from "./services/trailEnrichment.js";
 
 const port = process.env.PORT || 5174;
@@ -23,11 +27,6 @@ const configuredOrigins = String(process.env.ALLOWED_ORIGINS || "")
   .filter(Boolean);
 const allowAllOrigins =
   nodeEnv !== "production" && configuredOrigins.length === 0;
-const enableAIAnalysis =
-  String(
-    process.env.ENABLE_AI_ANALYSIS ||
-      (nodeEnv === "production" ? "false" : "true"),
-  ).toLowerCase() === "true";
 const isVercelRuntime = Boolean(process.env.VERCEL);
 const isMongoObjectId = (value) => /^[a-f\d]{24}$/i.test(String(value || ""));
 const apiResponseCache = new Map();
@@ -682,12 +681,13 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       equipment,
       resources,
       trailMarks,
+      stats: submittedStats,
     } = req.body;
     if (!geojson) return res.status(400).json({ error: "geojson is required" });
     if (!name) return res.status(400).json({ error: "name is required" });
 
     const { userId } = getAuth(req);
-    const stats = calculateStats(geojson);
+    const stats = await calculateEnrichedStats(geojson, submittedStats);
     const derivedCoords = deriveTrailStartEndCenter(geojson);
     const startCoordinates =
       Array.isArray(stats?.startCoordinates) &&
@@ -698,6 +698,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       Array.isArray(stats?.endCoordinates) && stats.endCoordinates.length === 2
         ? stats.endCoordinates
         : derivedCoords.endCoordinates;
+    const pointLabels = deriveTrailPointLabels(geojson);
 
     const trail = await Trail.create({
       source: "user",
@@ -705,11 +706,16 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       username: req.dbUser?.username || "",
       name,
       region: region || "",
-      difficulty: difficulty || "moderate",
+      difficulty: difficulty || inferDifficultyFromStats(stats),
       description: description || "",
       equipment: equipment || "",
       resources: resources || "",
-      ...deriveTrailPointLabels(geojson),
+      ...pointLabels,
+      highestPoint:
+        pointLabels.highestPoint ||
+        (Number.isFinite(Number(stats.highestPoint))
+          ? `${Math.round(Number(stats.highestPoint))} m`
+          : ""),
       startCoordinates,
       endCoordinates,
       geojson,
@@ -719,9 +725,7 @@ app.post("/api/trails", requireAuth(), checkUser, async (req, res) => {
       ai: { status: "pending" },
     });
 
-    if (enableAIAnalysis) {
-      processRouteAI(trail._id);
-    }
+    processRouteAnalysis(trail._id);
 
     await updateBadgeProgress(userId, { createdTrails: 1 });
     invalidateApiCache(["trails"]);
@@ -743,6 +747,25 @@ app.get("/api/trails/mine", requireAuth(), async (req, res) => {
   } catch (err) {
     console.error("My trails error:", err);
     res.status(500).json({ error: "Failed to fetch your trails" });
+  }
+});
+
+app.post("/api/trails/telemetry", async (req, res) => {
+  try {
+    const { geojson, stats: submittedStats } = req.body || {};
+    if (!geojson) return res.status(400).json({ error: "geojson is required" });
+
+    const stats = await calculateEnrichedStats(geojson, submittedStats);
+    res.json({
+      stats,
+      highestPoint: Number.isFinite(Number(stats.highestPoint))
+        ? `${Math.round(Number(stats.highestPoint))} m`
+        : "",
+      difficulty: inferDifficultyFromStats(stats),
+    });
+  } catch (err) {
+    console.error("Trail telemetry error:", err);
+    res.status(500).json({ error: "Failed to calculate trail telemetry" });
   }
 });
 

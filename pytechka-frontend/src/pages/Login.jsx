@@ -23,10 +23,13 @@ const clerkAppearance = {
   },
 }
 
-const AUTH_REDIRECT_URL = '/'
-
 export default function Login() {
   const { isLoaded, signIn } = useSignIn()
+  const authRedirectUrl =
+    typeof window !== 'undefined' &&
+    window.sessionStorage.getItem('pytechka.pendingPlannerRoute')
+      ? '/maps'
+      : '/'
 
   const handleGoogleSignIn = async () => {
     if (!isLoaded || !signIn) return
@@ -35,7 +38,7 @@ export default function Login() {
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: buildAuthRedirectUrl('/sso-callback'),
-        redirectUrlComplete: buildAuthRedirectUrl('/'),
+        redirectUrlComplete: buildAuthRedirectUrl(authRedirectUrl),
       })
     } catch (error) {
       console.error('Google sign-in redirect failed:', error)
@@ -82,8 +85,8 @@ export default function Login() {
             path="/login"
             signUpUrl="/signup"
             oauthFlow="redirect"
-            fallbackRedirectUrl={AUTH_REDIRECT_URL}
-            forceRedirectUrl={AUTH_REDIRECT_URL}
+            fallbackRedirectUrl={authRedirectUrl}
+            forceRedirectUrl={authRedirectUrl}
             signUpFallbackRedirectUrl="/signup"
             signUpForceRedirectUrl="/signup"
             appearance={clerkAppearance}

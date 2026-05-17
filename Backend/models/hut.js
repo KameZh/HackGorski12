@@ -27,6 +27,8 @@ const hutSchema = new mongoose.Schema(
     capacity: { type: String, default: "" },
     facilities: { type: String, default: "" },
     contacts: { type: String, default: "" },
+    phoneNumbers: [{ type: String }],
+    imageUrls: [{ type: String }],
     originPoints: { type: String, default: "" },
     neighbors: { type: String, default: "" },
     owner: { type: String, default: "" },

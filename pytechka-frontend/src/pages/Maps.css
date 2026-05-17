@@ -56,6 +56,12 @@
   z-index: 20;
 }
 
+.maps-camera-button.recording {
+  top: calc(env(safe-area-inset-top, 0px) + 232px);
+  right: 74px;
+  z-index: 29;
+}
+
 .maps-ping-button {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 142px);
@@ -75,6 +81,12 @@
     background 0.2s ease,
     color 0.2s ease,
     transform 0.1s ease;
+}
+
+.maps-ping-button.recording {
+  top: calc(env(safe-area-inset-top, 0px) + 232px);
+  right: 18px;
+  z-index: 29;
 }
 
 .maps-ping-button.active {

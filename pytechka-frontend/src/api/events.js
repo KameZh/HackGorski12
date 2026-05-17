@@ -149,7 +149,7 @@ async function chooseSuggestedWeekend({ latitude, longitude, weatherApiKey }) {
   if (!normalizedApiKey || !Number.isFinite(lat) || !Number.isFinite(lon)) {
     return {
       suggestedDateISO: fallbackDate.toISOString(),
-      aiBadge: `${formatDateBadge(fallbackDate)} · AI weekend pick`,
+      aiBadge: `${formatDateBadge(fallbackDate)} · Weekend pick`,
       weatherSummary: 'OpenWeather key missing - using first upcoming weekend.',
     }
   }
@@ -206,7 +206,7 @@ async function chooseSuggestedWeekend({ latitude, longitude, weatherApiKey }) {
     if (!scored.length) {
       return {
         suggestedDateISO: fallbackDate.toISOString(),
-        aiBadge: `${formatDateBadge(fallbackDate)} · AI weekend pick`,
+        aiBadge: `${formatDateBadge(fallbackDate)} · Weekend pick`,
         weatherSummary: 'No weekend forecast yet - fallback to next weekend.',
       }
     }
@@ -216,13 +216,13 @@ async function chooseSuggestedWeekend({ latitude, longitude, weatherApiKey }) {
 
     return {
       suggestedDateISO: winner.candidate.toISOString(),
-      aiBadge: `${formatDateBadge(winner.candidate)} · AI weather pick`,
+      aiBadge: `${formatDateBadge(winner.candidate)} · Weather pick`,
       weatherSummary: `${Math.round(winner.forecast.temp)}°C, ${winner.forecast.weatherMain.toLowerCase()}, wind ${winner.forecast.wind.toFixed(1)} m/s`,
     }
   } catch {
     return {
       suggestedDateISO: fallbackDate.toISOString(),
-      aiBadge: `${formatDateBadge(fallbackDate)} · AI weekend pick`,
+      aiBadge: `${formatDateBadge(fallbackDate)} · Weekend pick`,
       weatherSummary: 'Weather service unavailable - fallback to next weekend.',
     }
   }

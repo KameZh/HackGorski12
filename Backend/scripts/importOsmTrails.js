@@ -3,7 +3,7 @@ import osmtogeojson from "osmtogeojson";
 
 import { connectDB, disconnectDB } from "../connection.js";
 import OfficialTrail from "../models/officialTrail.js";
-import { calculateStats } from "../services/aiAnalysis.js";
+import { calculateStats } from "../services/routeAnalysis.js";
 import {
   buildDefaultTrailMarks,
   deriveTrailPointLabels,

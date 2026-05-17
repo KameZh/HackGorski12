@@ -17,7 +17,7 @@ export default defineConfig({
             options: {
               cacheName: 'offline-mapbox-tiles',
               expiration: {
-                maxEntries: 10000,
+                maxEntries: 50000,
                 maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Days
               },
               cacheableResponse: {
@@ -54,7 +54,7 @@ export default defineConfig({
     },
     proxy: {
       '/api': {
-        target: 'http://localhost:5174',
+        target: 'http://127.0.0.1:5174',
         changeOrigin: true,
       },
     },

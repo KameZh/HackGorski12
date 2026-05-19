@@ -60,6 +60,7 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter = null, mode = 'account' }
     offlineClusters,
     offlineEvents,
     offlineMapPacks,
+    offlineDeviceInfo,
     loadOfflineTrails,
     loadOfflineMapData,
     saveMultipleTrails,
@@ -286,6 +287,8 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter = null, mode = 'account' }
           scope,
           trailsCount: trailsToSave.length,
           cachedTiles,
+          deviceId: offlineDeviceInfo?.id,
+          deviceName: offlineDeviceInfo?.name,
         }
       }
 
@@ -316,6 +319,9 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter = null, mode = 'account' }
             <p className="offline-modal-subtitle">
               Save trails and useful map data on this device before going into
               low-connectivity areas.
+            </p>
+            <p className="offline-device-note">
+              Stored locally on: <strong>{offlineDeviceInfo?.name || 'this device'}</strong>
             </p>
           </div>
           <button
@@ -459,6 +465,11 @@ const OfflineMapModal = ({ isOpen, onClose, mapCenter = null, mode = 'account' }
         {saveSummary ? (
           <div className="offline-save-result">
             <strong>Offline data saved on this device.</strong>
+            <small>
+              Device: {offlineDeviceInfo?.name || 'this device'}. Offline data
+              stays in this browser/app storage and is not synced to another
+              phone or computer.
+            </small>
             <span>
               {saveSummary.trails} trails, {saveSummary.huts} huts,{' '}
               {saveSummary.pings} photos/pings,{' '}

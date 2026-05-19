@@ -115,6 +115,13 @@ const trailSchema = new mongoose.Schema(
       centerCoordinates: [Number],
       startCoordinates: [Number],
       endCoordinates: [Number],
+      elevationProfile: [
+        {
+          index: Number,
+          distance: Number,
+          elevation: Number,
+        },
+      ],
     },
     trailMarks: {
       type: [trailMarkSchema],

@@ -4,7 +4,10 @@ import {
   fetchTrailById,
   fetchTrailConditions,
 } from '../../api/trails'
+import { fetchTerrainRgbElevation } from '../../utils/elevation'
 import './TrailDetailPopup.css'
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 const DIFFICULTY_MAP = {
   easy: 'Easy',
@@ -89,9 +92,122 @@ function haversineMeters(a, b) {
   return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x))
 }
 
+function buildTrailMarkBoundaries(samples, trailMarks = []) {
+  return (Array.isArray(trailMarks) ? trailMarks : [])
+    .flatMap((mark) => [mark.startIndex, mark.endIndex])
+    .map((markIndex) => {
+      const targetIndex = Number(markIndex)
+      return samples.find((sample) => sample.index >= targetIndex)
+    })
+    .filter(Boolean)
+}
+
+function sampleRouteCoordinates(coords = [], limit = 120) {
+  if (!Array.isArray(coords) || coords.length <= limit) {
+    return coords.map((point, index) => ({ point, index }))
+  }
+
+  const lastIndex = coords.length - 1
+  const samples = []
+  for (let i = 0; i < limit; i += 1) {
+    const index = Math.round((i / (limit - 1)) * lastIndex)
+    samples.push({ point: coords[index], index })
+  }
+  return samples
+}
+
+function buildProfileFromSamples(samples = [], trailMarks = [], totalDistance = 0) {
+  const valid = samples.filter(
+    (sample) =>
+      Array.isArray(sample.point) &&
+      Number.isFinite(Number(sample.elevation))
+  )
+  if (valid.length < 2) return null
+
+  let measuredDistance = 0
+  const profileSamples = valid.map((sample, index) => {
+    if (index > 0) {
+      measuredDistance += haversineMeters(valid[index - 1].point, sample.point)
+    }
+    return {
+      index: sample.index ?? index,
+      distance: measuredDistance,
+      elevation: Number(sample.elevation),
+    }
+  })
+
+  const scale =
+    Number.isFinite(totalDistance) && totalDistance > 0 && measuredDistance > 0
+      ? totalDistance / measuredDistance
+      : 1
+  const scaledSamples = profileSamples.map((sample) => ({
+    ...sample,
+    distance: sample.distance * scale,
+  }))
+  const elevations = scaledSamples.map((sample) => sample.elevation)
+
+  return {
+    samples: scaledSamples,
+    minElevation: Math.min(...elevations),
+    maxElevation: Math.max(...elevations),
+    totalDistance:
+      Number.isFinite(totalDistance) && totalDistance > 0
+        ? totalDistance
+        : scaledSamples[scaledSamples.length - 1].distance,
+    boundaries: buildTrailMarkBoundaries(scaledSamples, trailMarks),
+  }
+}
+
 function buildElevationSamples(geojson, trailMarks = [], stats = {}) {
   const coords = extractLineCoordinates(geojson)
   if (coords.length < 2) return null
+
+  const storedProfile = Array.isArray(stats?.elevationProfile)
+    ? stats.elevationProfile
+        .map((sample, index) => ({
+          index: Number.isFinite(Number(sample?.index))
+            ? Number(sample.index)
+            : Math.round(
+                (index / Math.max(1, stats.elevationProfile.length - 1)) *
+                  (coords.length - 1)
+              ),
+          distance: Number(sample?.distance),
+          elevation: Number(sample?.elevation),
+        }))
+        .filter(
+          (sample) =>
+            Number.isFinite(sample.distance) &&
+            Number.isFinite(sample.elevation)
+        )
+    : []
+
+  if (storedProfile.length >= 2) {
+    const totalDistance =
+      Number(stats?.distance) ||
+      storedProfile[storedProfile.length - 1].distance ||
+      coords.reduce(
+        (sum, coord, index) =>
+          index > 0 ? sum + haversineMeters(coords[index - 1], coord) : sum,
+        0
+      )
+    const rawLastDistance = storedProfile[storedProfile.length - 1].distance
+    const distanceScale =
+      Number.isFinite(totalDistance) && totalDistance > 0 && rawLastDistance > 0
+        ? totalDistance / rawLastDistance
+        : 1
+    const profileSamples = storedProfile.map((sample) => ({
+      ...sample,
+      distance: sample.distance * distanceScale,
+    }))
+    const elevations = profileSamples.map((sample) => sample.elevation)
+    return {
+      samples: profileSamples,
+      minElevation: Math.min(...elevations),
+      maxElevation: Math.max(...elevations),
+      totalDistance,
+      boundaries: buildTrailMarkBoundaries(profileSamples, trailMarks),
+    }
+  }
 
   let distance = 0
   const measuredSamples = coords
@@ -104,64 +220,63 @@ function buildElevationSamples(geojson, trailMarks = [], stats = {}) {
     })
     .filter(Boolean)
 
-  let samples = measuredSamples
-  if (samples.length < 2) {
-    const totalDistance = coords.reduce(
-      (sum, coord, index) =>
-        index > 0 ? sum + haversineMeters(coords[index - 1], coord) : sum,
-      0
-    )
-    const gain = Number(stats?.elevationGain || 0)
-    let minElevation = Number(stats?.lowestPoint)
-    let maxElevation = Number(stats?.highestPoint)
+  if (measuredSamples.length < 2) return null
 
-    if (!Number.isFinite(minElevation) && Number.isFinite(maxElevation)) {
-      minElevation = Math.max(0, maxElevation - Math.max(gain, 1))
-    }
-    if (!Number.isFinite(maxElevation) && Number.isFinite(minElevation)) {
-      maxElevation = minElevation + Math.max(gain, 1)
-    }
-    if (!Number.isFinite(minElevation) || !Number.isFinite(maxElevation)) {
-      return null
-    }
-    if (Math.abs(maxElevation - minElevation) < 1) {
-      maxElevation = minElevation + Math.max(gain, 12)
-    }
-
-    let runningDistance = 0
-    samples = coords.map((coord, index) => {
-      if (index > 0) runningDistance += haversineMeters(coords[index - 1], coord)
-      const progress = totalDistance > 0 ? runningDistance / totalDistance : index / (coords.length - 1)
-      const ridge = Math.sin(progress * Math.PI)
-      const climb = Math.min(1, progress / 0.62)
-      const elevation =
-        minElevation +
-        (maxElevation - minElevation) * (0.18 * progress + 0.72 * climb + 0.1 * ridge)
-      return {
-        index,
-        distance: runningDistance,
-        elevation: Math.max(minElevation, Math.min(maxElevation, elevation)),
-      }
-    })
-  }
-
-  if (samples.length < 2) return null
-
-  const elevations = samples.map((sample) => sample.elevation)
+  const elevations = measuredSamples.map((sample) => sample.elevation)
   const minElevation = Math.min(...elevations)
   const maxElevation = Math.max(...elevations)
-  const totalDistance = samples[samples.length - 1].distance
-  const boundaries = (Array.isArray(trailMarks) ? trailMarks : [])
-    .flatMap((mark) => [mark.startIndex, mark.endIndex])
-    .map((index) => samples.find((sample) => sample.index >= Number(index)))
-    .filter(Boolean)
+  const totalDistance = measuredSamples[measuredSamples.length - 1].distance
+  const boundaries = buildTrailMarkBoundaries(measuredSamples, trailMarks)
 
-  return { samples, minElevation, maxElevation, totalDistance, boundaries }
+  return { samples: measuredSamples, minElevation, maxElevation, totalDistance, boundaries }
 }
 
 function ElevationProfile({ trail }) {
   const [hovered, setHovered] = useState(null)
-  const profile = buildElevationSamples(trail?.geojson, trail?.trailMarks, trail?.stats)
+  const [terrainProfile, setTerrainProfile] = useState(null)
+  const profile =
+    buildElevationSamples(trail?.geojson, trail?.trailMarks, trail?.stats) ||
+    terrainProfile
+
+  useEffect(() => {
+    let active = true
+    const coords = extractLineCoordinates(trail?.geojson)
+    const hasStoredOrEmbedded =
+      Boolean(buildElevationSamples(trail?.geojson, trail?.trailMarks, trail?.stats))
+
+    setTerrainProfile(null)
+    if (hasStoredOrEmbedded || coords.length < 2 || !MAPBOX_TOKEN) return undefined
+
+    const totalDistance =
+      Number(trail?.stats?.distance) ||
+      coords.reduce(
+        (sum, coord, index) =>
+          index > 0 ? sum + haversineMeters(coords[index - 1], coord) : sum,
+        0
+      )
+    const sampled = sampleRouteCoordinates(coords, 120)
+
+    Promise.all(
+      sampled.map(async (sample) => ({
+        ...sample,
+        elevation: await fetchTerrainRgbElevation(
+          sample.point?.[0],
+          sample.point?.[1],
+          MAPBOX_TOKEN
+        ),
+      }))
+    ).then((samples) => {
+      if (!active) return
+      setTerrainProfile(
+        buildProfileFromSamples(samples, trail?.trailMarks, totalDistance)
+      )
+    })
+
+    return () => {
+      active = false
+    }
+  }, [trail?._id, trail?.geojson, trail?.stats, trail?.trailMarks])
+
   if (!profile) return null
 
   const width = 420
@@ -186,7 +301,7 @@ function ElevationProfile({ trail }) {
     .map((sample) => `${toX(sample).toFixed(1)},${toY(sample).toFixed(1)}`)
     .join(' ')
 
-  const active = hovered || profile.samples[profile.samples.length - 1]
+  const active = hovered
 
   return (
     <div className="tdp-elevation">
@@ -230,18 +345,26 @@ function ElevationProfile({ trail }) {
             y2={height - padY}
           />
         ))}
-        {active && (
+        {active ? (
           <circle
             className="tdp-elevation-dot"
             cx={toX(active)}
             cy={toY(active)}
             r="4"
           />
-        )}
+        ) : null}
       </svg>
       <div className="tdp-elevation-readout">
-        <span>{((active.distance || 0) / 1000).toFixed(1)} km</span>
-        <span>{Math.round(active.elevation)} m</span>
+        <span>
+          {active
+            ? `${((active.distance || 0) / 1000).toFixed(1)} km`
+            : `${(profile.totalDistance / 1000).toFixed(1)} km`}
+        </span>
+        <span>
+          {active
+            ? `${Math.round(active.elevation)} m`
+            : `${Math.round(profile.maxElevation)} m`}
+        </span>
       </div>
     </div>
   )

@@ -63,6 +63,17 @@
   line-height: 1.4;
 }
 
+.offline-device-note {
+  margin: 8px 0 0;
+  color: #b7c9d6;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.offline-device-note strong {
+  color: #8de0dc;
+}
+
 .offline-modal-close {
   display: grid;
   place-items: center;

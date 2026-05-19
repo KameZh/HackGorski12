@@ -44,6 +44,9 @@ import PhotoCaptureModal from '../camera/PhotoCaptureModal'
 import RouteBuilderForm from '../route/RouteBuilderForm'
 import { useOfflineStore } from '../../store/offlineStore'
 import { useTrailActivityStore } from '../../store/trailActivityStore'
+import {
+  fetchTerrainRgbElevation,
+} from '../../utils/elevation'
 const INITIAL_VIEW = buildCenteredView(7)
 
 const DIFFICULTY_COLOR = {
@@ -821,19 +824,23 @@ function buildAlternativeWaypointSets(routePoints) {
   ]
 }
 
-function samplePlannerCoordinates(coordinates = [], limit = 42) {
+function samplePlannerCoordinates(coordinates = [], limit = 120) {
   if (!Array.isArray(coordinates) || coordinates.length <= limit) {
-    return coordinates || []
+    return (coordinates || []).map((point, index) => ({ point, index }))
   }
   const lastIndex = coordinates.length - 1
   const samples = []
   for (let i = 0; i < limit; i += 1) {
-    samples.push(coordinates[Math.round((i / (limit - 1)) * lastIndex)])
+    const index = Math.round((i / (limit - 1)) * lastIndex)
+    samples.push({ point: coordinates[index], index })
   }
   return samples
 }
 
 async function fetchPlannerContourElevation([lng, lat]) {
+  const terrainRgbElevation = await fetchTerrainRgbElevation(lng, lat, MAPBOX_TOKEN)
+  if (Number.isFinite(terrainRgbElevation)) return terrainRgbElevation
+
   if (!MAPBOX_TOKEN) return null
   const url =
     `https://api.mapbox.com/v4/mapbox.mapbox-terrain-v2/tilequery/` +
@@ -857,12 +864,21 @@ function summarizePlannerElevationSamples(samples = []) {
   let highestPoint = samples[0].elevation
   let lowestPoint = samples[0].elevation
   let maxGrade = 0
+  let distance = 0
+  const elevationProfile = [
+    {
+      index: Number.isFinite(Number(samples[0].index)) ? Number(samples[0].index) : 0,
+      distance: 0,
+      elevation: Math.round(samples[0].elevation),
+    },
+  ]
 
   for (let i = 1; i < samples.length; i += 1) {
     const previous = samples[i - 1]
     const current = samples[i]
     const diff = current.elevation - previous.elevation
     const stepDistance = haversineMeters(previous.point, current.point)
+    distance += stepDistance
     if (diff > 0) elevationGain += diff
     if (diff < 0) elevationLoss += Math.abs(diff)
     highestPoint = Math.max(highestPoint, current.elevation)
@@ -870,6 +886,11 @@ function summarizePlannerElevationSamples(samples = []) {
     if (stepDistance >= 20) {
       maxGrade = Math.max(maxGrade, Math.abs(diff) / stepDistance)
     }
+    elevationProfile.push({
+      index: Number.isFinite(Number(current.index)) ? Number(current.index) : i,
+      distance: Math.round(distance),
+      elevation: Math.round(current.elevation),
+    })
   }
 
   return {
@@ -878,6 +899,7 @@ function summarizePlannerElevationSamples(samples = []) {
     highestPoint,
     lowestPoint,
     maxGrade,
+    elevationProfile,
   }
 }
 
@@ -965,19 +987,29 @@ function summarizePlannerRoute(route, routePoints = [], map = null) {
 }
 
 async function enrichPlannerRouteTelemetry(route, routePoints = [], map = null) {
-  const base = summarizePlannerRoute(route, routePoints, map)
-  if (Number.isFinite(base.elevationGain) && base.elevationGain !== null) {
-    return base
-  }
+  const base = summarizePlannerRoute(route, routePoints, null)
 
   const coordinates = route?.geometry?.coordinates || []
   const sampled = samplePlannerCoordinates(coordinates)
-  const samples = []
-  for (const point of sampled) {
-    const elevation = await fetchPlannerContourElevation(point)
-    if (Number.isFinite(elevation)) {
-      samples.push({ point, elevation })
-    }
+  let samples = (
+    await Promise.all(
+      sampled.map(async ({ point, index }) => ({
+        point,
+        index,
+        elevation: await fetchTerrainRgbElevation(point?.[0], point?.[1], MAPBOX_TOKEN),
+      }))
+    )
+  ).filter((sample) => Number.isFinite(sample.elevation))
+  if (samples.length < 2) {
+    samples = (
+      await Promise.all(
+        sampled.map(async ({ point, index }) => ({
+          point,
+          index,
+          elevation: await fetchPlannerContourElevation(point),
+        }))
+      )
+    ).filter((sample) => Number.isFinite(sample.elevation))
   }
 
   const elevation = summarizePlannerElevationSamples(samples)
@@ -1101,6 +1133,9 @@ function buildPlannerTrail(route, { start, destination, waypoints = [] } = {}) {
         ? Math.round(telemetry.lowestPoint)
         : undefined,
       maxGrade: Number.isFinite(telemetry.maxGrade) ? telemetry.maxGrade : undefined,
+      elevationProfile: Array.isArray(telemetry.elevationProfile)
+        ? telemetry.elevationProfile
+        : undefined,
       directDistance: Number.isFinite(telemetry.directDistance)
         ? Math.round(telemetry.directDistance)
         : undefined,
@@ -1582,6 +1617,7 @@ export default function MapView({
   const [plannerError, setPlannerError] = useState('')
   const [plannerMessage, setPlannerMessage] = useState('')
   const [plannerRouteMode, setPlannerRouteMode] = useState(false)
+  const [plannerOptionsMinimized, setPlannerOptionsMinimized] = useState(false)
   const [markedMapPoint, setMarkedMapPoint] = useState(null)
   const [plannerDraftFormTrail, setPlannerDraftFormTrail] = useState(null)
 
@@ -1827,6 +1863,7 @@ export default function MapView({
       setPlannerRoutes(Array.isArray(saved.plannerRoutes) ? saved.plannerRoutes : [])
       setSelectedPlannerRouteIndex(Number(saved.selectedPlannerRouteIndex || 0))
       setPlannerRouteMode(Boolean(saved.plannerRouteMode))
+      setPlannerOptionsMinimized(Boolean(saved.plannerOptionsMinimized))
       setPlannerPickMode(saved.plannerPickMode || 'inspect')
       setPlannerMessage(saved.plannerMessage || '')
     } catch {
@@ -1846,6 +1883,7 @@ export default function MapView({
           plannerRoutes,
           selectedPlannerRouteIndex,
           plannerRouteMode,
+          plannerOptionsMinimized,
           plannerPickMode,
           plannerMessage,
         })
@@ -1856,6 +1894,7 @@ export default function MapView({
   }, [
     plannerDestination,
     plannerMessage,
+    plannerOptionsMinimized,
     plannerPickMode,
     plannerRouteMode,
     plannerRoutes,
@@ -3126,12 +3165,15 @@ export default function MapView({
 
       let elevation = null
       try {
-        const map = mapRef.current?.getMap()
-        const queriedElevation = map?.queryTerrainElevation?.(
-          [longitude, latitude],
-          { exaggerated: false }
-        )
-        if (Number.isFinite(queriedElevation)) elevation = queriedElevation
+        elevation = await fetchTerrainRgbElevation(longitude, latitude, MAPBOX_TOKEN)
+        if (!Number.isFinite(elevation)) {
+          const map = mapRef.current?.getMap()
+          const queriedElevation = map?.queryTerrainElevation?.(
+            [longitude, latitude],
+            { exaggerated: false }
+          )
+          if (Number.isFinite(queriedElevation)) elevation = queriedElevation
+        }
       } catch {
         elevation = null
       }
@@ -3322,6 +3364,7 @@ export default function MapView({
       setSelectedPlannerRouteIndex(0)
       setPlannerOpen(false)
       setPlannerRouteMode(false)
+      setPlannerOptionsMinimized(false)
       setPlannerMessage(
         `${uniqueRoutes.length} route option${uniqueRoutes.length === 1 ? '' : 's'} found.`
       )
@@ -3473,6 +3516,7 @@ export default function MapView({
       setPlannerOpen(false)
       setPlannerRouteMode(false)
       setPlannerRoutes([])
+      setPlannerOptionsMinimized(false)
       window.sessionStorage?.removeItem(PLANNER_STATE_STORAGE_KEY)
       setPlannerMessage('Route saved locally in Account > Local Trail Drafts.')
     } catch (err) {
@@ -3504,6 +3548,7 @@ export default function MapView({
     setShowSectorSummary(false)
     setPlannerOpen(false)
     setPlannerRoutes([])
+    setPlannerOptionsMinimized(false)
     setPingMode(false)
     setPendingPing(null)
     closeMapOverlays('')
@@ -3557,6 +3602,7 @@ export default function MapView({
     setPlannerWaypoints([])
     setPlannerRoutes([])
     setSelectedPlannerRouteIndex(0)
+    setPlannerOptionsMinimized(false)
     setPlannerError('')
     setPlannerMessage('')
 
@@ -3575,6 +3621,7 @@ export default function MapView({
     setPlannerWaypoints([])
     setPlannerRoutes([])
     setSelectedPlannerRouteIndex(0)
+    setPlannerOptionsMinimized(false)
     setPlannerError('')
     setPlannerMessage('')
     setPlannerPickMode('inspect')
@@ -3600,6 +3647,7 @@ export default function MapView({
     setPlannerWaypoints([])
     setPlannerRoutes([])
     setSelectedPlannerRouteIndex(0)
+    setPlannerOptionsMinimized(false)
     setPlannerRouteMode(true)
     setPlannerOpen(false)
     setPlannerPickMode('waypoint')
@@ -3614,6 +3662,7 @@ export default function MapView({
     setPlannerWaypoints([])
     setPlannerRoutes([])
     setSelectedPlannerRouteIndex(0)
+    setPlannerOptionsMinimized(false)
     setPlannerOpen(true)
     setPlannerRouteMode(false)
     setPlannerPickMode('inspect')
@@ -5192,6 +5241,7 @@ export default function MapView({
       !plannerRouteMode &&
       !activeTrailSession &&
       !plannerDraftFormTrail &&
+      !plannerOptionsMinimized &&
       !markedMapPoint ? (
         <div
           style={{
@@ -5223,17 +5273,32 @@ export default function MapView({
                 Tap a route on the map or choose below
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => setPlannerOpen(true)}
-              style={{
-                ...pingBtnBase,
-                background: 'rgba(148,163,184,0.15)',
-                color: '#cbd5e1',
-              }}
-            >
-              Edit
-            </button>
+            <div style={{ display: 'flex', gap: 7 }}>
+              <button
+                type="button"
+                onClick={() => setPlannerOptionsMinimized(true)}
+                style={{
+                  ...pingBtnBase,
+                  background: 'rgba(15,23,42,0.52)',
+                  color: '#cbd5e1',
+                  minWidth: 58,
+                }}
+              >
+                Hide
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlannerOpen(true)}
+                style={{
+                  ...pingBtnBase,
+                  background: 'rgba(148,163,184,0.15)',
+                  color: '#cbd5e1',
+                  minWidth: 58,
+                }}
+              >
+                Edit
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
@@ -5360,6 +5425,37 @@ export default function MapView({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {plannerRoutes.length > 0 &&
+      !plannerOpen &&
+      !plannerRouteMode &&
+      !activeTrailSession &&
+      !plannerDraftFormTrail &&
+      plannerOptionsMinimized &&
+      !markedMapPoint ? (
+        <button
+          type="button"
+          onClick={() => setPlannerOptionsMinimized(false)}
+          style={{
+            position: 'absolute',
+            left: 16,
+            right: 16,
+            bottom: MAP_DRAWER_BOTTOM_GAP,
+            zIndex: 34,
+            minHeight: 46,
+            borderRadius: 16,
+            border: '1px solid rgba(66,129,164,0.48)',
+            background: 'rgba(17,26,40,0.94)',
+            color: '#e2e8f0',
+            boxShadow: '0 -10px 24px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(12px)',
+            fontSize: 13,
+            fontWeight: 900,
+          }}
+        >
+          Route options · {plannerRoutes.length} found · tap to show
+        </button>
       ) : null}
 
       {plannerOpen ? (

@@ -20,12 +20,35 @@ const mapDataStore = localforage.createInstance({
   description: 'Stores huts, pings, photos, clusters, and map metadata offline',
 })
 
+function createDeviceInfo() {
+  const hasBrowserStorage = typeof window !== 'undefined' && window.localStorage
+  const storage = hasBrowserStorage ? window.localStorage : null
+  const storedId = storage?.getItem('pytechka-offline-device-id')
+  const id =
+    storedId ||
+    `device-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  if (!storedId) storage?.setItem('pytechka-offline-device-id', id)
+
+  const nav = typeof navigator !== 'undefined' ? navigator : null
+  const platform =
+    nav?.userAgentData?.platform || nav?.platform || 'This device'
+  const browser = nav?.userAgentData?.brands?.[0]?.brand || 'Browser'
+  return {
+    id,
+    name: `${platform} · ${browser}`,
+    lastSeenAt: new Date().toISOString(),
+  }
+}
+
 function normalizeOfflineTrail(trail) {
   if (!trail || typeof trail !== 'object') return trail
+  const deviceInfo = createDeviceInfo()
   return {
     ...trail,
     geojson: trail.geojson || trail.geom || trail.mapGeometry || null,
     savedOfflineAt: trail.savedOfflineAt || new Date().toISOString(),
+    savedOfflineDeviceId: trail.savedOfflineDeviceId || deviceInfo.id,
+    savedOfflineDeviceName: trail.savedOfflineDeviceName || deviceInfo.name,
   }
 }
 
@@ -36,6 +59,7 @@ export const useOfflineStore = create((set, get) => ({
   offlineClusters: [],
   offlineEvents: [],
   offlineMapPacks: [],
+  offlineDeviceInfo: createDeviceInfo(),
   draftTrails: [],
   isLoaded: false,
   mapDataLoaded: false,
@@ -63,19 +87,24 @@ export const useOfflineStore = create((set, get) => ({
         offlineClusters,
         offlineEvents,
         offlineMapPacks,
+        offlineDeviceInfo,
       ] = await Promise.all([
         mapDataStore.getItem('huts'),
         mapDataStore.getItem('pings'),
         mapDataStore.getItem('clusters'),
         mapDataStore.getItem('events'),
         mapDataStore.getItem('mapPacks'),
+        mapDataStore.getItem('deviceInfo'),
       ])
+      const deviceInfo = offlineDeviceInfo || createDeviceInfo()
+      await mapDataStore.setItem('deviceInfo', deviceInfo)
       set({
         offlineHuts: Array.isArray(offlineHuts) ? offlineHuts : [],
         offlinePings: Array.isArray(offlinePings) ? offlinePings : [],
         offlineClusters: Array.isArray(offlineClusters) ? offlineClusters : [],
         offlineEvents: Array.isArray(offlineEvents) ? offlineEvents : [],
         offlineMapPacks: Array.isArray(offlineMapPacks) ? offlineMapPacks : [],
+        offlineDeviceInfo: deviceInfo,
         mapDataLoaded: true,
       })
     } catch (err) {
@@ -100,16 +129,20 @@ export const useOfflineStore = create((set, get) => ({
       }
       if (Array.isArray(events)) writes.push(mapDataStore.setItem('events', events))
       if (mapPack) {
+        const deviceInfo = createDeviceInfo()
         const current = (await mapDataStore.getItem('mapPacks')) || []
         const next = [
           ...current.filter((entry) => entry.id !== mapPack.id),
           {
             ...mapPack,
             savedAt: mapPack.savedAt || new Date().toISOString(),
+            deviceId: mapPack.deviceId || deviceInfo.id,
+            deviceName: mapPack.deviceName || deviceInfo.name,
           },
         ]
         writes.push(mapDataStore.setItem('mapPacks', next))
       }
+      writes.push(mapDataStore.setItem('deviceInfo', createDeviceInfo()))
       await Promise.all(writes)
       await get().loadOfflineMapData()
     } catch (err) {

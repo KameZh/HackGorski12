@@ -446,6 +446,7 @@ export default function Home() {
     offlineClusters,
     offlineEvents,
     offlineMapPacks,
+    offlineDeviceInfo,
     loadDraftTrails,
     loadOfflineTrails,
     loadOfflineMapData,
@@ -1141,6 +1142,10 @@ export default function Home() {
               <span>{offlineMapPacks.length} map packs</span>
             </div>
             <div className="account-offline-summary">
+              <div>
+                <strong>Device:</strong>{' '}
+                {offlineDeviceInfo?.name || 'this browser/app storage'}
+              </div>
               {offlineMapPacks.length > 0 ? (
                 <div>
                   <strong>Map packs:</strong>{' '}

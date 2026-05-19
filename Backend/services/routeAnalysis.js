@@ -127,6 +127,29 @@ function mergeNumericStats(base = {}, extras = {}) {
   return next;
 }
 
+function normalizeElevationProfile(profile = [], fallbackPointCount = 0) {
+  if (!Array.isArray(profile) || profile.length < 2) return undefined;
+  const maxIndex = Math.max(0, Number(fallbackPointCount || 0) - 1);
+  const normalized = profile
+    .map((sample, index) => {
+      const distance = Number(sample?.distance);
+      const elevation = Number(sample?.elevation);
+      if (!Number.isFinite(distance) || !Number.isFinite(elevation)) return null;
+      const sampleIndex = Number(sample?.index);
+      return {
+        index: Number.isFinite(sampleIndex)
+          ? Math.max(0, Math.min(maxIndex || sampleIndex, Math.round(sampleIndex)))
+          : index,
+        distance: Math.max(0, Math.round(distance)),
+        elevation: Math.round(elevation),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.distance - b.distance);
+
+  return normalized.length >= 2 ? normalized.slice(0, 160) : undefined;
+}
+
 function sampleCoordinates(coords, limit = ELEVATION_SAMPLE_LIMIT) {
   if (!Array.isArray(coords) || coords.length <= limit) return coords || [];
   const samples = [];
@@ -267,7 +290,7 @@ export async function calculateEnrichedStats(geojson, submittedStats = {}) {
     Math.max(Number(submitted.duration || 0), naismithDuration),
   );
 
-  return mergeNumericStats(base, {
+  const result = mergeNumericStats(base, {
     ...submitted,
     ...elevationStats,
     distance,
@@ -275,6 +298,14 @@ export async function calculateEnrichedStats(geojson, submittedStats = {}) {
     duration,
     pointCount: coords.length || submitted.pointCount || base.pointCount,
   });
+
+  const elevationProfile = normalizeElevationProfile(
+    submittedStats?.elevationProfile,
+    result.pointCount || coords.length,
+  );
+  if (elevationProfile) result.elevationProfile = elevationProfile;
+
+  return result;
 }
 
 function extractCoordinates(geojson) {
